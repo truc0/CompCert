@@ -796,20 +796,20 @@ Qed.
 
 (** Preservation of a global environment by a memory injection *)
 
-Inductive globalenv_preserved {F V: Type} (ge: Genv.t F V) (j: meminj) (bound: block) : Prop :=
+Inductive globalenv_preserved {F V: Type} (ge: Genv.t F V) (j: meminj) (support: sup) : Prop :=
   | globalenv_preserved_intro
-      (DOMAIN: forall b, Plt b bound -> j b = Some(b, 0))
-      (IMAGE: forall b1 b2 delta, j b1 = Some(b2, delta) -> Plt b2 bound -> b1 = b2)
-      (SYMBOLS: forall id b, Genv.find_symbol ge id = Some b -> Plt b bound)
-      (FUNCTIONS: forall b fd, Genv.find_funct_ptr ge b = Some fd -> Plt b bound)
-      (VARINFOS: forall b gv, Genv.find_var_info ge b = Some gv -> Plt b bound).
+      (DOMAIN: forall b, In b support -> j b = Some(b, 0))
+      (IMAGE: forall b1 b2 delta, j b1 = Some(b2, delta) -> In b2 support -> b1 = b2)
+      (SYMBOLS: forall id b, Genv.find_symbol ge id = Some b -> In b support)
+      (FUNCTIONS: forall b fd, Genv.find_funct_ptr ge b = Some fd -> In b support)
+      (VARINFOS: forall b gv, Genv.find_var_info ge b = Some gv -> In b support).
 
 Program Definition globalenv_inject {F V: Type} (ge: Genv.t F V) (j: meminj) : massert := {|
-  m_pred := fun m => exists bound, Ple bound (Mem.nextblock m) /\ globalenv_preserved ge j bound;
+  m_pred := fun m => exists support, Mem.sup_include support (Mem.support m) /\ globalenv_preserved ge j support;
   m_footprint := fun b ofs => False
 |}.
 Next Obligation.
-  rename H into bound. exists bound; split; auto. eapply Ple_trans; eauto. eapply Mem.unchanged_on_nextblock; eauto.
+  rename H into bound. exists bound; split; auto. eapply Mem.sup_include_trans; eauto. eapply Mem.unchanged_on_support; eauto.
 Qed.
 Next Obligation.
   tauto.
@@ -834,14 +834,14 @@ Lemma globalenv_inject_incr:
   m |= globalenv_inject ge j ** P ->
   m |= globalenv_inject ge j' ** P.
 Proof.
-  intros. destruct H1 as (A & B & C). destruct A as (bound & D & E).
+  intros. destruct H1 as (A & B & C). destruct A as (support & D & E).
   split; [|split]; auto.
-  exists bound; split; auto.
+  exists support; split; auto.
   inv E; constructor; intros.
 - eauto.
 - destruct (j b1) as [[b0 delta0]|] eqn:JB1.
 + erewrite H in H1 by eauto. inv H1. eauto.
-+ exploit H0; eauto. intros (X & Y). elim Y. apply Pos.lt_le_trans with bound; auto.
++ exploit H0; eauto. intros (X & Y). elim Y. apply D. auto.
 - eauto.
 - eauto.
 - eauto.

@@ -707,7 +707,7 @@ Record extcall_properties (sem: extcall_sem) (sg: signature) : Prop :=
 (** ** Semantics of volatile loads *)
 
 Inductive volatile_load_sem (chunk: memory_chunk) (ge: Senv.t):
-              list val -> mem -> trace -> val -> mem -> Prop :=
+  list val -> mem -> trace -> val -> mem -> Prop :=
   | volatile_load_sem_intro: forall b ofs m t v,
       volatile_load ge chunk m b ofs t v ->
       volatile_load_sem chunk ge (Vptr b ofs :: nil) m t v m.
@@ -1574,17 +1574,15 @@ Qed.
 
 (** Corollary of [external_call_valid_block]. *)
 
-Lemma external_call_nextblock:
+Lemma external_call_support:
   forall ef ge vargs m1 t vres m2,
   external_call ef ge vargs m1 t vres m2 ->
-  Ple (Mem.nextblock m1) (Mem.nextblock m2).
+  Mem.sup_include (Mem.support m1) (Mem.support m2).
 Proof.
-  intros. destruct (plt (Mem.nextblock m2) (Mem.nextblock m1)).
-  exploit external_call_valid_block; eauto. intros.
-  eelim Plt_strict; eauto.
-  unfold Plt, Ple in *; zify; lia.
+  intros. unfold Mem.sup_include. intros.
+  exploit external_call_valid_block. eauto. apply H0.
+  auto.
 Qed.
-
 (** Special case of [external_call_mem_inject_gen] (for backward compatibility) *)
 
 Definition meminj_preserves_globals (F V: Type) (ge: Genv.t F V) (f: block -> option (block * Z)) : Prop :=

@@ -323,7 +323,7 @@ Qed.
   [Vptr b ofs] where [Genv.find_symbol ge id = Some b]. *)
 
 Definition inj (b: block) :=
-  match Genv.find_symbol ge b with
+  match Genv.find_symbol ge (block_to_ident b) with
   | Some b' => Some (b', 0)
   | None => None
   end.
@@ -440,7 +440,7 @@ Proof.
   (* var local *)
   unfold empty_env in H. rewrite PTree.gempty in H. congruence.
   (* var_global *)
-  econstructor. unfold inj. rewrite H0. eauto. auto.
+  econstructor. unfold inj. rewrite ident_to_block_to_ident. rewrite H0. eauto. auto.
   (* deref *)
   eauto.
   (* field struct *)
@@ -544,6 +544,7 @@ Proof.
 Local Opaque sizeof.
 - destruct i; intros until res; intros TR; simpl in TR.
 + monadInv TR. exists (x :: nil); split; auto. constructor; auto.
+
 + destruct ty; try discriminate.
   destruct (transl_init_array_spec _ _ _ _ _ TR) as (d & A & B).
   exists d; split; auto. constructor; auto.
@@ -627,13 +628,13 @@ Proof.
   destruct f1; inv EQ0; simpl in H2; inv H2; assumption.
 - (* pointer *)
   unfold inj in H.
-  assert (data = Init_addrof b1 ofs1 /\ chunk = Mptr).
+  assert (data = Init_addrof (block_to_ident b1) ofs1 /\ chunk = Mptr).
   { remember Archi.ptr64 as ptr64.
     destruct ty; inversion EQ0.
     destruct i; inv H5. unfold Mptr. destruct Archi.ptr64; inv H6; inv H2; auto.
     subst ptr64. unfold Mptr. destruct Archi.ptr64; inv H5; inv H2; auto.
     inv H2. auto. }
-  destruct H4; subst. destruct (Genv.find_symbol ge b1); inv H.
+  destruct H4; subst. destruct (Genv.find_symbol ge (block_to_ident b1)); inv H.
   rewrite Ptrofs.add_zero in H3. auto.
 - (* undef *)
   discriminate.
@@ -893,3 +894,4 @@ Proof.
   eapply build_composite_env_consistent. apply prog_comp_env_eq.
   eapply A; eauto. apply transl_init_spec; auto.
 Qed.
+

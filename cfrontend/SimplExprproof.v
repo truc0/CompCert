@@ -813,7 +813,7 @@ Proof.
   intros until b; unfold bool_val.
   destruct (classify_bool t); destruct v; destruct Archi.ptr64 eqn:SF; auto.
 - rewrite A; congruence.
-- simpl; rewrite A; congruence.
+- simpl; congruence.
 Qed.
 
 Lemma step_makeif:

@@ -21,8 +21,14 @@ Require Import AST.
 Require Import Integers.
 Require Import Floats.
 
-Definition block : Type := positive.
-Definition eq_block := peq.
+Parameter block : Type.
+Parameter eq_block : forall (x y:block),{x=y}+{x<>y}.
+
+Definition sup : Type := list block.
+
+Parameter fresh_block : sup -> block.
+Parameter freshness : forall (A:sup), ~In (fresh_block A) A.
+
 
 (** A value is either:
 - a machine integer;
