@@ -77,8 +77,7 @@ Extract Constant Values.fresh_block =>"(let open BinPos in
                                         let com_p =
                                             (fun p1 p2 -> match Pos.compare p1 p2 with
                                             |Gt -> -1
-                                            |r -> 0
-                                            ) in
+                                            |_ -> 1) in
                                         let ss = List.sort com_p s in
                                         match ss with
                                         | [] -> Coq_xH
