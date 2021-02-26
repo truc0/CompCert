@@ -2120,7 +2120,7 @@ Proof.
   simpl. exists (Mem.support m0); split. apply Mem.sup_include_refl.
   unfold j, Mem.flat_inj; constructor; intros.
     apply pred_dec_true; auto.
-    destruct (Mem.sup_dec b1 (Mem.support m0)); congruence.
+    destruct (Mem.dec_sup (Mem.support m0) b1); congruence.
     change (Mem.valid_block m0 b0). eapply Genv.find_symbol_not_fresh; eauto.
     change (Mem.valid_block m0 b0). eapply Genv.find_funct_ptr_not_fresh; eauto.
     change (Mem.valid_block m0 b0). eapply Genv.find_var_info_not_fresh; eauto.

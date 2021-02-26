@@ -99,8 +99,98 @@ Proof.
 Qed.
 End NMap.
 
-Module Mem <: MEM.
 
+(* Declare Module Sup: SUP. *)
+
+Module Sup <: SUP.
+
+Definition sup := list block.
+
+Definition sup_empty : sup := nil.
+
+Definition sup_In(b:block)(s:sup) : Prop := In b s.
+Definition empty_in: forall b, ~ sup_In b sup_empty.
+Proof. intros. auto. Qed.
+Definition sup_dec : forall b s, {sup_In b s}+{~sup_In b s}.
+Proof. intros. unfold sup_In. apply In_dec. apply eq_block. Qed.
+(*
+Parameter fresh_block : sup -> block.
+Parameter freshness : forall s, ~sup_In (fresh_block s) s.
+*)
+
+Fixpoint find_max_pos (l: list positive) : positive :=
+  match l with
+  |nil => 1
+  |hd::tl => let m' := find_max_pos tl in
+             match plt hd m' with
+             |left _ => m'
+             |right _ => hd
+             end
+  end.
+
+Theorem Lessthan: forall p l, In p l -> Ple p (find_max_pos l).
+Proof.
+  intros.
+  induction l.
+  destruct H.
+  destruct H;simpl.
+  - destruct (plt a (find_max_pos l)); subst a.
+    + apply Plt_Ple. assumption.
+    + apply Ple_refl.
+  - destruct (plt a (find_max_pos l)); apply IHl in H.
+    + auto.
+    + eapply Ple_trans. eauto.  apply Pos.le_nlt. apply n.
+Qed.
+
+
+Definition fresh_block (s:sup) := Pos.succ (find_max_pos s).
+Theorem freshness : forall s, ~sup_In (fresh_block s) s.
+Proof.
+  intros. unfold fresh_block.
+  intro.
+  apply Lessthan in H.
+  assert (Plt (find_max_pos s) (Pos.succ (find_max_pos s))). apply Plt_succ.
+  assert (Plt (find_max_pos s) (find_max_pos s)). eapply Plt_Ple_trans. eauto. auto.
+  apply Plt_strict in H1.
+  auto.
+Qed.
+
+Definition sup_add(b:block)(s:sup) := b::s.
+
+Definition sup_incr(s:sup) := sup_add (fresh_block s) s.
+
+Definition sup_include(s1 s2:sup) := forall b, sup_In b s1 -> sup_In b s2.
+
+Theorem sup_add_in : forall b s b', sup_In b' (sup_add b s) <-> b' = b \/ sup_In b' s.
+Proof.
+  split.
+  intros. destruct H. left. auto. right. auto.
+  intros. destruct H. left. auto. right. auto.
+Qed.
+Theorem sup_add_in1 : forall b s, sup_In b (sup_add b s).
+Proof. intros. apply sup_add_in. left. auto. Qed.
+Theorem sup_add_in2 : forall b s, sup_include s (sup_add b s).
+Proof. intros. intro. intro. apply sup_add_in. right. auto. Qed.
+
+Lemma sup_include_refl : forall s:sup, sup_include s s.
+Proof. intro. intro. auto. Qed.
+
+Lemma sup_include_trans:
+  forall p q r:sup,sup_include p q-> sup_include q r -> sup_include p r.
+Proof.
+  intros. intro. intro.  auto.
+Qed.
+
+Lemma sup_include_incr:
+  forall s b, sup_include s (sup_add b s).
+Proof.
+  intros. apply sup_add_in2.
+Qed.
+
+End Sup.
+
+Module Mem <: MEM.
+Include Sup.
 Local Notation "a # b" := (NMap.get _ b a) (at level 1).
 
 Definition perm_order' (po: option permission) (p: permission) :=
@@ -122,12 +212,10 @@ Record mem' : Type := mkmem {
                                          (**r [block -> offset -> kind -> option permission] *)
   support: sup;
 
-  support_norepet:
-    list_norepet support;
   access_max:
     forall b ofs, perm_order'' (mem_access#b ofs Max) (mem_access#b ofs Cur);
   nextblock_noaccess:
-    forall b ofs k, ~(In b support) -> mem_access#b ofs k = None;
+    forall b ofs k, ~(sup_In b support) -> mem_access#b ofs k = None;
   contents_default:
     forall b, fst (mem_contents#b) = Undef
 }.
@@ -136,28 +224,10 @@ Definition mem := mem'.
 
 Definition nextblock (m:mem) := fresh_block (support m).
 
-Definition sup_include(s1 s2:sup):= forall a, In a s1 -> In a s2.
-Definition add_sup_block(s:sup)(b:block) := b::s.
-Lemma sup_include_refl : forall s:sup, sup_include s s.
-Proof. intro. intro. auto. Qed.
-
-Lemma sup_include_trans:
-  forall p q r:sup,sup_include p q-> sup_include q r -> sup_include p r.
-Proof.
-  intros. intro. intro.  auto.
-Qed.
-
-Lemma sup_include_incr:
-  forall s b, sup_include s (b::s).
-Proof.
-  intros. intro. intro. right. auto.
-Qed.
-
-
 Lemma mkmem_ext:
- forall cont1 cont2 acc1 acc2 sup1 sup2 a1 a2 b1 b2 c1 c2 d1 d2,
+ forall cont1 cont2 acc1 acc2 sup1 sup2 a1 a2 b1 b2 c1 c2,
   cont1=cont2 -> acc1=acc2 -> sup1=sup2 ->
-  mkmem cont1 acc1 sup1 a1 b1 c1 d1= mkmem cont2 acc2 sup2 a2 b2 c2 d2.
+  mkmem cont1 acc1 sup1 a1 b1 c1= mkmem cont2 acc2 sup2 a2 b2 c2.
 Proof.
   intros. subst. f_equal; apply proof_irr.
 Qed.
@@ -167,14 +237,7 @@ Qed.
 (** A block address is valid if it was previously allocated. It remains valid
   even after being freed. *)
 
-Definition valid_block (m: mem) (b: block) := In b (support m).
-Definition valid_block_sup (s: sup) (b: block) := In b s.
-
-Theorem dec_sup:forall s b, {valid_block_sup s b}+{~valid_block_sup s b}.
-Proof.
-  intros. apply In_dec. apply eq_block.
-Qed.
-
+Definition valid_block (m: mem) (b: block) := sup_In b (support m).
 
 Theorem valid_not_valid_diff:
   forall m b b', valid_block m b -> ~(valid_block m b') -> b <> b'.
@@ -230,7 +293,7 @@ Theorem perm_valid_block:
   forall m b ofs k p, perm m b ofs k p -> valid_block m b.
 Proof.
   unfold perm; intros.
-  destruct (dec_sup m.(support) b).
+  destruct (sup_dec b m.(support)).
   auto.
   assert (m.(mem_access)#b ofs k = None).
   eapply nextblock_noaccess; eauto.
@@ -430,15 +493,21 @@ Qed.
 Program Definition empty: mem :=
   mkmem (NMap.init _ (ZMap.init Undef))
         (NMap.init _ (fun ofs k => None))
-        nil _ _ _ _.
-Next Obligation.
-  constructor.
-Qed.
+        sup_empty  _ _ _.
 
 (** Allocation of a fresh block with the given bounds.  Return an updated
   memory state and the address of the fresh block, which initially contains
   undefined cells.  Note that allocation never fails: we model an
   infinite memory. *)
+Lemma mem_incr_1: forall m, sup_In (nextblock m) (sup_incr (m.(support))).
+Proof.
+  intros. unfold nextblock. unfold sup_incr. apply sup_add_in1.
+Qed.
+
+Lemma mem_incr_2: forall m b, sup_In b (m.(support)) -> sup_In b (sup_incr (m.(support))).
+Proof.
+  intros. unfold sup_incr. apply sup_add_in2. auto.
+Qed.
 
 Program Definition alloc (m: mem) (lo hi: Z) :=
   (mkmem (NMap.set _ (nextblock m)
@@ -447,12 +516,9 @@ Program Definition alloc (m: mem) (lo hi: Z) :=
          (NMap.set _ (nextblock m)
                    (fun ofs k => if zle lo ofs && zlt ofs hi then Some Freeable else None)
                    m.(mem_access))
-         ((nextblock m)::m.(support))
-         _ _ _ _,
+         (sup_incr (m.(support)))
+         _ _ _,
    (nextblock m)).
-Next Obligation.
-  constructor. apply freshness. apply support_norepet.
-Qed.
 Next Obligation.
   repeat rewrite NMap.gsspec. destruct (NMap.elt_eq b (nextblock m)).
   subst b. destruct (zle lo ofs && zlt ofs hi); red; auto with mem.
@@ -460,9 +526,9 @@ Next Obligation.
 Qed.
 Next Obligation.
   rewrite NMap.gsspec. destruct (NMap.elt_eq b (nextblock m)).
-  subst b. elim H. left. auto.
+  subst b. elim H. apply mem_incr_1.
   apply nextblock_noaccess. red; intros; elim H.
-  right. auto.
+  apply mem_incr_2. auto.
 Qed.
 Next Obligation.
   rewrite NMap.gsspec. destruct (NMap.elt_eq b (nextblock m)). auto. apply contents_default.
@@ -478,10 +544,7 @@ Program Definition unchecked_free (m: mem) (b: block) (lo hi: Z): mem :=
         (NMap.set _ b
                 (fun ofs k => if zle lo ofs && zlt ofs hi then None else m.(mem_access)#b ofs k)
                 m.(mem_access))
-        m.(support) _ _ _ _.
-Next Obligation.
- apply support_norepet.
-Qed.
+        m.(support) _ _ _.
 Next Obligation.
   repeat rewrite NMap.gsspec. destruct (NMap.elt_eq b0 b).
   destruct (zle lo ofs && zlt ofs hi). red; auto. apply access_max.
@@ -637,10 +700,9 @@ Program Definition store (chunk: memory_chunk) (m: mem) (b: block) (ofs: Z) (v: 
                           m.(mem_contents))
                 m.(mem_access)
                 m.(support)
-                _ _ _ _)
+                _ _ _)
   else
     None.
-Next Obligation. apply support_norepet. Qed.
 Next Obligation. apply access_max. Qed.
 Next Obligation. apply nextblock_noaccess; auto. Qed.
 Next Obligation.
@@ -681,10 +743,9 @@ Program Definition storebytes (m: mem) (b: block) (ofs: Z) (bytes: list memval) 
              (NMap.set _ b (setN bytes ofs (m.(mem_contents)#b)) m.(mem_contents))
              m.(mem_access)
              m.(support)
-             _ _ _ _)
+             _ _ _)
   else
     None.
-Next Obligation. apply support_norepet. Qed.
 Next Obligation. apply access_max. Qed.
 Next Obligation. apply nextblock_noaccess; auto. Qed.
 Next Obligation.
@@ -704,11 +765,8 @@ Program Definition drop_perm (m: mem) (b: block) (lo hi: Z) (p: permission): opt
                 (NMap.set _ b
                         (fun ofs k => if zle lo ofs && zlt ofs hi then Some p else m.(mem_access)#b ofs k)
                         m.(mem_access))
-                m.(support) _ _ _ _)
+                m.(support) _ _ _)
   else None.
-Next Obligation.
-  apply support_norepet.
-Qed.
 Next Obligation.
   repeat rewrite NMap.gsspec. destruct (NMap.elt_eq b0 b). subst b0.
   destruct (zle lo ofs && zlt ofs hi). red; auto with mem. apply access_max.
@@ -729,7 +787,7 @@ Qed.
 (** * Properties of the memory operations *)
 
 (** Properties of the empty store. *)
-Theorem support_empty : support empty = nil.
+Theorem support_empty : support empty = sup_empty.
 Proof.
   reflexivity.
 Qed.
@@ -1808,13 +1866,13 @@ Variable b: block.
 Hypothesis ALLOC: alloc m1 lo hi = (m2, b).
 
 Theorem nextblock_alloc:
-  nextblock m2 = fresh_block (nextblock m1::support m1).
+  nextblock m2 = fresh_block (sup_incr(support m1)).
 Proof.
   injection ALLOC; intros. rewrite <- H0; auto.
 Qed.
 
 Theorem support_alloc:
-  support m2 = nextblock m1 :: support m1.
+  support m2 = sup_incr(support m1).
 Proof.
   injection ALLOC; intros. rewrite <- H0; auto.
 Qed.
@@ -1828,7 +1886,7 @@ Theorem valid_block_alloc:
   forall b', valid_block m1 b' -> valid_block m2 b'.
 Proof.
   unfold valid_block; intros. rewrite support_alloc.
-  right; auto.
+  apply mem_incr_2. auto.
 Qed.
 
 Theorem fresh_block_alloc:
@@ -1840,7 +1898,7 @@ Qed.
 Theorem valid_new_block:
   valid_block m2 b.
 Proof.
-  unfold valid_block. rewrite alloc_result. rewrite support_alloc. left. auto.
+  unfold valid_block. rewrite alloc_result. rewrite support_alloc. apply mem_incr_1.
 Qed.
 
 Local Hint Resolve valid_block_alloc fresh_block_alloc valid_new_block: mem.
@@ -1850,7 +1908,7 @@ Theorem valid_block_alloc_inv:
 Proof.
   unfold valid_block; intros.
   rewrite support_alloc in H. rewrite alloc_result.
-  destruct H; auto.
+  apply sup_add_in. auto.
 Qed.
 
 Theorem perm_alloc_1:
@@ -3352,7 +3410,7 @@ Theorem valid_block_inject_1:
   inject f m1 m2 ->
   valid_block m1 b1.
 Proof.
-  intros. inv H. destruct (dec_sup (support m1) b1). auto.
+  intros. inv H. destruct (sup_dec b1 (support m1)). auto.
   assert (f b1 = None). eapply mi_freeblocks; eauto. congruence.
 Qed.
 
@@ -4343,7 +4401,7 @@ Qed.
 (** Injecting a memory into itself. *)
 
 Definition flat_inj (s: sup) : meminj :=
-  fun (b: block) => if dec_sup s b then Some(b, 0) else None.
+  fun (b: block) => if sup_dec b s then Some(b, 0) else None.
 
 Definition inject_neutral (s: sup) (m: mem) :=
   mem_inj (flat_inj s) m m.
@@ -4352,8 +4410,8 @@ Remark flat_inj_no_overlap:
   forall s m, meminj_no_overlap (flat_inj s) m.
 Proof.
   unfold flat_inj; intros; red; intros.
-  destruct (dec_sup s b1); inversion H0; subst.
-  destruct (dec_sup s b2); inversion H1; subst.
+  destruct (sup_dec b1 s); inversion H0; subst.
+  destruct (sup_dec b2 s); inversion H1; subst.
   auto.
 Qed.
 
@@ -4368,15 +4426,15 @@ Proof.
   apply pred_dec_false. auto.
 (* mappedblocks *)
   unfold flat_inj, valid_block; intros.
-  destruct (dec_sup (support m) b); inversion H0; subst. auto.
+  destruct (sup_dec b (support m)); inversion H0; subst. auto.
 (* no overlap *)
   apply flat_inj_no_overlap.
 (* range *)
   unfold flat_inj; intros.
-  destruct (dec_sup (support m) b); inv H0. generalize (Ptrofs.unsigned_range_2 ofs); lia.
+  destruct (sup_dec b (support m)); inv H0. generalize (Ptrofs.unsigned_range_2 ofs); lia.
 (* perm inv *)
   unfold flat_inj; intros.
-  destruct (dec_sup (support m) b1); inv H0.
+  destruct (sup_dec b1 (support m)); inv H0.
   rewrite Z.add_0_r in H1; auto.
 Qed.
 
@@ -4385,10 +4443,10 @@ Theorem empty_inject_neutral:
 Proof.
   intros; red; constructor.
 (* perm *)
-  unfold flat_inj; intros. destruct (dec_sup s b1); inv H.
+  unfold flat_inj; intros. destruct (sup_dec b1 s); inv H.
   replace (ofs + 0) with ofs by lia; auto.
 (* align *)
-  unfold flat_inj; intros. destruct (dec_sup s b1); inv H. apply Z.divide_0_r.
+  unfold flat_inj; intros. destruct (sup_dec b1 s); inv H. apply Z.divide_0_r.
 (* mem_contents *)
   intros; simpl. unfold NMap.get. rewrite ! NMap.gi. rewrite ! ZMap.gi. constructor.
 Qed.
@@ -4397,7 +4455,7 @@ Theorem alloc_inject_neutral:
   forall s m lo hi b m',
   alloc m lo hi = (m', b) ->
   inject_neutral s m ->
-  sup_include (b::(support m)) s ->
+  sup_include (sup_add b (support m)) s ->
   inject_neutral s m'.
 Proof.
   intros; red.
@@ -4408,14 +4466,14 @@ Proof.
   apply perm_implies with Freeable; auto with mem.
   eapply perm_alloc_2; eauto. lia.
   unfold flat_inj. apply pred_dec_true.
-  unfold valid_block_sup. apply H1. left. auto.
+  apply H1. apply sup_add_in1.
 Qed.
 
 Theorem store_inject_neutral:
   forall chunk m b ofs v m' s,
   store chunk m b ofs v = Some m' ->
   inject_neutral s m ->
-  valid_block_sup s b ->
+  sup_In b s->
   Val.inject (flat_inj s) v v ->
   inject_neutral s m'.
 Proof.
@@ -4430,7 +4488,7 @@ Theorem drop_inject_neutral:
   forall m b lo hi p m' s,
   drop_perm m b lo hi p = Some m' ->
   inject_neutral s m ->
-  valid_block_sup s b ->
+  sup_In b s ->
   inject_neutral s m'.
 Proof.
   unfold inject_neutral; intros.
@@ -4598,7 +4656,7 @@ Lemma alloc_unchanged_on:
   unchanged_on m m'.
 Proof.
   intros; constructor; intros.
-- rewrite (support_alloc _ _ _ _ _ H). intro. intro. right. auto.
+- rewrite (support_alloc _ _ _ _ _ H). intro. intro. apply sup_add_in2. auto.
 - split; intros.
   eapply perm_alloc_1; eauto.
   eapply perm_alloc_4; eauto.
@@ -4658,11 +4716,17 @@ Proof.
 Qed.
 
 End Mem.
-
 Notation mem := Mem.mem.
-
+Notation sup := Mem.sup.
+Notation sup_In := Mem.sup_In.
+Notation sup_incr := Mem.sup_incr.
+Notation sup_add := Mem.sup_add.
+Notation sup_empty := Mem.sup_empty.
+Notation fresh_block := Mem.fresh_block.
+Notation freshness := Mem.freshness.
 Global Opaque Mem.alloc Mem.free Mem.store Mem.load Mem.storebytes Mem.loadbytes.
 
+Hint Resolve Mem.sup_add_in1 Mem.sup_add_in2 : core.
 Hint Resolve
   Mem.valid_not_valid_diff
   Mem.perm_implies

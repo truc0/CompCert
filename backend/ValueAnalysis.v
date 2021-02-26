@@ -472,7 +472,7 @@ Theorem allocate_stack:
   /\ genv_match bc' ge
   /\ romatch bc' m' rm
   /\ mmatch bc' m' mfunction_entry
-  /\ (forall b, In b (Mem.support m) -> bc' b = bc b)
+  /\ (forall b, sup_In b (Mem.support m) -> bc' b = bc b)
   /\ (forall v x, vmatch bc v x -> vmatch bc' v (Ifptr Nonstack)).
 Proof.
   intros until am; intros ALLOC GENV RO MM NOSTACK.
@@ -544,11 +544,11 @@ Proof.
     eapply SM; auto. eapply mmatch_top; eauto.
   + (* below *)
     red; simpl; intros. rewrite NB. destruct (eq_block b sp).
-    subst b; rewrite SP. left. auto.
-    exploit mmatch_below; eauto. intro. right. auto.
+    subst b; rewrite SP. apply Mem.mem_incr_1.
+    exploit mmatch_below; eauto. intro. apply Mem.mem_incr_2. auto.
 - (* unchanged *)
   simpl; intros. apply dec_eq_false. intro. subst b.
-  assert (~ In sp (Mem.support m)). rewrite SP. apply freshness. congruence.
+  assert (~ sup_In sp (Mem.support m)). rewrite SP. apply freshness. congruence.
 - (* values *)
   intros. apply vmatch_incr with bc; auto. eapply vmatch_no_stack; eauto.
 Qed.
@@ -731,7 +731,7 @@ Theorem return_from_public_call:
   bc_below caller bound ->
   callee sp = BCother ->
   caller sp = BCstack ->
-  (forall b, In b bound -> b <> sp -> caller b = callee b) ->
+  (forall b, sup_In b bound -> b <> sp -> caller b = callee b) ->
   genv_match caller ge ->
   ematch caller e ae ->
   Mem.sup_include bound (Mem.support m) ->
@@ -747,7 +747,7 @@ Theorem return_from_public_call:
    /\ mmatch bc m mafter_public_call
    /\ genv_match bc ge
    /\ bc sp = BCstack
-   /\ (forall b, In b bound -> bc b = caller b).
+   /\ (forall b, sup_In b bound -> bc b = caller b).
 Proof.
   intros until rm; intros BELOW SP1 SP2 SAME GE1 EM BOUND RESM RM MM GE2 NOSTACK.
 (* Constructing bc *)
@@ -832,7 +832,7 @@ Theorem return_from_private_call:
   bc_below caller bound ->
   callee sp = BCinvalid ->
   caller sp = BCstack ->
-  (forall b, In b bound -> b <> sp -> caller b = callee b) ->
+  (forall b, sup_In b bound -> b <> sp -> caller b = callee b) ->
   genv_match caller ge ->
   ematch caller e ae ->
   bmatch caller m sp am.(am_stack) ->
@@ -849,7 +849,7 @@ Theorem return_from_private_call:
    /\ mmatch bc m (mafter_private_call am)
    /\ genv_match bc ge
    /\ bc sp = BCstack
-   /\ (forall b, In b bound -> bc b = caller b).
+   /\ (forall b, sup_In b bound -> bc b = caller b).
 Proof.
   intros until am; intros BELOW SP1 SP2 SAME GE1 EM CONTENTS BOUND RESM RM MM GE2 NOSTACK.
 (* Constructing bc *)
@@ -946,7 +946,7 @@ Theorem external_call_match:
   bc_nostack bc ->
   exists bc',
      bc_incr bc bc'
-  /\ (forall b, In b (Mem.support m) -> bc' b = bc b)
+  /\ (forall b, sup_In b (Mem.support m) -> bc' b = bc b)
   /\ vmatch bc' vres Vtop
   /\ genv_match bc' ge
   /\ romatch bc' m' rm
@@ -964,7 +964,7 @@ Proof.
   induction vargs0; simpl; intros; constructor.
   eapply vmatch_inj; eauto. auto.
   intros (j' & vres' & m'' & EC' & IRES & IMEM & UNCH1 & UNCH2 & IINCR & ISEP).
-  assert (JBELOW: forall b, In b (Mem.support m) -> j' b = inj_of_bc bc b).
+  assert (JBELOW: forall b, sup_In b (Mem.support m) -> j' b = inj_of_bc bc b).
   {
     intros. destruct (inj_of_bc bc b) as [[b' delta] | ] eqn:EQ.
     eapply IINCR; eauto.
@@ -972,19 +972,19 @@ Proof.
     exploit ISEP; eauto. tauto.
   }
   (* Part 2: constructing bc' from j' *)
-  set (f := fun b => if Mem.dec_sup (Mem.support m) b
+  set (f := fun b => if Mem.sup_dec b (Mem.support m)
                      then bc b
                      else match j' b with None => BCinvalid | Some _ => BCother end).
   assert (F_stack: forall b1 b2, f b1 = BCstack -> f b2 = BCstack -> b1 = b2).
   {
     assert (forall b, f b = BCstack -> bc b = BCstack).
-    { unfold f; intros. destruct (Mem.dec_sup (Mem.support m) b); auto. destruct (j' b); discriminate. }
+    { unfold f; intros. destruct (Mem.sup_dec b (Mem.support m)); auto. destruct (j' b); discriminate. }
     intros. apply (bc_stack bc); auto.
   }
   assert (F_glob: forall b1 b2 id, f b1 = BCglob id -> f b2 = BCglob id -> b1 = b2).
   {
     assert (forall b id, f b = BCglob id -> bc b = BCglob id).
-    { unfold f; intros. destruct (Mem.dec_sup (Mem.support m) b); auto. destruct (j' b); discriminate. }
+    { unfold f; intros. destruct (Mem.sup_dec b (Mem.support m)); auto. destruct (j' b); discriminate. }
     intros. eapply (bc_glob bc); eauto.
   }
   set (bc' := BC f F_stack F_glob). unfold f in bc'.
@@ -994,7 +994,7 @@ Proof.
   }
   assert (BC'INV: forall b, bc' b <> BCinvalid -> exists b' delta, j' b = Some(b', delta)).
   {
-    simpl; intros. destruct (Mem.dec_sup (Mem.support m) b).
+    simpl; intros. destruct (Mem.sup_dec b (Mem.support m)).
     exists b, 0. rewrite JBELOW by auto. apply inj_of_bc_valid; auto.
     destruct (j' b) as [[b' delta] | ].
     exists b', delta; auto.
@@ -1005,7 +1005,7 @@ Proof.
   assert (PMTOP: forall b b' delta ofs, j' b = Some (b', delta) -> pmatch bc' b ofs Ptop).
   {
     intros. constructor. simpl; unfold f.
-    destruct (Mem.dec_sup (Mem.support m) b).
+    destruct (Mem.sup_dec b (Mem.support m)).
     rewrite JBELOW in H by auto. eapply inj_of_bc_inv; eauto.
     rewrite H; congruence.
   }
@@ -1035,10 +1035,10 @@ Proof.
   apply genv_match_exten with bc; auto.
   simpl; intros; split; intros.
   rewrite pred_dec_true by (eapply mmatch_below; eauto with va). auto.
-  destruct (Mem.dec_sup (Mem.support m) b). auto. destruct (j' b); congruence.
+  destruct (Mem.sup_dec b (Mem.support m)). auto. destruct (j' b); congruence.
   simpl; intros. rewrite pred_dec_true by (eapply mmatch_below; eauto with va). auto.
 - (* romatch m' *)
-  red; simpl; intros. destruct (Mem.dec_sup (Mem.support m) b).
+  red; simpl; intros. destruct (Mem.sup_dec b (Mem.support m)).
   exploit RO; eauto. intros (R & P & Q).
   split; auto.
   split. apply bmatch_incr with bc; auto. apply bmatch_ext with m; auto.
@@ -1052,13 +1052,13 @@ Proof.
   + rewrite PTree.gempty in H0; discriminate.
   + apply SMTOP; auto.
   + apply SMTOP; auto.
-  + red; simpl; intros. destruct (Mem.dec_sup (Mem.support m) b).
+  + red; simpl; intros. destruct (Mem.sup_dec b (Mem.support m)).
     eapply external_call_support; eauto.
     destruct (j' b) as [[bx deltax] | ] eqn:J'.
     eapply Mem.valid_block_inject_1; eauto.
     congruence.
 - (* nostack *)
-  red; simpl; intros. destruct (Mem.dec_sup (Mem.support m) b).
+  red; simpl; intros. destruct (Mem.sup_dec b (Mem.support m)).
   apply NOSTACK; auto.
   destruct (j' b); congruence.
 - (* unmapped blocks are invariant *)
@@ -1083,11 +1083,11 @@ Inductive sound_stack: block_classification -> list stackframe -> mem -> sup -> 
         (SPS: sp = fresh_block sps)
         (STK: sound_stack bc' stk m sps)
         (INCR: Mem.sup_include bound' bound)
-        (SINCR: Mem.sup_include (sp::sps) bound')
+        (SINCR: Mem.sup_include (sup_incr sps) bound')
         (BELOW: bc_below bc' bound')
         (SP: bc sp = BCother)
         (SP': bc' sp = BCstack)
-        (SAME: forall b, In b bound' -> b <> sp -> bc b = bc' b)
+        (SAME: forall b, sup_In b bound' -> b <> sp -> bc b = bc' b)
         (GE: genv_match bc' ge)
         (AN: VA.ge (analyze rm f)!!pc (VA.State (AE.set res Vtop ae) mafter_public_call))
         (EM: ematch bc' e ae),
@@ -1096,12 +1096,12 @@ Inductive sound_stack: block_classification -> list stackframe -> mem -> sup -> 
      forall (bc: block_classification) res f sps sp pc e stk m bound bc' bound' ae am
         (SPS: sp = fresh_block sps)
         (STK: sound_stack bc' stk m sps)
-        (SINCR: Mem.sup_include (sp::sps) bound')
+        (SINCR: Mem.sup_include (sup_incr sps) bound')
         (INCR: Mem.sup_include bound' bound)
         (BELOW: bc_below bc' bound')
         (SP: bc sp = BCinvalid)
         (SP': bc' sp = BCstack)
-        (SAME: forall b, In b bound' -> b <> sp -> bc b = bc' b)
+        (SAME: forall b, sup_In b bound' -> b <> sp -> bc b = bc' b)
         (GE: genv_match bc' ge)
         (AN: VA.ge (analyze rm f)!!pc (VA.State (AE.set res (Ifptr Nonstack) ae) (mafter_private_call am)))
         (EM: ematch bc' e ae)
@@ -1112,7 +1112,7 @@ Inductive sound_state_base: state -> Prop :=
   | sound_regular_state:
       forall s f sps sp pc e m ae am bc
         (SPS: sp = fresh_block sps)
-        (SINCR: Mem.sup_include (sp::sps) (Mem.support m))
+        (SINCR: Mem.sup_include (sup_incr sps) (Mem.support m))
         (STK: sound_stack bc s m sps)
         (AN: (analyze rm f)!!pc = VA.State ae am)
         (EM: ematch bc e ae)
@@ -1146,28 +1146,28 @@ Lemma sound_stack_ext:
   forall m' bc stk m bound,
   sound_stack bc stk m bound ->
   (forall b ofs n bytes,
-       In b bound -> bc b = BCinvalid -> n >= 0 ->
+       sup_In b bound -> bc b = BCinvalid -> n >= 0 ->
        Mem.loadbytes m' b ofs n = Some bytes ->
        Mem.loadbytes m b ofs n = Some bytes) ->
   sound_stack bc stk m' bound.
 Proof.
   induction 1; intros INV.
 - constructor.
-- assert (In sp bound') by eauto with va.
+- assert (sup_In sp bound') by eauto with va.
   eapply sound_stack_public_call; eauto. apply IHsound_stack; intros.
   apply INV.
-  eapply Mem.sup_include_trans. eauto. auto. rewrite SPS. right. auto.
+  eapply Mem.sup_include_trans. eauto. auto. apply Mem.sup_add_in2. auto.
   rewrite SAME; auto with ordered_type.
-  apply SINCR. rewrite SPS. right. auto.
-  intro. subst b. assert(~ In (fresh_block sps) sps) by apply freshness.
+  apply SINCR. apply Mem.sup_add_in2.  auto.
+  intro. subst b. assert(~ sup_In (fresh_block sps) sps) by apply freshness.
   congruence.
   auto. auto.
-- assert (In sp bound') by eauto with va.
+- assert (sup_In sp bound') by eauto with va.
   eapply sound_stack_private_call; eauto. apply IHsound_stack; intros.
   apply INV.
-  eapply Mem.sup_include_trans. apply SINCR. auto. rewrite SPS. right. auto.
-  rewrite SAME; auto with ordered_type. apply SINCR. rewrite SPS. right. auto.
-  intro. subst b. assert(~ In (fresh_block sps) sps) by apply freshness. congruence.
+  eapply Mem.sup_include_trans. apply SINCR. auto. apply Mem.sup_add_in2. auto.
+  rewrite SAME; auto with ordered_type. apply SINCR. apply Mem.sup_add_in2. auto.
+  intro. subst b. assert(~ sup_In (fresh_block sps) sps) by apply freshness. congruence.
   auto. auto.
   apply bmatch_ext with m; auto.
 Qed.
@@ -1175,7 +1175,7 @@ Qed.
 Lemma sound_stack_inv:
   forall m' bc stk m bound,
   sound_stack bc stk m bound ->
-  (forall b ofs n, In b bound -> bc b = BCinvalid -> n >= 0 -> Mem.loadbytes m' b ofs n = Mem.loadbytes m b ofs n) ->
+  (forall b ofs n, sup_In b bound -> bc b = BCinvalid -> n >= 0 -> Mem.loadbytes m' b ofs n = Mem.loadbytes m b ofs n) ->
   sound_stack bc stk m' bound.
 Proof.
   intros. eapply sound_stack_ext; eauto. intros. rewrite <- H0; auto.
@@ -1237,16 +1237,16 @@ Qed.
 Lemma sound_stack_exten:
   forall bc stk m bound (bc1: block_classification),
   sound_stack bc stk m bound ->
-  (forall b, In b bound -> bc1 b = bc b) ->
+  (forall b, sup_In b bound -> bc1 b = bc b) ->
   sound_stack bc1 stk m bound.
 Proof.
   intros. inv H.
 - constructor.
-- assert (In (fresh_block sps) bound') by eauto with va.
+- assert (sup_In (fresh_block sps) bound') by eauto with va.
   eapply sound_stack_public_call; eauto.
   rewrite H0; auto.
   intros. rewrite H0; auto.
-- assert (In (fresh_block sps) bound') by eauto with va.
+- assert (sup_In (fresh_block sps) bound') by eauto with va.
   eapply sound_stack_private_call; eauto.
   rewrite H0; auto.
   intros. rewrite H0; auto.
@@ -1261,7 +1261,7 @@ Lemma sound_succ_state:
   In pc' (successors_instr instr) ->
   transfer f rm pc ae am = VA.State ae' am' ->
   sp = fresh_block sps ->
-  Mem.sup_include (sp::sps) (Mem.support m') ->
+  Mem.sup_include (sup_incr sps) (Mem.support m') ->
   ematch bc e' ae' ->
   mmatch bc m' am' ->
   romatch bc m' rm ->
@@ -1342,7 +1342,7 @@ Proof.
   apply sound_stack_exten with bc.
   eapply sound_stack_free; eauto.
   intros. apply C. intro. eapply freshness. rewrite H3 in H1. eauto.
-  eapply Mem.sup_include_trans; eauto. apply Mem.sup_include_incr.
+  eapply Mem.sup_include_trans; eauto.
 (*  eapply mmatch_below; eauto. congruence. *)
   intros. exploit list_in_map_inv; eauto. intros (r & P & Q). subst v.
   apply D with (areg ae r). auto with va.
@@ -1350,7 +1350,7 @@ Proof.
   eapply mmatch_free; eauto.
 
 - (* builtin *)
-  assert (SPVALID: In (fresh_block sps) (Mem.support m)) by (eapply mmatch_below; eauto with va).
+  assert (SPVALID: sup_In (fresh_block sps) (Mem.support m)) by (eapply mmatch_below; eauto with va).
   assert (TR: transfer f rm pc ae am = transfer_builtin ae am rm ef args res).
   { unfold transfer; rewrite H; auto. }
   (* The default case *)
@@ -1387,10 +1387,10 @@ Proof.
   apply set_builtin_res_sound; auto.
   apply sound_stack_exten with bc.
   apply sound_stack_inv with m. auto.
-  intros. apply Q. red. apply SINCR. right. auto.
+  intros. apply Q. red. apply SINCR. apply Mem.sup_add_in2. auto.
   rewrite C; auto with ordered_type. intro. rewrite H7 in H4.
   eapply freshness. eauto.
-  intros. apply AA. apply SINCR. right. auto.
+  intros. apply AA. apply SINCR. apply Mem.sup_add_in2. auto.
 * (* public builtin call *)
   exploit anonymize_stack; eauto.
   intros (bc1 & A & B & C & D & E & F & G).
@@ -1410,10 +1410,10 @@ Proof.
   apply set_builtin_res_sound; auto.
   apply sound_stack_exten with bc.
   apply sound_stack_inv with m. auto.
-  intros. apply Q. red. apply SINCR. right. auto.
+  intros. apply Q. red. apply SINCR. apply Mem.sup_add_in2. auto.
   rewrite C; auto with ordered_type. intro. rewrite H5 in H2.
   eapply freshness; eauto.
-  intros. apply AA. apply SINCR. right. auto.
+  intros. apply AA. apply SINCR. apply Mem.sup_add_in2. auto.
   }
   unfold transfer_builtin in TR.
   destruct ef; auto.
@@ -1496,7 +1496,7 @@ Proof.
   apply sound_stack_exten with bc.
   eapply sound_stack_free; eauto.
   intros. apply C. intro. rewrite H2 in H1. eapply freshness. eauto.
-  intro. intro. apply SINCR. right. auto.
+  intro. intro. apply SINCR. apply Mem.sup_add_in2. auto.
 (*  eapply mmatch_below; eauto with va. *)
   destruct or; simpl. eapply D; eauto. constructor.
   eapply romatch_free; eauto.
@@ -1510,7 +1510,7 @@ Proof.
   econstructor; eauto.
   eapply Mem.alloc_result. eauto.
   rewrite Mem.support_alloc with m 0 (fn_stacksize f) m' stk.
-  erewrite <- Mem.alloc_result. eapply Mem.sup_include_refl.
+  eapply Mem.sup_include_refl.
   eauto. auto.
   (* erewrite Mem.alloc_result by eauto. *)
   apply sound_stack_exten with bc; auto.
@@ -1537,7 +1537,7 @@ Proof.
    eapply sound_regular_state with (bc := bc1); eauto.
    eapply Mem.sup_include_trans; eauto.
    apply sound_stack_exten with bc'; auto.
-   intros. apply G. apply SINCR. right. auto.
+   intros. apply G. apply SINCR. apply Mem.sup_add_in2. auto.
    eapply ematch_ge; eauto. apply ematch_update. auto. auto.
   + (* from private call *)
    exploit return_from_private_call; eauto.
@@ -1547,7 +1547,7 @@ Proof.
    eapply sound_regular_state with (bc := bc1); eauto.
    eapply Mem.sup_include_trans; eauto.
    apply sound_stack_exten with bc'; auto.
-   intros. apply G. apply SINCR. right. auto.
+   intros. apply G. apply SINCR. apply Mem.sup_add_in2. auto.
    eapply ematch_ge; eauto. apply ematch_update. auto. auto.
 Qed.
 
@@ -1604,16 +1604,16 @@ Lemma initial_block_classification:
 Proof.
   intros.
   set (f := fun b =>
-              if Mem.dec_sup (Genv.genv_sup ge) b then
+              if Mem.sup_dec b (Genv.genv_sup ge) then
                 match Genv.invert_symbol ge b with None => BCother | Some id => BCglob id end
               else
                 BCinvalid).
   assert (F_glob: forall b1 b2 id, f b1 = BCglob id -> f b2 = BCglob id -> b1 = b2).
   {
     unfold f; intros.
-    destruct (Mem.dec_sup (Genv.genv_sup ge) b1); try discriminate.
+    destruct (Mem.sup_dec b1 (Genv.genv_sup ge)); try discriminate.
     destruct (Genv.invert_symbol ge b1) as [id1|] eqn:I1; inv H0.
-    destruct (Mem.dec_sup (Genv.genv_sup ge) b2); try discriminate.
+    destruct (Mem.sup_dec b2 (Genv.genv_sup ge)); try discriminate.
     destruct (Genv.invert_symbol ge b2) as [id2|] eqn:I2; inv H1.
     exploit Genv.invert_find_symbol. eexact I1.
     exploit Genv.invert_find_symbol. eexact I2.
@@ -1622,7 +1622,7 @@ Proof.
   assert (F_stack: forall b1 b2, f b1 = BCstack -> f b2 = BCstack -> b1 = b2).
   {
     unfold f; intros.
-    destruct (Mem.dec_sup (Genv.genv_sup ge) b1); try discriminate.
+    destruct (Mem.sup_dec b1 (Genv.genv_sup ge)); try discriminate.
     destruct (Genv.invert_symbol ge b1); discriminate.
   }
   set (bc := BC f F_stack F_glob). unfold f in bc.
@@ -1632,17 +1632,17 @@ Proof.
     * rewrite pred_dec_true by (eapply Genv.genv_symb_range; eauto).
       erewrite Genv.find_invert_symbol; eauto.
     * apply Genv.invert_find_symbol.
-      destruct (Mem.dec_sup (Genv.genv_sup ge) b); try discriminate.
+      destruct (Mem.sup_dec b (Genv.genv_sup ge)); try discriminate.
       destruct (Genv.invert_symbol ge b); congruence.
   + rewrite ! pred_dec_true by assumption.
     destruct (Genv.invert_symbol); split; congruence.
-- red; simpl; intros. destruct (Mem.dec_sup (Genv.genv_sup ge) b); try congruence.
+- red; simpl; intros. destruct (Mem.sup_dec b (Genv.genv_sup ge)); try congruence.
   erewrite <- Genv.init_mem_genv_sup by eauto. auto.
 - red; simpl; intros.
-  destruct (Mem.dec_sup (Genv.genv_sup ge) b).
+  destruct (Mem.sup_dec b (Genv.genv_sup ge)).
   destruct (Genv.invert_symbol ge b); congruence.
   congruence.
-- simpl; intros. destruct (Mem.dec_sup (Genv.genv_sup ge) b); try discriminate.
+- simpl; intros. destruct (Mem.sup_dec b (Genv.genv_sup ge)); try discriminate.
   destruct (Genv.invert_symbol ge b) as [id' | ] eqn:IS; inv H0.
   apply Genv.invert_find_symbol; auto.
 - intros; simpl. unfold ge; erewrite Genv.init_mem_genv_sup by eauto.
@@ -1786,7 +1786,7 @@ Proof.
   unfold Genv.find_var_info, Genv.find_def in H3; simpl in H3.
   rewrite PTree.gsspec in H2. destruct (peq id id1).
   inv H2. setoid_rewrite NMap.gss in H3. discriminate.
-  assert (In b (Genv.genv_sup g)) by (eapply Genv.genv_symb_range; eauto).
+  assert (sup_In b (Genv.genv_sup g)) by (eapply Genv.genv_symb_range; eauto).
   setoid_rewrite NMap.gso in H3.
   assert (Mem.valid_block m b) by (red; rewrite <- H; auto).
   assert (b <> b1) by (apply Mem.valid_not_valid_diff with m; eauto with mem).
@@ -1818,7 +1818,7 @@ Proof.
   exploit Mem.loadbytes_alloc_same; eauto with coqlib. congruence.
   intros. eapply Mem.loadbytes_drop; eauto.
   right; right; right. unfold Genv.perm_globvar. rewrite H4, H5. constructor.
-+ assert (In b (Genv.genv_sup g)) by (eapply Genv.genv_symb_range; eauto).
++ assert (sup_In b (Genv.genv_sup g)) by (eapply Genv.genv_symb_range; eauto).
   setoid_rewrite NMap.gso in H3.
   assert (Mem.valid_block m b) by (red; rewrite <- H; auto).
   assert (b <> b1) by (apply Mem.valid_not_valid_diff with m; eauto with mem).
@@ -1952,7 +1952,7 @@ Proof.
   replace (inj_of_bc bc) with (Mem.flat_inj (Mem.support m0)).
   eapply Genv.initmem_inject; eauto.
   symmetry; apply extensionality; unfold Mem.flat_inj; intros x.
-  destruct (Mem.dec_sup (Mem.support m0) x).
+  destruct (Mem.sup_dec x (Mem.support m0)).
   apply inj_of_bc_valid; auto.
   unfold inj_of_bc. erewrite bc_below_invalid; eauto.
 - exact GE.

@@ -798,11 +798,11 @@ Qed.
 
 Inductive globalenv_preserved {F V: Type} (ge: Genv.t F V) (j: meminj) (support: sup) : Prop :=
   | globalenv_preserved_intro
-      (DOMAIN: forall b, In b support -> j b = Some(b, 0))
-      (IMAGE: forall b1 b2 delta, j b1 = Some(b2, delta) -> In b2 support -> b1 = b2)
-      (SYMBOLS: forall id b, Genv.find_symbol ge id = Some b -> In b support)
-      (FUNCTIONS: forall b fd, Genv.find_funct_ptr ge b = Some fd -> In b support)
-      (VARINFOS: forall b gv, Genv.find_var_info ge b = Some gv -> In b support).
+      (DOMAIN: forall b, sup_In b support -> j b = Some(b, 0))
+      (IMAGE: forall b1 b2 delta, j b1 = Some(b2, delta) -> sup_In b2 support -> b1 = b2)
+      (SYMBOLS: forall id b, Genv.find_symbol ge id = Some b -> sup_In b support)
+      (FUNCTIONS: forall b fd, Genv.find_funct_ptr ge b = Some fd -> sup_In b support)
+      (VARINFOS: forall b gv, Genv.find_var_info ge b = Some gv -> sup_In b support).
 
 Program Definition globalenv_inject {F V: Type} (ge: Genv.t F V) (j: meminj) : massert := {|
   m_pred := fun m => exists support, Mem.sup_include support (Mem.support m) /\ globalenv_preserved ge j support;

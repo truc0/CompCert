@@ -89,9 +89,9 @@ Record t: Type := mksenv {
   public_symbol_exists:
     forall id, public_symbol id = true -> exists b, find_symbol id = Some b;
   find_symbol_below:
-    forall id b, find_symbol id = Some b -> In b support;
+    forall id b, find_symbol id = Some b -> sup_In b support;
   block_is_volatile_below:
-    forall b, block_is_volatile b = true -> In b support
+    forall b, block_is_volatile b = true -> sup_In b support
 }.
 
 Definition symbol_address (ge: t) (id: ident) (ofs: ptrofs) : val :=
@@ -150,8 +150,8 @@ Record t: Type := mkgenv {
   genv_symb: PTree.t block;             (**r mapping symbol -> block *)
   genv_defs: NMap.t (option (globdef F V));     (**r mapping block -> definition *)
   genv_sup: sup;                     (**r symbol support *)
-  genv_symb_range: forall id b,PTree.get id genv_symb = Some b -> In b genv_sup;
-  genv_defs_range: forall b g, NMap.get _ b genv_defs = Some g -> In b genv_sup;
+  genv_symb_range: forall id b,PTree.get id genv_symb = Some b -> sup_In b genv_sup;
+  genv_defs_range: forall b g, NMap.get _ b genv_defs = Some g -> sup_In b genv_sup;
   genv_vars_inj: forall id1 id2 b,
     PTree.get id1 genv_symb = Some b -> PTree.get id2 genv_symb = Some b -> id1 = id2
 }.
@@ -230,17 +230,17 @@ Program Definition add_global (ge: t) (idg: ident * globdef F V) : t :=
     ge.(genv_public)
     (PTree.set idg#1 (fresh_block ge.(genv_sup)) ge.(genv_symb))
     (NMap.set _ (fresh_block ge.(genv_sup)) (Some (idg#2)) ge.(genv_defs))
-    ((fresh_block ge.(genv_sup))::ge.(genv_sup))
+    (sup_incr (ge.(genv_sup)))
     _ _ _.
 Next Obligation.
   destruct ge; simpl in *.
-  rewrite PTree.gsspec in H. destruct (peq id i). inv H. left. auto.
-  right. eauto.
+  rewrite PTree.gsspec in H. destruct (peq id i). inv H. apply Mem.sup_add_in1.
+  apply Mem.sup_add_in2. eauto.
 Qed.
 Next Obligation.
   destruct ge; simpl in *.
   rewrite NMap.gsspec in H. destruct (NMap.elt_eq b (fresh_block genv_sup0)).
-  inv H. eauto. eauto.
+  inv H. apply Mem.sup_add_in1. apply Mem.sup_add_in2. eauto.
 Qed.
 Next Obligation.
   destruct ge; simpl in *.
@@ -263,7 +263,7 @@ Proof.
 Qed.
 
 Program Definition empty_genv (pub: list ident): t :=
-  @mkgenv pub (PTree.empty _) (NMap.init _ None) nil _ _ _.
+  @mkgenv pub (PTree.empty _) (NMap.init _ None) sup_empty _ _ _.
 Next Obligation.
   rewrite PTree.gempty in H. discriminate.
 Qed.
@@ -412,7 +412,7 @@ Theorem find_var_info_iff:
 Proof.
   intros. unfold find_var_info. destruct (find_def ge b) as [[f1|v1]|]; intuition congruence.
 Qed.
-Lemma fresh_ne : forall (b:block)(s:sup), In b s -> b <> fresh_block s.
+Lemma fresh_ne : forall (b:block)(s:sup), sup_In b s -> b <> fresh_block s.
 Proof.
   intros. destruct (eq_block b (fresh_block s)).
   - rewrite e in H. apply freshness in H. destruct H.
@@ -571,7 +571,7 @@ Qed.
 
 (*big change here*)
 Definition advance_next (gl: list (ident * globdef F V)) (s: sup) :=
-  List.fold_left (fun s g => fresh_block s::s) gl s.
+  List.fold_left (fun s g => sup_incr s) gl s.
 
 Remark genv_next_add_globals:
   forall gl ge,
@@ -598,7 +598,7 @@ Proof.
 Qed.
 
 Theorem block_is_volatile_below:
-  forall ge b, block_is_volatile ge b = true ->  In b ge.(genv_sup).
+  forall ge b, block_is_volatile ge b = true ->  sup_In b ge.(genv_sup).
 Proof.
   unfold block_is_volatile; intros. destruct (find_var_info ge b) as [gv|] eqn:FV.
   rewrite find_var_info_iff in FV. eapply genv_defs_range; eauto.
@@ -750,7 +750,7 @@ Qed.
 Remark alloc_global_support:
   forall g m m',
     alloc_global m g = Some m' ->
-    Mem.support m' = Mem.nextblock m :: Mem.support m.
+    Mem.support m' = sup_incr (Mem.support m).
 Proof.
   unfold alloc_global. intros.
   destruct g as [id [f|v]].
@@ -776,7 +776,6 @@ Proof.
   congruence.
   destruct (alloc_global m a) as [m1|] eqn:?; try discriminate.
   erewrite IHgl; eauto. erewrite alloc_global_support;eauto.
-  unfold Mem.nextblock. auto.
 Qed.
 
 (** Permissions *)
@@ -862,7 +861,7 @@ Proof.
   simpl; intros. destruct (alloc_global m a) as [m1|] eqn:?; try discriminate.
   erewrite alloc_global_perm; eauto. eapply IHgl; eauto.
   unfold Mem.valid_block in *. erewrite alloc_global_support; eauto.
-  right. auto.
+  apply Mem.sup_add_in2. auto.
 Qed.
 
 (** Data preservation properties *)
@@ -1378,12 +1377,12 @@ Section INITMEM_INJ.
 
 Variable ge: t.
 Variable s: sup.
-Hypothesis symb_inject: forall id b, find_symbol ge id = Some b -> In b s.
+Hypothesis symb_inject: forall id b, find_symbol ge id = Some b -> sup_In b s.
 
 Lemma store_zeros_neutral:
   forall m b p n m',
   Mem.inject_neutral s m ->
-  In b s ->
+  sup_In b s ->
   store_zeros m b p n = Some m' ->
   Mem.inject_neutral s m'.
 Proof.
@@ -1396,7 +1395,7 @@ Qed.
 Lemma store_init_data_neutral:
   forall m b p id m',
   Mem.inject_neutral s m ->
-  In b s ->
+  sup_In b s ->
   store_init_data ge m b p id = Some m' ->
   Mem.inject_neutral s m'.
 Proof.
@@ -1405,14 +1404,14 @@ Proof.
   congruence.
   destruct (find_symbol ge i) as [b'|] eqn:E; try discriminate.
   eapply Mem.store_inject_neutral; eauto.
-  econstructor. unfold Mem.flat_inj. apply pred_dec_true; auto. unfold Mem.valid_block_sup. eauto.
+  econstructor. unfold Mem.flat_inj. apply pred_dec_true; auto.  eauto.
   rewrite Ptrofs.add_zero. auto.
 Qed.
 
 Lemma store_init_data_list_neutral:
   forall b idl m p m',
   Mem.inject_neutral s m ->
-  In b s ->
+  sup_In b s ->
   store_init_data_list ge m b p idl = Some m' ->
   Mem.inject_neutral s m'.
 Proof.
@@ -1426,14 +1425,14 @@ Lemma alloc_global_neutral:
   forall idg m m',
   alloc_global ge m idg = Some m' ->
   Mem.inject_neutral s m ->
-  Mem.sup_include (Mem.nextblock m::Mem.support m) s ->
+  Mem.sup_include (sup_incr (Mem.support m)) s ->
   Mem.inject_neutral s m'.
 Proof.
   intros. destruct idg as [id [f|v]]; simpl in H.
   (* function *)
   destruct (Mem.alloc m 0 1) as [m1 b] eqn:?.
   assert (b = Mem.nextblock m). rewrite (Mem.alloc_result _ _ _ _ _ Heqp). reflexivity.
-  assert (In b s). apply H1. left. auto. subst b.
+  assert (sup_In b s). apply H1. subst b. apply Mem.sup_add_in1.  auto. subst b.
   eapply Mem.drop_inject_neutral; eauto.
   eapply Mem.alloc_inject_neutral; eauto.
   (* variable *)
@@ -1443,7 +1442,7 @@ Proof.
   destruct (store_zeros m1 b 0 sz) as [m2|] eqn:?; try discriminate.
   destruct (store_init_data_list ge m2 b 0 init) as [m3|] eqn:?; try discriminate.
   assert (b = Mem.nextblock m). rewrite (Mem.alloc_result _ _ _ _ _ Heqp). reflexivity.
-  assert (In b s). apply H1. left. auto. subst b.
+  assert (sup_In b s). apply H1. subst b. apply Mem.sup_add_in1. auto. subst b.
 
   eapply Mem.drop_inject_neutral; eauto.
   eapply store_init_data_list_neutral with (m := m2) (b := Mem.nextblock m); eauto.
@@ -1455,7 +1454,7 @@ Remark advance_next_le: forall gl s, Mem.sup_include s (advance_next gl s).
 Proof.
   induction gl; simpl; intros.
   apply Mem.sup_include_refl.
-  apply Mem.sup_include_trans with (fresh_block s0:: s0). intro. intro.  right. auto.  eauto.
+  apply Mem.sup_include_trans with (sup_incr s0). intro. intro.  apply Mem.sup_add_in2. auto.  eauto.
 Qed.
 
 Lemma alloc_globals_neutral:

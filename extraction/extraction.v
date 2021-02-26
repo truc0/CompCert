@@ -55,35 +55,6 @@ Extraction Inline DecidableClass.Decidable_witness DecidableClass.decide
 (* Wfsimpl *)
 Extraction Inline Wfsimpl.Fix Wfsimpl.Fixm.
 
-(* Values - realization of block and sup*)
-Extract Constant Values.block => "positive".
-
-Extract Constant Values.eq_block => "Coqlib.peq".
-
-
-
-(*
-Extract Constant Values.fresh_block => "( let open BinPos in
-                                           fun s -> match s with
-                                           |[] -> Coq_xH
-                                           |h::t -> Pos.succ h)".
-*)
-
-(* Realization of fresh_block which satisfies the Axiom "freshness".
-   I think the computaion performed here is the same as the above one.*)
-
-Extract Constant Values.fresh_block =>"(let open BinPos in
-                                        fun s ->
-                                        let com_p =
-                                            (fun p1 p2 -> match Pos.compare p1 p2 with
-                                            |Gt -> -1
-                                            |_ -> 1) in
-                                        let ss = List.sort com_p s in
-                                        match ss with
-                                        | [] -> Coq_xH
-                                        | h::t -> Pos.succ h
-                                        )".
-
 
 (* Memory - work around an extraction bug. *)
 Extraction NoInline Memory.Mem.valid_pointer.

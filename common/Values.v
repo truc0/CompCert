@@ -21,13 +21,22 @@ Require Import AST.
 Require Import Integers.
 Require Import Floats.
 
+Module Type BLOCK.
+
 Parameter block : Type.
 Parameter eq_block : forall (x y:block),{x=y}+{x<>y}.
 
-Definition sup : Type := list block.
+End BLOCK.
 
-Parameter fresh_block : sup -> block.
-Parameter freshness : forall (A:sup), ~In (fresh_block A) A.
+(* Declare Module Block : BLOCK. *)
+
+Module Block <: BLOCK.
+Definition block := positive.
+Definition eq_block := peq.
+End Block.
+
+Definition block := Block.block.
+Definition eq_block := Block.eq_block.
 
 
 (** A value is either:

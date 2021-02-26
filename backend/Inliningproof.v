@@ -349,7 +349,7 @@ Proof.
   intros. red in SEP. destruct (F b) as [[sp1 delta1] |] eqn:?.
   exploit INCR; eauto. intros EQ; rewrite H0 in EQ; inv EQ.
   red; intros; eelim B; eauto. eapply PERM; eauto.
-  red. destruct (Mem.dec_sup (Mem.support m1) b); auto.
+  red. destruct (Mem.sup_dec b (Mem.support m1)); auto.
   exploit Mem.mi_freeblocks; eauto. congruence.
   exploit SEP; eauto. tauto.
 Qed.
@@ -358,11 +358,11 @@ Qed.
 
 Inductive match_globalenvs (F: meminj) (support: sup): Prop :=
   | mk_match_globalenvs
-      (DOMAIN: forall b, In b support-> F b = Some(b, 0))
-      (IMAGE: forall b1 b2 delta, F b1 = Some(b2, delta) -> In b2 support -> b1 = b2)
-      (SYMBOLS: forall id b, Genv.find_symbol ge id = Some b -> In b support)
-      (FUNCTIONS: forall b fd, Genv.find_funct_ptr ge b = Some fd -> In b support)
-      (VARINFOS: forall b gv, Genv.find_var_info ge b = Some gv -> In b support).
+      (DOMAIN: forall b, sup_In b support-> F b = Some(b, 0))
+      (IMAGE: forall b1 b2 delta, F b1 = Some(b2, delta) -> sup_In b2 support -> b1 = b2)
+      (SYMBOLS: forall id b, Genv.find_symbol ge id = Some b -> sup_In b support)
+      (FUNCTIONS: forall b fd, Genv.find_funct_ptr ge b = Some fd -> sup_In b support)
+      (VARINFOS: forall b gv, Genv.find_var_info ge b = Some gv -> sup_In b support).
 
 Lemma find_function_agree:
   forall ros rs fd F ctx rs' support,
@@ -482,7 +482,7 @@ Inductive match_stacks (F: meminj) (m m': mem):
         (SSZ1: 0 <= f'.(fn_stacksize) < Ptrofs.max_unsigned)
         (SSZ2: forall ofs, Mem.perm m' sp' ofs Max Nonempty -> 0 <= ofs <= f'.(fn_stacksize))
         (RES: Ple res ctx.(mreg))
-        (BELOW: Mem.sup_include (sp'::sps') support),
+        (BELOW: Mem.sup_include (sup_add sp' sps') support),
       match_stacks F m m'
                    (Stackframe res f (Vptr sp Ptrofs.zero) pc rs :: stk)
                    (Stackframe (sreg ctx res) f' (Vptr sp' Ptrofs.zero) (spc ctx pc) rs' :: stk')
@@ -494,7 +494,7 @@ Inductive match_stacks (F: meminj) (m m': mem):
         (SSZ1: 0 <= f'.(fn_stacksize) < Ptrofs.max_unsigned)
         (SSZ2: forall ofs, Mem.perm m' sp' ofs Max Nonempty -> 0 <= ofs <= f'.(fn_stacksize))
         (RET: ctx.(retinfo) = Some (rpc, res))
-        (BELOW: Mem.sup_include (sp'::sps') support),
+        (BELOW: Mem.sup_include (sup_add sp' sps') support),
       match_stacks F m m'
                    stk
                    (Stackframe res f' (Vptr sp' Ptrofs.zero) rpc rs' :: stk')
@@ -574,13 +574,13 @@ Hypothesis INCR: inject_incr F F1.
 Lemma match_stacks_invariant:
   forall stk stk' support, match_stacks F m m' stk stk' support ->
   forall (INJ: forall b1 b2 delta,
-               F1 b1 = Some(b2, delta) -> In b2 support -> F b1 = Some(b2, delta))
+               F1 b1 = Some(b2, delta) -> sup_In b2 support -> F b1 = Some(b2, delta))
          (PERM1: forall b1 b2 delta ofs,
-               F1 b1 = Some(b2, delta) -> In b2 support ->
+               F1 b1 = Some(b2, delta) -> sup_In b2 support ->
                Mem.perm m1 b1 ofs Max Nonempty -> Mem.perm m b1 ofs Max Nonempty)
-         (PERM2: forall b ofs, In b support->
+         (PERM2: forall b ofs, sup_In b support->
                Mem.perm m' b ofs Cur Freeable -> Mem.perm m1' b ofs Cur Freeable)
-         (PERM3: forall b ofs k p, In b support->
+         (PERM3: forall b ofs k p, sup_In b support->
                Mem.perm m1' b ofs k p -> Mem.perm m' b ofs k p),
   match_stacks F1 m1 m1' stk stk' support
 
@@ -591,13 +591,13 @@ with match_stacks_inside_invariant:
          (SPS: sp' = fresh_block sps')
          (RS: forall r, Plt r ctx.(dreg) -> rs2#r = rs1#r)
          (INJ: forall b1 b2 delta,
-               F1 b1 = Some(b2, delta) -> In b2 (sp'::sps') -> F b1 = Some(b2, delta))
+               F1 b1 = Some(b2, delta) -> sup_In b2 (sup_add sp' sps') -> F b1 = Some(b2, delta))
          (PERM1: forall b1 b2 delta ofs,
-               F1 b1 = Some(b2, delta) -> In b2 (sp'::sps') ->
+               F1 b1 = Some(b2, delta) -> sup_In b2 (sup_add sp' sps') ->
                Mem.perm m1 b1 ofs Max Nonempty -> Mem.perm m b1 ofs Max Nonempty)
-         (PERM2: forall b ofs, In b (sp'::sps') ->
+         (PERM2: forall b ofs, sup_In b (sup_add sp' sps') ->
                Mem.perm m' b ofs Cur Freeable -> Mem.perm m1' b ofs Cur Freeable)
-         (PERM3: forall b ofs k p, In b (sp'::sps') ->
+         (PERM3: forall b ofs k p, sup_In b (sup_add sp' sps') ->
                Mem.perm m1' b ofs k p -> Mem.perm m' b ofs k p),
   match_stacks_inside F1 m1 m1' stk stk' f' ctx sps' rs2.
 
@@ -616,10 +616,8 @@ Proof.
   intros; eapply PERM3; eauto. apply BELOW. right. auto. *)
   eapply agree_regs_incr; eauto.
   eapply range_private_invariant; eauto.
-  intros. split. eapply INJ; eauto. apply BELOW. left. auto.
-  eapply PERM1; eauto. apply BELOW. left. auto.
-  intros. eapply PERM2. apply BELOW. left. auto. auto.
-  intros. apply SSZ2. apply PERM3. apply BELOW. left. auto. auto.
+  intros. split. eapply INJ; eauto.
+  eapply PERM1; eauto.
   (* untailcall *)
   apply match_stacks_untailcall with (ctx := ctx) (sps' := sps'); auto.
   eapply match_stacks_inside_invariant; eauto.
@@ -628,18 +626,16 @@ Proof.
   intros; eapply PERM2; eauto. apply BELOW. right. auto.
   intros; eapply PERM3; eauto. apply BELOW. right. auto. *)
   eapply range_private_invariant; eauto.
-  intros. split. eapply INJ; eauto. apply BELOW. left. auto.
-  eapply PERM1; eauto. apply BELOW. left. auto.
-  intros. eapply PERM2. apply BELOW. left. auto. auto.
-  intros. apply SSZ2. apply PERM3. apply BELOW. left. auto. auto.
+  intros. split. eapply INJ; eauto.
+  eapply PERM1; eauto.
   induction 1; intros.
   (* base *)
   eapply match_stacks_inside_base; eauto.
   eapply match_stacks_invariant; eauto.
-  intros; eapply INJ; eauto. right. auto.
-  intros; eapply PERM1; eauto. right. auto.
-  intros; eapply PERM2; eauto. right. auto.
-  intros; eapply PERM3; eauto. right. auto.
+  intros; eapply INJ; eauto. apply Mem.sup_add_in2. auto.
+  intros; eapply PERM1; eauto. apply Mem.sup_add_in2. auto.
+  intros; eapply PERM2; eauto. apply Mem.sup_add_in2. auto.
+  intros; eapply PERM3; eauto. apply Mem.sup_add_in2. auto.
   (* inlined *)
   subst sp'0.
   apply match_stacks_inside_inlined with (fenv := fenv) (ctx' := ctx') (sp' := sp'); auto.
@@ -649,8 +645,8 @@ Proof.
   apply agree_regs_invariant with rs'; auto.
   intros. apply RS. red in BELOW. extlia.
   eapply range_private_invariant; eauto.
-    intros. split. eapply INJ; eauto. left. auto. eapply PERM1; eauto. left. auto.
-    intros. eapply PERM2; eauto. left. auto.
+    intros. split. eapply INJ; eauto. subst sp'. auto. eapply PERM1; eauto. subst sp'. auto.
+    intros. eapply PERM2; eauto. subst sp'. auto.
 Qed.
 
 Lemma match_stacks_empty:
@@ -811,7 +807,7 @@ with match_stacks_inside_extcall:
   forall stk stk' f' ctx sp' sps' rs',
   match_stacks_inside F1 m1 m1' stk stk' f' ctx sps' rs' ->
   sp' = fresh_block sps' ->
-  Mem.sup_include (sp'::sps') (Mem.support m1') ->
+  Mem.sup_include (sup_add sp' sps') (Mem.support m1') ->
   match_stacks_inside F2 m2 m2' stk stk' f' ctx sps' rs'.
 Proof.
   induction 1; intros.
@@ -823,20 +819,20 @@ Proof.
   eapply match_stacks_cons; eauto.
     eapply match_stacks_inside_extcall; eauto. eapply Mem.sup_include_trans; eauto.
     eapply agree_regs_incr; eauto.
-    eapply range_private_extcall; eauto. red. apply H. apply BELOW. left. auto.
-    intros. apply SSZ2; auto. apply MAXPERM'; auto. red. apply H. apply BELOW. left. auto.
+    eapply range_private_extcall; eauto. red. apply H. apply BELOW. auto.
+    intros. apply SSZ2; auto. apply MAXPERM'; auto. red. apply H. apply BELOW. auto.
   eapply match_stacks_untailcall; eauto.
     eapply match_stacks_inside_extcall; eauto. eapply Mem.sup_include_trans; eauto.
-    eapply range_private_extcall; eauto. red. apply H. apply BELOW. left. auto.
-    intros. apply SSZ2; auto. apply MAXPERM'; auto. red. apply H. apply BELOW. left. auto.
+    eapply range_private_extcall; eauto. red. apply H. apply BELOW. auto.
+    intros. apply SSZ2; auto. apply MAXPERM'; auto. red. apply H. apply BELOW. auto.
   induction 1; intros.
   eapply match_stacks_inside_base; eauto.
-    eapply match_stacks_extcall; eauto. eapply Mem.sup_include_trans; eauto. apply Mem.sup_include_incr.
+    eapply match_stacks_extcall; eauto. eapply Mem.sup_include_trans; eauto.
     subst sp'0. subst sp'.
   eapply match_stacks_inside_inlined; eauto.
     eapply agree_regs_incr; eauto.
     eapply range_private_extcall; eauto.
-    apply H1. left. auto.
+    apply H1. auto.
 Qed.
 
 End EXTCALL.
@@ -884,7 +880,7 @@ Inductive match_states: RTL.state -> RTL.state -> Prop :=
         (AG: agree_regs F ctx rs rs')
         (SP: F sp = Some(sp', ctx.(dstk)))
         (MINJ: Mem.inject F m m')
-        (VB: Mem.sup_include (sp'::sps') (Mem.support m'))
+        (VB: Mem.sup_include (sup_add sp' sps') (Mem.support m'))
         (PRIV: range_private F m m' sp' (ctx.(dstk) + ctx.(mstk)) f'.(fn_stacksize))
         (SSZ1: 0 <= f'.(fn_stacksize) < Ptrofs.max_unsigned)
         (SSZ2: forall ofs, Mem.perm m' sp' ofs Max Nonempty -> 0 <= ofs <= f'.(fn_stacksize)),
@@ -908,7 +904,7 @@ Inductive match_states: RTL.state -> RTL.state -> Prop :=
         (MOVES: tr_moves f'.(fn_code) pc1' (sregs ctx' rargs) (sregs ctx f.(fn_params)) (spc ctx f.(fn_entrypoint)))
         (VINJ: list_forall2 (val_reg_charact F ctx' rs') vargs rargs)
         (MINJ: Mem.inject F m m')
-        (VB: Mem.sup_include (sp'::sps') (Mem.support m'))
+        (VB: Mem.sup_include (sup_add sp' sps') (Mem.support m'))
         (PRIV: range_private F m m' sp' ctx.(dstk) f'.(fn_stacksize))
         (SSZ1: 0 <= f'.(fn_stacksize) < Ptrofs.max_unsigned)
         (SSZ2: forall ofs, Mem.perm m' sp' ofs Max Nonempty -> 0 <= ofs <= f'.(fn_stacksize)),
@@ -927,7 +923,7 @@ Inductive match_states: RTL.state -> RTL.state -> Prop :=
         (AT: f'.(fn_code)!pc' = Some(inline_return ctx or rinfo))
         (VINJ: match or with None => v = Vundef | Some r => Val.inject F v rs'#(sreg ctx r) end)
         (MINJ: Mem.inject F m m')
-        (VB: Mem.sup_include (sp'::sps') (Mem.support m'))
+        (VB: Mem.sup_include (sup_add sp' sps') (Mem.support m'))
         (PRIV: range_private F m m' sp' ctx.(dstk) f'.(fn_stacksize))
         (SSZ1: 0 <= f'.(fn_stacksize) < Ptrofs.max_unsigned)
         (SSZ2: forall ofs, Mem.perm m' sp' ofs Max Nonempty -> 0 <= ofs <= f'.(fn_stacksize)),
@@ -1068,7 +1064,6 @@ Proof.
     intros. left. intro. subst b. eapply freshness; eauto.
     intros. eapply Mem.perm_free_3; eauto.
   erewrite Mem.support_free; eauto. eapply Mem.sup_include_trans; eauto.
-  apply Mem.sup_include_incr.
   eapply agree_val_regs; eauto.
   eapply Mem.free_right_inject; eauto. eapply Mem.free_left_inject; eauto.
   (* show that no valid location points into the stack block being freed *)
@@ -1120,9 +1115,9 @@ Proof.
   auto. auto. eapply Mem.sup_include_trans; eauto. eapply Mem.unchanged_on_support. eauto.
   eapply range_private_extcall; eauto.
     intros; eapply external_call_max_perm; eauto.
-  auto. apply VB. left. auto. auto.
+  auto. apply VB. auto. auto.
   intros. apply SSZ2. eapply external_call_max_perm; eauto.
-  apply VB. left. auto.
+  apply VB.  auto.
 - (* cond *)
   exploit tr_funbody_inv; eauto. intros TR; inv TR.
   assert (eval_condition cond rs'##(sregs ctx args) m' = Some b).
@@ -1162,7 +1157,6 @@ Proof.
     intros. left. intro. subst b. eapply freshness; eauto.
     intros. eapply Mem.perm_free_3; eauto.
   erewrite Mem.support_free; eauto. eapply Mem.sup_include_trans; eauto.
-  apply Mem.sup_include_incr.
   destruct or; simpl. apply agree_val_reg; auto. auto.
   eapply Mem.free_right_inject; eauto. eapply Mem.free_left_inject; eauto.
   (* show that no valid location points into the stack block being freed *)
@@ -1228,7 +1222,7 @@ Proof.
     eauto.
     eauto.
     (* sp' is valid *)
-    instantiate (1 := (fresh_block sps')). apply VB. left. auto.
+    instantiate (1 := (fresh_block sps')). apply VB. auto.
     (* offset is representable *)
     instantiate (1 := dstk ctx). generalize (Z.le_max_r (fn_stacksize f) 0). lia.
     (* size of target block is representable *)
@@ -1329,7 +1323,7 @@ Proof.
   apply match_stacks_nil with (Mem.support m0).
   constructor; intros.
     unfold Mem.flat_inj. apply pred_dec_true; auto.
-    unfold Mem.flat_inj in H. destruct (Mem.dec_sup (Mem.support m0) b1); congruence.
+    unfold Mem.flat_inj in H. destruct (Mem.sup_dec b1 (Mem.support m0)); congruence.
     eapply Genv.find_symbol_not_fresh; eauto.
     eapply Genv.find_funct_ptr_not_fresh; eauto.
     eapply Genv.find_var_info_not_fresh; eauto.

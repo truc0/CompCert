@@ -34,10 +34,10 @@ Record block_classification : Type := BC {
 }.
 
 Definition bc_below (bc: block_classification) (bound: sup) : Prop :=
-  forall b, bc b <> BCinvalid -> In b bound.
+  forall b, bc b <> BCinvalid -> sup_In b bound.
 
 Lemma bc_below_invalid:
-  forall b bc bound, ~In b bound -> bc_below bc bound -> bc b = BCinvalid.
+  forall b bc bound, ~sup_In b bound -> bc_below bc bound -> bc b = BCinvalid.
 Proof.
   intros. destruct (block_class_eq (bc b) BCinvalid); auto.
   elim H. apply H0; auto.
@@ -1115,7 +1115,7 @@ Qed.
 
 Definition genv_match (ge: genv) : Prop :=
   (forall id b, Genv.find_symbol ge id = Some b <-> bc b = BCglob id)
-/\(forall b, In b (Genv.genv_sup ge) -> bc b <> BCinvalid /\ bc b <> BCstack).
+/\(forall b, sup_In b (Genv.genv_sup ge) -> bc b <> BCinvalid /\ bc b <> BCstack).
 
 Lemma symbol_address_sound:
   forall ge id ofs,
