@@ -2420,6 +2420,19 @@ Proof.
   discriminate. inv POP. reflexivity.
 Qed.
 
+Lemma stack_pop:
+      exists hd,
+        stack(support m1) = hd :: (stack(support m2)).
+Proof.
+  intros.
+  unfold pop in POP.
+  destruct (empty_stack_dec m1).
+  discriminate.
+  inv POP. simpl. unfold sup_pop.
+  destruct (stack (support m1)) eqn : Hstk.
+  unfold stack_mem in *. congruence. simpl.
+  exists s. auto.
+Qed.
 
 Theorem nextblock_pop:
   nextblock m2 = nextblock m1.
@@ -2521,6 +2534,103 @@ Local Hint Resolve valid_block_pop_1 valid_block_pop_2
              perm_pop
              valid_access_pop: mem.
 
+Section PUSH.
+
+Variable m1: mem.
+Variable m2: mem.
+Hypothesis PUSH: push m1 = m2.
+
+Lemma support_push :
+    support m2 = sup_push (support m1).
+Proof.
+  intros. unfold push in PUSH. rewrite <- PUSH.
+  reflexivity.
+Qed.
+
+Theorem nextblock_push:
+  nextblock m2 = nextblock m1.
+Proof.
+  unfold nextblock. rewrite support_push. unfold fresh_block.
+  reflexivity.
+Qed.
+
+Theorem valid_block_push_1:
+  forall b, valid_block m1 b -> valid_block m2 b.
+Proof.
+  unfold valid_block. rewrite support_push. unfold sup_In. rewrite <- sup_push_supp. auto.
+Qed.
+
+Theorem valid_block_push_2:
+  forall b, valid_block m2 b -> valid_block m1 b.
+Proof.
+  unfold valid_block. rewrite support_push. unfold sup_In. rewrite <- sup_push_supp. auto.
+Qed.
+
+Local Hint Resolve valid_block_push_1 valid_block_push_2: mem.
+
+Theorem perm_push:
+  forall b ofs k p,
+  perm m1 b ofs k p <->
+  perm m2 b ofs k p.
+Proof.
+  split.
+  intros. rewrite <- PUSH. unfold perm; simpl.
+  auto.
+  intros. rewrite <- PUSH in H. unfold perm in H; simpl.
+  auto.
+Qed.
+
+Theorem valid_access_push:
+  forall chunk b ofs p,
+  valid_access m1 chunk b ofs p <->
+  valid_access m2 chunk b ofs p.
+Proof.
+  split.
+  intros. inv H. constructor; auto with mem.
+  intros. inv H. constructor; auto with mem.
+Qed.
+
+Theorem load_push:
+  forall chunk b ofs,
+  load chunk m2 b ofs = load chunk m1 b ofs.
+Proof.
+  intros. unfold load.
+  destruct (valid_access_dec m2 chunk b ofs Readable).
+  rewrite pred_dec_true. rewrite <- PUSH. reflexivity.
+  eapply valid_access_push; eauto.
+  rewrite pred_dec_false; auto.
+  red; intro; elim n. eapply valid_access_push; eauto.
+Qed.
+
+Theorem load_push_2:
+  forall chunk b ofs v,
+  load chunk m2 b ofs = Some v -> load chunk m1 b ofs = Some v.
+Proof.
+  intros. unfold load. rewrite pred_dec_true.
+  rewrite (load_result _ _ _ _ _ H). rewrite <- PUSH. reflexivity.
+  apply valid_access_push. eauto with mem.
+Qed.
+
+Theorem loadbytes_push:
+  forall b ofs n,
+  loadbytes m2 b ofs n = loadbytes m1 b ofs n.
+Proof.
+  intros. unfold loadbytes.
+  destruct (range_perm_dec m2 b ofs (ofs + n) Cur Readable).
+  rewrite pred_dec_true.
+  rewrite <- PUSH. reflexivity.
+  red; intros. eapply perm_push; eauto.
+  rewrite pred_dec_false; auto.
+  red; intros. elim n0; red; intros.
+  eapply perm_push; eauto.
+Qed.
+
+End PUSH.
+(*
+Local Hint Resolve valid_block_push_1 valid_block_push_2
+             perm_push
+             valid_access_push: mem.
+*)
 Lemma nonempty_record : forall m1 sz,
    stack_mem m1 <> nil -> {m2:mem| record m1 sz = Some m2}.
 Proof.
@@ -3328,6 +3438,39 @@ Proof.
   intros. rewrite FREE; simpl. eauto.
 Qed.
 
+Lemma push_left_inj:
+  forall f m1 m2 m1',
+  mem_inj f m1 m2 ->
+  push m1 = m1' ->
+  mem_inj f m1' m2.
+Proof.
+  intros. inversion H. constructor.
+(* perm *)
+  intros. eapply mi_perm0; eauto. eapply perm_push; eauto.
+(* align *)
+  intros. eapply mi_align0 with (ofs := ofs) (p := p); eauto.
+  red; intros; eapply perm_push; eauto.
+(* mem_contents *)
+  intros. rewrite <- H0; simpl. eapply mi_memval0; eauto.
+  eapply perm_push; eauto.
+Qed.
+
+Lemma push_right_inj:
+  forall f m1 m2 m2',
+  mem_inj f m1 m2 ->
+  push m2 = m2' ->
+  mem_inj f m1 m2'.
+Proof.
+  intros. inversion H.
+  constructor.
+(* perm *)
+  intros. eapply perm_push in H0. apply H0. eauto.
+(* align *)
+  eapply mi_align0; eauto.
+(* mem_contents *)
+  intros. rewrite <- H0; simpl. eauto.
+Qed.
+
 Lemma pop_left_inj:
   forall f m1 m2 m1',
   mem_inj f m1 m2 ->
@@ -3360,6 +3503,8 @@ Proof.
 (* mem_contents *)
   intros. rewrite POP; simpl. eauto.
 Qed.
+
+
 
 Lemma record_left_inj:
   forall f m1 m2 m1' sz,
@@ -3661,6 +3806,30 @@ Proof.
   - rewrite mext_sup0. reflexivity.
   - inv mext_inj0. constructor; auto.
   - auto.
+Qed.
+
+Theorem pop_left_extends' : forall m1 m1' m2,
+    extends' m1 m2 ->
+    pop m1 = Some m1' ->
+    extends' m1' m2.
+Proof.
+  intros. inv H. constructor.
+  symmetry. apply support_pop in H0.
+  rewrite H0. rewrite <- mext_sup0. apply sup_pop_supp.
+  eapply pop_left_inj; eauto.
+  intros. apply mext_perm_inv0 in H. destruct H.
+  left. eapply perm_pop in H0. apply H0. auto.
+  right. eapply perm_pop in H0. intro.
+  apply H. apply H0. auto.
+Qed.
+
+Theorem push_left_extends' : forall m1 m1' m2,
+    extends' m1 m2 ->
+    push m1 = m1' ->
+    extends' m1' m2.
+Proof.
+  intros. inv H. constructor; eauto.
+  eapply push_left_inj; eauto.
 Qed.
 
 Theorem alloc_extends':

@@ -842,6 +842,7 @@ Lemma sel_builtin_res_correct:
 Proof.
   intros. destruct oid; simpl; auto. apply set_var_lessdef; auto.
 Qed.
+
 Lemma push_exter_pop :forall ef ge vl m1 t v m2,
     external_call ef ge vl (Mem.push m1) t v m2 ->
     {m3:mem| Mem.pop m2 = Some m3}.
@@ -852,63 +853,66 @@ Proof.
   rewrite <- H. simpl. congruence.
 Qed.
 
-Lemma push_pop : forall m1,
-    Mem.pop (Mem.push m1) = Some m1.
-Proof.
-  intros.
-  destruct (Mem.stack (Mem.support (Mem.push m1))) eqn:Hstk.
-  - simpl in Hstk. congruence.
-  - unfold Mem.pop.
-    rewrite pred_dec_false; eauto.
-    unfold Mem.unchecked_pop. unfold Mem.sup_pop.
-    rewrite Hstk.
- 
-  destruct (Mem.stack (Mem.support (Mem.push m1))).
 Lemma sel_builtin_default_correct:
-  forall optid ef al sp e1 m1 vl t v m2 e1' m1' f k,
+  forall optid ef al sp e1 m1 vl t v m2 m3 e1' m1' f k,
   Cminor.eval_exprlist ge sp e1 m1 al vl ->
   external_call ef ge vl (Mem.push m1) t v m2 ->
+  Mem.pop m2 = Some m3 ->
   env_lessdef e1 e1' -> Mem.extends m1 m1' ->
-  exists e2' m3 m2',
-     plus (step fn_stack_requirements) tge (State f (sel_builtin_default optid ef al) k sp e1' m1')
-                 t (State f Sskip k sp e2' m2')
+  exists e2' m3',
+     plus (step fn_stack_requirements)
+          tge (State f (sel_builtin_default optid ef al) k sp e1' m1')
+          t (State f Sskip k sp e2' m3')
   /\ env_lessdef (set_optvar optid v e1) e2'
-  /\ Mem.pop m2 = Some m3
-  /\ Mem.extends m3 m2'.
+  /\ Mem.extends m3 m3'.
 Proof.
   intros. unfold sel_builtin_default.
   exploit sel_builtin_args_correct; eauto. intros (vl' & A & B).
   exploit external_call_mem_extends; eauto.
-  eapply Mem.push_extends; eauto.
+  exploit Mem.push_extends; eauto.
   intros (v' & m2' & D & E & F & _).
-  apply push_exter_pop in H0. destruct H0 as[m3 POP1].
   exploit Mem.pop_extends; eauto.
   intros (m3' & G & I).
-  econstructor; exists m3; exists m3'; split.
+  econstructor; exists m3'; split.
   apply plus_one.
-  econstructor. eexact A. eapply external_call_symbols_preserved. eexact senv_preserved.
-  eexact D. auto.
-  econstructor.
-  apply sel_builtin_res_correct; auto. auto.
+  econstructor. eexact A. eapply external_call_symbols_preserved. eexact senv_preserved. eexact D. eexact G.
+  split; auto. apply sel_builtin_res_correct; auto.
+Qed.
+
+Lemma push_exter_pop_extend: forall m1 m2 m3 m1' ef ge vl e v,
+      external_call ef ge vl (Mem.push m1) e v m2 ->
+      Mem.pop m2 = Some m3 ->
+      Mem.extends m2 (Mem.push m1') ->
+      Mem.extends m3 m1'.
+Proof.
+  intros. split.
+  eapply Mem.pop_left_extends' in H0; eauto.
+  eapply Mem.extends'_extends'_compose; eauto.
+  apply H1. eapply Mem.push_left_extends'; eauto.
+  apply Mem.extends'_refl.
+  apply external_call_mem_stackeq in H. inv H1.
+  unfold Mem.stackeq in *. apply Mem.stack_pop in H0.
+  destruct H0 as [hd HH].
+  rewrite H3 in HH. simpl in HH.
+  inv HH. auto.
 Qed.
 
 Lemma sel_builtin_correct:
-  forall optid ef al sp e1 m1 vl t v m2 e1' m1' f k,
+  forall optid ef al sp e1 m1 vl t v m2 m3 e1' m1' f k,
   Cminor.eval_exprlist ge sp e1 m1 al vl ->
   external_call ef ge vl (Mem.push m1) t v m2 ->
+  Mem.pop m2 = Some m3 ->
   env_lessdef e1 e1' -> Mem.extends m1 m1' ->
-  exists e2' m3 m2',
+  exists e2' m2',
      plus (step fn_stack_requirements) tge (State f (sel_builtin optid ef al) k sp e1' m1')
                  t (State f Sskip k sp e2' m2')
   /\ env_lessdef (set_optvar optid v e1) e2'
-  /\ Mem.pop m2 = Some m3
   /\ Mem.extends m3 m2'.
 Proof.
   intros.
   exploit sel_exprlist_correct; eauto. intros (vl' & A & B).
-  exploit external_call_mem_extends; eauto.
-  exploit Mem.push_extends; eauto.
-  intros (v' & m2' & D & E & F & _).
+  exploit Mem.push_extends; eauto. intro.
+  exploit external_call_mem_extends; eauto. intros (v' & m2' & D & E & F & _).
   unfold sel_builtin.
   destruct ef; eauto using sel_builtin_default_correct.
   destruct (lookup_builtin_function name sg) as [bf|] eqn:LKUP; eauto using sel_builtin_default_correct.
@@ -916,16 +920,16 @@ Proof.
   destruct optid as [id|]; eauto using sel_builtin_default_correct.
 - destruct (sel_known_builtin bf (sel_exprlist al)) as [a|] eqn:SKB; eauto using sel_builtin_default_correct.
   exploit eval_sel_known_builtin; eauto. intros (v'' & U & V).
-  apply push_exter_pop in H0. destruct H0 as[m3 POP1].
-  exploit Mem.pop_extends; eauto.
-  intros (m3' & G & I).
-  econstructor; exists m3; exists m3'; split.
+  econstructor; exists m1'; split.
   apply plus_one. econstructor. eexact U.
   split; auto. apply set_var_lessdef; auto. apply Val.lessdef_trans with v'; auto.
-- exists e1', m2'; split.
+  eapply push_exter_pop_extend; eauto.
+- exists e1', m1'; split.
   eapply plus_two. constructor. constructor. auto.
-  simpl; auto.
+  simpl; auto. split. auto.
+  eapply push_exter_pop_extend; eauto.
 Qed.
+
 
 (** If-conversion *)
 
@@ -1116,18 +1120,17 @@ Inductive match_states: Cminor.state -> CminorSel.state -> Prop :=
       match_states
         (Cminor.Returnstate v k m)
         (Returnstate v' k' m')
-  | match_builtin_1: forall cunit hf ef args optid f sp e k m1 m2 al f' e' k' m' env sz
+  | match_builtin_1: forall cunit hf ef args optid f sp e k m al f' e' k' m' env sz
         (LINK: linkorder cunit prog)
         (HF: helper_functions_declared cunit hf)
         (TF: sel_function (prog_defmap cunit) hf f = OK f')
         (TYF: type_function f = OK env)
         (MC: match_cont cunit hf (known_id f) env k k')
-        (EA: Cminor.eval_exprlist ge sp e m1 al args)
+        (EA: Cminor.eval_exprlist ge sp e m al args)
         (LDE: env_lessdef e e')
-        (PUSH: Mem.push m1 = m2)
-        (ME: Mem.extends m1 m'),
+        (ME: Mem.extends m m'),
       match_states
-        (Cminor.Callstate (External ef) args (Cminor.Kcall optid f sp e k) m2 sz)
+        (Cminor.Callstate (External ef) args (Cminor.Kcall optid f sp e k) (Mem.push m) sz)
         (State f' (sel_builtin optid ef al) k' sp e' m')
   | match_builtin_2: forall cunit hf v v' optid f sp e k m1 m2 f' e' m' k' env
         (LINK: linkorder cunit prog)
@@ -1467,18 +1470,22 @@ Proof.
   apply plus_one; econstructor. eapply external_call_symbols_preserved; eauto. apply senv_preserved.
   econstructor; eauto.
 -  (* external call turned into a Sbuiltin *)
-  
-(*  exploit sel_builtin_correct; eauto. intros (e2' & m2' & P & Q & R). *)
-  left; econstructor; split. Check sel_builtin_correct.
-
- eexact P. econstructor; eauto.
+  assert ({m'':mem|Mem.pop m' = Some m''}).
+  eapply push_exter_pop; eauto. destruct X as [m'' POP].
+  exploit sel_builtin_correct; eauto.
+  intros (e2' & m2' & P & Q & R).
+  left; econstructor; split.
+  eexact P. econstructor; eauto.
 - (* return *)
   inv MC.
+  exploit Mem.pop_extends; eauto.
+  intros [m2'[ A B]].
   left; econstructor; split.
-  apply plus_one; econstructor. eauto.
+  apply plus_one. econstructor. eauto.
   econstructor; eauto. destruct optid; simpl; auto. apply set_var_lessdef; auto.
 - (* return of an external call turned into a Sbuiltin *)
   right; left; split. simpl; lia. split. auto. econstructor; eauto.
+  rewrite H in POP. inv POP. auto.
 Qed.
 
 Lemma sel_initial_states:

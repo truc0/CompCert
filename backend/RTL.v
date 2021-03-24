@@ -241,7 +241,7 @@ Inductive step: state -> trace -> state -> Prop :=
       find_function ros rs = Some fd ->
       funsig fd = sig ->
       step (State s f sp pc rs m)
-        E0 (Callstate (Stackframe res f sp pc' rs :: s) fd rs##args m (fn_stack_requirements id))
+        E0 (Callstate (Stackframe res f sp pc' rs :: s) fd rs##args (Mem.push m) (fn_stack_requirements id))
   | exec_Itailcall:
       forall s f stk pc rs m sig ros args fd m' id,
       ros_is_function ros rs id ->
@@ -252,12 +252,13 @@ Inductive step: state -> trace -> state -> Prop :=
       step (State s f (Vptr stk Ptrofs.zero) pc rs m)
         E0 (Callstate s fd rs##args m' (fn_stack_requirements id))
   | exec_Ibuiltin:
-      forall s f sp pc rs m ef args res pc' vargs t vres m',
+      forall s f sp pc rs m ef args res pc' vargs t vres m' m'',
       (fn_code f)!pc = Some(Ibuiltin ef args res pc') ->
       eval_builtin_args ge (fun r => rs#r) sp m args vargs ->
-      external_call ef ge vargs m t vres m' ->
+      external_call ef ge vargs (Mem.push m) t vres m' ->
+      Mem.pop m' = Some m'' ->
       step (State s f sp pc rs m)
-         t (State s f sp pc' (regmap_setres res vres rs) m')
+         t (State s f sp pc' (regmap_setres res vres rs) m'')
   | exec_Icond:
       forall s f sp pc rs m cond args ifso ifnot b pc',
       (fn_code f)!pc = Some(Icond cond args ifso ifnot) ->
@@ -282,7 +283,6 @@ Inductive step: state -> trace -> state -> Prop :=
   | exec_function_internal:
       forall s f args m m' m'' stk sz,
       Mem.alloc m 0 f.(fn_stacksize) = (m', stk) ->
-      Mem.push m' sz = m'' ->
       step (Callstate s (Internal f) args m sz)
         E0 (State s
                   f
@@ -296,9 +296,10 @@ Inductive step: state -> trace -> state -> Prop :=
       step (Callstate s (External ef) args m sz)
          t (Returnstate s res m')
   | exec_return:
-      forall res f sp pc rs s vres m,
+      forall res f sp pc rs s vres m m',
+      Mem.pop m = Some m' ->
       step (Returnstate (Stackframe res f sp pc rs :: s) vres m)
-        E0 (State s f sp pc (rs#res <- vres) m).
+        E0 (State s f sp pc (rs#res <- vres) m').
 
 Lemma exec_Iop':
   forall s f sp pc rs m op args res pc' rs' v,
@@ -361,7 +362,15 @@ Proof.
     intros. subst. inv H0. exists s1; auto.
   inversion H; subst; auto.
   exploit external_call_receptive; eauto. intros [vres2 [m2 EC2]].
-  exists (State s0 f sp pc' (regmap_setres res vres2 rs) m2). eapply exec_Ibuiltin; eauto.
+  assert ({m3:mem | Mem.pop m2 = Some m3}).
+    apply Mem.nonempty_pop. unfold Mem.stack_mem.
+    eapply external_call_mem_stackeq in EC2.
+    eapply external_call_mem_stackeq in H4.
+    unfold Mem.stackeq in *.
+    rewrite <- EC2. rewrite H4. apply Mem.pop_nonempty in H5.
+    auto.
+  destruct X as [m3 POP].
+  exists (State s0 f sp pc' (regmap_setres res vres2 rs) m3). econstructor; eauto.
   exploit external_call_receptive; eauto. intros [vres2 [m2 EC2]].
   exists (Returnstate s0 vres2 m2). econstructor; eauto.
 (* trace length *)

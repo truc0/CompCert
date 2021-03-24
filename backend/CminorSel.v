@@ -452,7 +452,7 @@ Inductive step: state -> trace -> state -> Prop :=
   | step_return: forall v optid f sp e k m m',
       Mem.pop m = Some m' ->
       step (Returnstate v (Kcall optid f sp e k) m)
-        E0 (State f Sskip k sp (set_optvar optid v e) m).
+        E0 (State f Sskip k sp (set_optvar optid v e) m').
 
 End RELSEM.
 
