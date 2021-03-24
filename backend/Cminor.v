@@ -234,7 +234,8 @@ Inductive state: Type :=
       forall (f: fundef)                (**r function to invoke *)
              (args: list val)           (**r arguments provided by caller *)
              (k: cont)                  (**r what to do next  *)
-             (m: mem),                  (**r memory state *)
+             (m: mem)                  (**r memory state *)
+             (sz: Z),
       state
   | Returnstate:                (**r Return from a function *)
       forall (v: val)                   (**r Return value *)
@@ -242,6 +243,9 @@ Inductive state: Type :=
              (m: mem),                  (**r memory state *)
       state.
 
+Section ORACLE.
+
+Variable fn_stack_requirements : ident -> Z.
 Section RELSEM.
 
 Variable ge: genv.
@@ -456,28 +460,31 @@ Inductive step: state -> trace -> state -> Prop :=
       step (State f (Sstore chunk addr a) k sp e m)
         E0 (State f Sskip k sp e m')
 
-  | step_call: forall f optid sig a bl k sp e m vf vargs fd,
+  | step_call: forall f optid sig a bl k sp e m vf vargs fd id,
+      is_function_ident ge vf id ->
       eval_expr sp e m a vf ->
       eval_exprlist sp e m bl vargs ->
       Genv.find_funct ge vf = Some fd ->
       funsig fd = sig ->
       step (State f (Scall optid sig a bl) k sp e m)
-        E0 (Callstate fd vargs (Kcall optid f sp e k) m)
+        E0 (Callstate fd vargs (Kcall optid f sp e k) (Mem.push m) (fn_stack_requirements id))
 
-  | step_tailcall: forall f sig a bl k sp e m vf vargs fd m',
+  | step_tailcall: forall f sig a bl k sp e m vf vargs fd m' id,
+      is_function_ident ge vf id ->
       eval_expr (Vptr sp Ptrofs.zero) e m a vf ->
       eval_exprlist (Vptr sp Ptrofs.zero) e m bl vargs ->
       Genv.find_funct ge vf = Some fd ->
       funsig fd = sig ->
       Mem.free m sp 0 f.(fn_stackspace) = Some m' ->
       step (State f (Stailcall sig a bl) k (Vptr sp Ptrofs.zero) e m)
-        E0 (Callstate fd vargs (call_cont k) m')
+        E0 (Callstate fd vargs (call_cont k) m' (fn_stack_requirements id))
 
-  | step_builtin: forall f optid ef bl k sp e m vargs t vres m',
+  | step_builtin: forall f optid ef bl k sp e m vargs t vres m' m'',
       eval_exprlist sp e m bl vargs ->
-      external_call ef ge vargs m t vres m' ->
+      external_call ef ge vargs (Mem.push m) t vres m' ->
+      Mem.pop m' = Some m'' ->
       step (State f (Sbuiltin optid ef bl) k sp e m)
-         t (State f Sskip k sp (set_optvar optid vres e) m')
+         t (State f Sskip k sp (set_optvar optid vres e) m'')
 
   | step_seq: forall f s1 s2 k sp e m,
       step (State f (Sseq s1 s2) k sp e m)
@@ -532,19 +539,21 @@ Inductive step: state -> trace -> state -> Prop :=
       step (State f (Sgoto lbl) k sp e m)
         E0 (State f s' k' sp e m)
 
-  | step_internal_function: forall f vargs k m m' sp e,
+  | step_internal_function: forall f vargs k m m' m'' sp e sz,
       Mem.alloc m 0 f.(fn_stackspace) = (m', sp) ->
+      Mem.record m' sz = Some m'' ->
       set_locals f.(fn_vars) (set_params vargs f.(fn_params)) = e ->
-      step (Callstate (Internal f) vargs k m)
-        E0 (State f f.(fn_body) k (Vptr sp Ptrofs.zero) e m')
-  | step_external_function: forall ef vargs k m t vres m',
+      step (Callstate (Internal f) vargs k m sz)
+        E0 (State f f.(fn_body) k (Vptr sp Ptrofs.zero) e m'')
+  | step_external_function: forall ef vargs k m t vres m' sz,
       external_call ef ge vargs m t vres m' ->
-      step (Callstate (External ef) vargs k m)
+      step (Callstate (External ef) vargs k m sz)
          t (Returnstate vres k m')
 
-  | step_return: forall v optid f sp e k m,
+  | step_return: forall v optid f sp e k m m',
+      Mem.pop m = Some m' ->
       step (Returnstate v (Kcall optid f sp e k) m)
-        E0 (State f Sskip k sp (set_optvar optid v e) m).
+        E0 (State f Sskip k sp (set_optvar optid v e) m').
 
 End RELSEM.
 
@@ -560,7 +569,7 @@ Inductive initial_state (p: program): state -> Prop :=
       Genv.find_symbol ge p.(prog_main) = Some b ->
       Genv.find_funct_ptr ge b = Some f ->
       funsig f = signature_main ->
-      initial_state p (Callstate f nil Kstop m0).
+      initial_state p (Callstate f nil Kstop m0 (fn_stack_requirements(prog_main p))).
 
 (** A final state is a [Returnstate] with an empty continuation. *)
 
@@ -583,12 +592,20 @@ Proof.
   assert (t1 = E0 -> exists s2, step (Genv.globalenv p) s t2 s2).
     intros. subst. inv H0. exists s1; auto.
   inversion H; subst; auto.
-  exploit external_call_receptive; eauto. intros [vres2 [m2 EC2]].
-  exists (State f Sskip k sp (set_optvar optid vres2 e) m2). econstructor; eauto.
-  exploit external_call_receptive; eauto. intros [vres2 [m2 EC2]].
+- exploit external_call_receptive; eauto. intros [vres2 [m2 EC2]].
+  assert ({m3:mem | Mem.pop m2 = Some m3}).
+    apply Mem.nonempty_pop. unfold Mem.stack_mem.
+    eapply external_call_mem_stackeq in EC2.
+    eapply external_call_mem_stackeq in H3.
+    unfold Mem.stackeq in *.
+    rewrite <- EC2. rewrite H3. apply Mem.pop_nonempty in H4.
+    auto.
+  destruct X as [m3 POP].
+  exists (State f Sskip k sp (set_optvar optid vres2 e) m3). econstructor; eauto.
+- exploit external_call_receptive; eauto. intros [vres2 [m2 EC2]].
   exists (Returnstate vres2 k m2). econstructor; eauto.
 (* trace length *)
-  red; intros; inv H; simpl; try lia; eapply external_call_trace_length; eauto.
+- red; intros; inv H; simpl; try lia; eapply external_call_trace_length; eauto.
 Qed.
 
 (** This semantics is determinate. *)
@@ -636,12 +653,17 @@ Proof.
   intros. constructor; set (ge := Genv.globalenv p); simpl; intros.
 - (* determ *)
   inv H; inv H0; Determ.
-  + subst vargs0. exploit external_call_determ. eexact H2. eexact H13.
+  + assert (id = id0). eapply function_id_determ; eauto.
+    subst vf0 vargs0 id0. rewrite H4 in H18. inv H18. auto.
+  + assert (id = id0). eapply function_id_determ; eauto.
+    subst vf0 vargs0 id0. rewrite H4 in H18. inv H18.
+    rewrite H6 in H20. inv H20. auto.
+  + subst vargs0. exploit external_call_determ. eexact H2. eexact H14.
     intros (A & B). split; intros; auto.
     apply B in H; destruct H; congruence.
   + subst v0. assert (b0 = b) by (inv H2; inv H13; auto). subst b0; auto.
   + assert (n0 = n) by (inv H2; inv H14; auto). subst n0; auto.
-  + exploit external_call_determ. eexact H1. eexact H7.
+  + exploit external_call_determ. eexact H1. eexact H8.
     intros (A & B). split; intros; auto.
     apply B in H; destruct H; congruence.
 - (* single event *)
@@ -655,7 +677,8 @@ Proof.
   inv H; inv H0; auto.
 Qed.
 
-(** * Alternate operational semantics (big-step) *)
+End ORACLE.
+(** * Alternate operational semantics (big-step)
 
 (** We now define another semantics for Cminor without [goto] that follows
   the ``big-step'' style of semantics, also known as natural semantics.
@@ -1244,3 +1267,4 @@ Proof.
 Qed.
 
 End BIGSTEP_TO_TRANSITION.
+*)

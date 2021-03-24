@@ -196,30 +196,35 @@ Qed.
 
 Definition sup_push (s:sup) := mksup (supp s) (nil::(stack s)).
 
-Definition sup_record (sz:Z)(s:sup) :=
+Definition sup_record (sz:Z)(s:sup) : option sup:=
   match (stack s) with
-    |nil => s
-    |hd::tl => mksup (supp s) ((sz::hd)::tl)
+    |nil => None
+    |hd::tl => Some(mksup (supp s) ((sz::hd)::tl))
   end.
 
-Definition sup_pop (s:sup) :=
+Definition sup_pop (s:sup) :option sup:=
   match (stack s) with
-  |nil => s
-  |hd::tl => (mksup (supp s) (tl))
+  |nil => None
+  |hd::tl => Some(mksup (supp s) (tl))
   end.
 
 Theorem sup_push_supp : forall s, supp s = supp (sup_push s).
 Proof.
   intros. unfold sup_push. reflexivity. Qed.
 
-Theorem sup_record_supp :forall sz s, supp s = supp (sup_record sz s).
+Theorem sup_record_supp :forall sz s s',
+    sup_record sz s = Some s' -> supp s = supp s'.
 Proof.
-  intros. unfold sup_record. destruct (stack s); reflexivity. Qed.
+  intros. unfold sup_record in H. destruct (stack s).
+  discriminate. inv H. reflexivity. Qed.
 
-Theorem sup_pop_supp : forall s, supp s = supp (sup_pop s).
+Theorem sup_pop_supp : forall s s',
+    sup_pop s = Some s' -> supp s = supp s'.
 Proof.
-  intros. unfold sup_pop.  destruct (stack s); auto.
+  intros. unfold sup_pop in H.  destruct (stack s); auto.
+  discriminate. inv H. reflexivity.
 Qed.
+
 (*
 Definition size_frame (f: frame) : Z :=
   align f 8.
@@ -635,7 +640,7 @@ Proof.
   intros. unfold stack_mem. destruct (stack (support m)).
   auto. right. congruence.
 Qed.
-
+(*
 Program Definition unchecked_pop (m:mem):=
   (mkmem m.(mem_contents)
          m.(mem_access)
@@ -650,10 +655,28 @@ apply x2 in x3. destruct x3.
 unfold sup_In in *. simpl in x2.
 apply x2 in x3. destruct x3.
 Qed.
+*)
 Program Definition pop (m:mem) :=
-  if empty_stack_dec m then None else
-  Some (unchecked_pop m).
-
+  match sup_pop (support m) with
+    |Some s' =>
+     Some(
+         (mkmem m.(mem_contents)
+         m.(mem_access)
+         (s')
+         m.(access_max)
+         m.(nextblock_noaccess)
+         m.(contents_default)
+       ))
+    |None => None
+  end.
+Next Obligation.
+unfold sup_In in *. 
+assert (supp (support m) = supp s'). apply sup_pop_supp..
+unfold sup_pop in *. destruct (stack(support m)); auto.
+apply x2 in x3. destruct x3.
+unfold sup_In in *. simpl in x2.
+apply x2 in x3. destruct x3.
+Qed.
 Program Definition unchecked_record (m:mem)(sz:Z):=
   (mkmem m.(mem_contents)
          m.(mem_access)

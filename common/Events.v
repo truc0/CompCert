@@ -658,16 +658,21 @@ Record extcall_properties (sem: extcall_sem) (sg: signature) : Prop :=
 
 (** External calls must commute with memory extensions, in the
   following sense. *)
-  ec_mem_extends:
+  ec_mem_extends':
     forall ge vargs m1 t vres m2 m1' vargs',
     sem ge vargs m1 t vres m2 ->
-    Mem.extends m1 m1' ->
+    Mem.extends' m1 m1' ->
     Val.lessdef_list vargs vargs' ->
     exists vres', exists m2',
        sem ge vargs' m1' t vres' m2'
     /\ Val.lessdef vres vres'
-    /\ Mem.extends m2 m2'
+    /\ Mem.extends' m2 m2'
     /\ Mem.unchanged_on (loc_out_of_bounds m1) m1' m2';
+
+  ec_mem_stackeq:
+    forall ge vargs m1 t vres m2,
+      sem ge vargs m1 t vres m2 ->
+      Mem.stackeq m1 m2;
 
 (** External calls must commute with memory injections,
   in the following sense. *)
@@ -723,6 +728,17 @@ Proof.
   rewrite A; auto.
   eapply eventval_match_preserved; eauto.
   rewrite C; auto.
+Qed.
+
+Lemma volatile_load_extends':
+  forall ge chunk m b ofs t v m',
+  volatile_load ge chunk m b ofs t v ->
+  Mem.extends' m m' ->
+  exists v', volatile_load ge chunk m' b ofs t v' /\ Val.lessdef v v'.
+Proof.
+  intros. inv H.
+  econstructor; split; eauto. econstructor; eauto.
+  exploit Mem.load_extends'; eauto. intros [v' [A B]]. exists v'; split; auto. constructor; auto.
 Qed.
 
 Lemma volatile_load_extends:
@@ -790,8 +806,10 @@ Proof.
 - inv H; auto.
 (* mem extends *)
 - inv H. inv H1. inv H6. inv H4.
-  exploit volatile_load_extends; eauto. intros [v' [A B]].
+  exploit volatile_load_extends'; eauto. intros [v' [A B]].
   exists v'; exists m1'; intuition. constructor; auto.
+(* mem stackeq *)
+- inv H. reflexivity.
 (* mem injects *)
 - inv H0. inv H2. inv H7. inversion H5; subst.
   exploit volatile_load_inject; eauto. intros [v' [A B]].
@@ -862,21 +880,21 @@ Proof.
   apply Mem.perm_cur_max. apply P. auto.
 Qed.
 
-Lemma volatile_store_extends:
+Lemma volatile_store_extends':
   forall ge chunk m1 b ofs v t m2 m1' v',
   volatile_store ge chunk m1 b ofs v t m2 ->
-  Mem.extends m1 m1' ->
+  Mem.extends' m1 m1' ->
   Val.lessdef v v' ->
   exists m2',
      volatile_store ge chunk m1' b ofs v' t m2'
-  /\ Mem.extends m2 m2'
+  /\ Mem.extends' m2 m2'
   /\ Mem.unchanged_on (loc_out_of_bounds m1) m1' m2'.
 Proof.
   intros. inv H.
 - econstructor; split. econstructor; eauto.
   eapply eventval_match_lessdef; eauto. apply Val.load_result_lessdef; auto.
   auto with mem.
-- exploit Mem.store_within_extends; eauto. intros [m2' [A B]].
+- exploit Mem.store_within_extends'; eauto. intros [m2' [A B]].
   exists m2'; intuition.
 + econstructor; eauto.
 + eapply Mem.store_unchanged_on; eauto.
@@ -953,8 +971,11 @@ Proof.
 - inv H. eapply unchanged_on_readonly; eauto. eapply volatile_store_readonly; eauto.
 (* mem extends*)
 - inv H. inv H1. inv H6. inv H7. inv H4.
-  exploit volatile_store_extends; eauto. intros [m2' [A [B C]]].
+  exploit volatile_store_extends'; eauto. intros [m2' [A [B C]]].
   exists Vundef; exists m2'; intuition. constructor; auto.
+(* mem stackeq*)
+- inv H. inv H0. reflexivity. unfold Mem.stackeq.
+  rewrite (Mem.support_store _ _ _ _ _ _ H1). auto.
 (* mem inject *)
 - inv H0. inv H2. inv H7. inv H8. inversion H5; subst.
   exploit volatile_store_inject; eauto. intros [m2' [A [B [C D]]]].
@@ -1016,13 +1037,17 @@ Proof.
   assert (SZ: v2 = Vptrofs sz).
   { unfold Vptrofs in *. destruct Archi.ptr64; inv H5; auto. }
   subst v2.
-  exploit Mem.alloc_extends; eauto. apply Z.le_refl. apply Z.le_refl.
+  exploit Mem.alloc_extends'; eauto. apply Z.le_refl. apply Z.le_refl.
   intros [m3' [A B]].
-  exploit Mem.store_within_extends. eexact B. eauto. eauto.
+  exploit Mem.store_within_extends'. eexact B. eauto. eauto.
   intros [m2' [C D]].
   exists (Vptr b Ptrofs.zero); exists m2'; intuition.
   econstructor; eauto.
   eapply UNCHANGED; eauto.
+(* mem stackeq *)
+- inv H. transitivity (Mem.stack (Mem.support m')).
+  rewrite (Mem.support_alloc _  _ _ _ _ H0). auto.
+  rewrite (Mem.support_store _ _ _ _ _ _ H1). auto.
 (* mem injects *)
 - inv H0. inv H2. inv H8.
   assert (SZ: v' = Vptrofs sz).
@@ -1092,11 +1117,11 @@ Proof.
 (* mem extends *)
 - inv H.
 + inv H1. inv H8. inv H6.
-  exploit Mem.load_extends; eauto. intros [v' [A B]].
+  exploit Mem.load_extends'; eauto. intros [v' [A B]].
   assert (v' = Vptrofs sz).
   { unfold Vptrofs in *; destruct Archi.ptr64; inv B; auto. }
   subst v'.
-  exploit Mem.free_parallel_extends; eauto. intros [m2' [C D]].
+  exploit Mem.free_parallel_extends'; eauto. intros [m2' [C D]].
   exists Vundef; exists m2'; intuition auto.
   econstructor; eauto.
   eapply Mem.free_unchanged_on; eauto.
@@ -1110,6 +1135,9 @@ Proof.
   constructor.
   apply Mem.unchanged_on_refl.
   unfold Vnullptr in *; destruct Archi.ptr64; inv H3; auto.
+(* mem stackeq *)
+- inv H. unfold Mem.stackeq. rewrite (Mem.support_free _ _ _ _ _ H2).
+  auto. reflexivity.
 (* mem inject *)
 - inv H0.
 + inv H2. inv H7. inv H9.
@@ -1200,8 +1228,8 @@ Proof.
   intros. inv H.
   inv H1. inv H13. inv H14. inv H10. inv H11.
   exploit Mem.loadbytes_length; eauto. intros LEN.
-  exploit Mem.loadbytes_extends; eauto. intros [bytes2 [A B]].
-  exploit Mem.storebytes_within_extends; eauto. intros [m2' [C D]].
+  exploit Mem.loadbytes_extends'; eauto. intros [bytes2 [A B]].
+  exploit Mem.storebytes_within_extends'; eauto. intros [m2' [C D]].
   exists Vundef; exists m2'.
   split. econstructor; eauto.
   split. constructor.
@@ -1212,6 +1240,8 @@ Proof.
   eapply Mem.storebytes_range_perm; eauto.
   erewrite list_forall2_length; eauto.
   tauto.
+- (* stackeq *)
+  intros. inv H. unfold Mem.stackeq. rewrite (Mem.support_storebytes _ _ _ _ _ H7). auto.
 - (* injections *)
   intros. inv H0. inv H2. inv H14. inv H15. inv H11. inv H12.
   destruct (zeq sz 0).
@@ -1311,6 +1341,8 @@ Proof.
   exists Vundef; exists m1'; intuition.
   econstructor; eauto.
   eapply eventval_list_match_lessdef; eauto.
+(* mem stackeq *)
+- inv H. reflexivity.
 (* mem injects *)
 - inv H0.
   exists f; exists Vundef; exists m1'; intuition.
@@ -1356,6 +1388,8 @@ Proof.
   exists v2; exists m1'; intuition.
   econstructor; eauto.
   eapply eventval_match_lessdef; eauto.
+(* mem stackeq *)
+- inv H. reflexivity.
 (* mem inject *)
 - inv H0. inv H2. inv H7.
   exists f; exists v'; exists m1'; intuition.
@@ -1398,6 +1432,8 @@ Proof.
 - inv H.
   exists Vundef; exists m1'; intuition.
   econstructor; eauto.
+(* mem stackeq *)
+- inv H. reflexivity.
 (* mem injects *)
 - inv H0.
   exists f; exists Vundef; exists m1'; intuition.
@@ -1449,6 +1485,8 @@ Proof.
   exists vres', m1'; intuition auto using Mem.extends_refl, Mem.unchanged_on_refl.
   constructor; auto.
   apply val_inject_lessdef; auto.
+(* mem stackeq *)
+- inv H. reflexivity.
 (* mem injects *)
 - inv H0. fold bsem in H3.
   specialize (bs_inject _ bsem _ _ _ H2).
@@ -1556,12 +1594,31 @@ Definition external_call_symbols_preserved ef := ec_symbols_preserved (external_
 Definition external_call_valid_block ef := ec_valid_block (external_call_spec ef).
 Definition external_call_max_perm ef := ec_max_perm (external_call_spec ef).
 Definition external_call_readonly ef := ec_readonly (external_call_spec ef).
-Definition external_call_mem_extends ef := ec_mem_extends (external_call_spec ef).
+Definition external_call_mem_extends' ef := ec_mem_extends' (external_call_spec ef).
+Definition external_call_mem_stackeq ef := ec_mem_stackeq (external_call_spec ef).
 Definition external_call_mem_inject_gen ef := ec_mem_inject (external_call_spec ef).
 Definition external_call_trace_length ef := ec_trace_length (external_call_spec ef).
 Definition external_call_receptive ef := ec_receptive (external_call_spec ef).
 Definition external_call_determ ef := ec_determ (external_call_spec ef).
 
+Theorem external_call_mem_extends:
+  forall ef ge vargs m1 t vres m2 m1' vargs',
+  external_call ef ge vargs m1 t vres m2 ->
+  Mem.extends m1 m1' ->
+  Val.lessdef_list vargs vargs' ->
+  exists (vres' : val)(m2':mem),
+    external_call ef ge vargs' m1' t vres' m2' /\
+    Val.lessdef vres vres' /\
+    Mem.extends m2 m2' /\ Mem.unchanged_on (loc_out_of_bounds m1) m1' m2'.
+Proof.
+  intros. exploit external_call_mem_extends'; eauto.
+  apply H0. intros [vres'[m2' [A [B [C D]]]]].
+  exists vres',m2'; split. auto. split. auto. split.
+  split. auto.
+  apply external_call_mem_stackeq in H.
+  apply external_call_mem_stackeq in A. inv H0.
+  congruence. auto.
+Qed.
 (** Corollary of [external_call_well_typed_gen]. *)
 
 Lemma external_call_well_typed:

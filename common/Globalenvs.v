@@ -1966,3 +1966,16 @@ End TRANSFORM_TOTAL.
 End Genv.
 
 Coercion Genv.to_senv: Genv.t >-> Senv.t.
+
+Definition is_function_ident {F V} (ge: Genv.t F V) (vf: val) (i: ident) : Prop :=
+  exists b o,
+    vf = Vptr b o /\ Genv.find_symbol ge i = Some b.
+
+Theorem function_id_determ :
+  forall F V (ge:Genv.t F V) vf vf' i i', is_function_ident ge vf i -> is_function_ident ge vf' i' ->
+                         vf = vf' -> i = i'.
+Proof.
+  intros. destruct H as [b [o [H2 H3]]]. destruct H0 as [b' [o' [H2' H3']]].
+  subst vf'. rewrite H2 in H1. inversion H1. subst.
+  unfold Genv.find_symbol in *. eapply Genv.genv_vars_inj;eauto.
+Qed.

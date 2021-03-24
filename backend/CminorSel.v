@@ -141,14 +141,17 @@ Inductive state: Type :=
       forall (f: fundef)                (**r fundef to invoke *)
              (args: list val)           (**r arguments provided by caller *)
              (k: cont)                  (**r what to do next  *)
-             (m: mem),                  (**r memory state *)
+             (m: mem)                  (**r memory state *)
+             (sz: Z),
       state
   | Returnstate:
       forall (v: val)                   (**r return value *)
              (k: cont)                  (**r what to do next *)
              (m: mem),                  (**r memory state *)
       state.
+Section ORACLE.
 
+Variable fn_stack_requirements : ident -> Z.
 Section RELSEM.
 
 Variable ge: genv.
@@ -358,28 +361,31 @@ Inductive step: state -> trace -> state -> Prop :=
       step (State f (Sstore chunk addr al b) k sp e m)
         E0 (State f Sskip k sp e m')
 
-  | step_call: forall f optid sig a bl k sp e m vf vargs fd,
+  | step_call: forall f optid sig a bl k sp e m vf vargs fd id,
+      is_function_ident ge vf id ->
       eval_expr_or_symbol sp e m nil a vf ->
       eval_exprlist sp e m nil bl vargs ->
       Genv.find_funct ge vf = Some fd ->
       funsig fd = sig ->
       step (State f (Scall optid sig a bl) k sp e m)
-        E0 (Callstate fd vargs (Kcall optid f sp e k) m)
+        E0 (Callstate fd vargs (Kcall optid f sp e k) (Mem.push m) (fn_stack_requirements id))
 
-  | step_tailcall: forall f sig a bl k sp e m vf vargs fd m',
+  | step_tailcall: forall f sig a bl k sp e m vf vargs fd m' id,
+      is_function_ident ge vf id ->
       eval_expr_or_symbol (Vptr sp Ptrofs.zero) e m nil a vf ->
       eval_exprlist (Vptr sp Ptrofs.zero) e m nil bl vargs ->
       Genv.find_funct ge vf = Some fd ->
       funsig fd = sig ->
       Mem.free m sp 0 f.(fn_stackspace) = Some m' ->
       step (State f (Stailcall sig a bl) k (Vptr sp Ptrofs.zero) e m)
-        E0 (Callstate fd vargs (call_cont k) m')
+        E0 (Callstate fd vargs (call_cont k) m' (fn_stack_requirements id))
 
-  | step_builtin: forall f res ef al k sp e m vl t v m',
+  | step_builtin: forall f res ef al k sp e m vl t v m' m'',
       list_forall2 (eval_builtin_arg sp e m) al vl ->
-      external_call ef ge vl m t v m' ->
+      external_call ef ge vl (Mem.push m) t v m' ->
+      Mem.pop m' = Some m'' ->
       step (State f (Sbuiltin res ef al) k sp e m)
-         t (State f Sskip k sp (set_builtin_res res v e) m')
+         t (State f Sskip k sp (set_builtin_res res v e) m'')
 
   | step_seq: forall f s1 s2 k sp e m,
       step (State f (Sseq s1 s2) k sp e m)
@@ -432,17 +438,19 @@ Inductive step: state -> trace -> state -> Prop :=
       step (State f (Sgoto lbl) k sp e m)
         E0 (State f s' k' sp e m)
 
-  | step_internal_function: forall f vargs k m m' sp e,
+  | step_internal_function: forall f vargs k m m' m'' sp e sz,
       Mem.alloc m 0 f.(fn_stackspace) = (m', sp) ->
       set_locals f.(fn_vars) (set_params vargs f.(fn_params)) = e ->
-      step (Callstate (Internal f) vargs k m)
-        E0 (State f f.(fn_body) k (Vptr sp Ptrofs.zero) e m')
-  | step_external_function: forall ef vargs k m t vres m',
+      Mem.record m' sz = Some m'' ->
+      step (Callstate (Internal f) vargs k m sz)
+        E0 (State f f.(fn_body) k (Vptr sp Ptrofs.zero) e m'')
+  | step_external_function: forall ef vargs k m t vres m' id,
       external_call ef ge vargs m t vres m' ->
-      step (Callstate (External ef) vargs k m)
+      step (Callstate (External ef) vargs k m id)
          t (Returnstate vres k m')
 
-  | step_return: forall v optid f sp e k m,
+  | step_return: forall v optid f sp e k m m',
+      Mem.pop m = Some m' ->
       step (Returnstate v (Kcall optid f sp e k) m)
         E0 (State f Sskip k sp (set_optvar optid v e) m).
 
@@ -455,7 +463,7 @@ Inductive initial_state (p: program): state -> Prop :=
       Genv.find_symbol ge p.(prog_main) = Some b ->
       Genv.find_funct_ptr ge b = Some f ->
       funsig f = signature_main ->
-      initial_state p (Callstate f nil Kstop m0).
+      initial_state p (Callstate f nil Kstop m0 (fn_stack_requirements (prog_main p))).
 
 Inductive final_state: state -> int -> Prop :=
   | final_state_intro: forall r m,
@@ -579,5 +587,6 @@ Proof.
   intros. unfold lift. eapply eval_lift_expr.
   eexact H. apply insert_lenv_0.
 Qed.
-
+End ORACLE.
+Hint Constructors eval_expr eval_exprlist eval_condexpr: evalexpr.
 Hint Resolve eval_lift: evalexpr.
