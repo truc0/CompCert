@@ -467,7 +467,7 @@ Inductive step: state -> trace -> state -> Prop :=
       Genv.find_funct ge vf = Some fd ->
       funsig fd = sig ->
       step (State f (Scall optid sig a bl) k sp e m)
-        E0 (Callstate fd vargs (Kcall optid f sp e k) (Mem.push m) (fn_stack_requirements id))
+        E0 (Callstate fd vargs (Kcall optid f sp e k) (Mem.push_stage m) (fn_stack_requirements id))
 
   | step_tailcall: forall f sig a bl k sp e m vf vargs fd m' id,
       is_function_ident ge vf id ->
@@ -481,8 +481,8 @@ Inductive step: state -> trace -> state -> Prop :=
 
   | step_builtin: forall f optid ef bl k sp e m vargs t vres m' m'',
       eval_exprlist sp e m bl vargs ->
-      external_call ef ge vargs (Mem.push m) t vres m' ->
-      Mem.pop m' = Some m'' ->
+      external_call ef ge vargs (Mem.push_stage m) t vres m' ->
+      Mem.pop_stage m' = Some m'' ->
       step (State f (Sbuiltin optid ef bl) k sp e m)
          t (State f Sskip k sp (set_optvar optid vres e) m'')
 
@@ -541,7 +541,7 @@ Inductive step: state -> trace -> state -> Prop :=
 
   | step_internal_function: forall f vargs k m m' m'' sp e sz,
       Mem.alloc m 0 f.(fn_stackspace) = (m', sp) ->
-      Mem.record m' sz = Some m'' ->
+      Mem.record_frame_vm m' sz = Some m'' ->
       set_locals f.(fn_vars) (set_params vargs f.(fn_params)) = e ->
       step (Callstate (Internal f) vargs k m sz)
         E0 (State f f.(fn_body) k (Vptr sp Ptrofs.zero) e m'')
@@ -551,7 +551,7 @@ Inductive step: state -> trace -> state -> Prop :=
          t (Returnstate vres k m')
 
   | step_return: forall v optid f sp e k m m',
-      Mem.pop m = Some m' ->
+      Mem.pop_stage m = Some m' ->
       step (Returnstate v (Kcall optid f sp e k) m)
         E0 (State f Sskip k sp (set_optvar optid v e) m').
 
@@ -593,14 +593,14 @@ Proof.
     intros. subst. inv H0. exists s1; auto.
   inversion H; subst; auto.
 - exploit external_call_receptive; eauto. intros [vres2 [m2 EC2]].
-  assert ({m3:mem | Mem.pop m2 = Some m3}).
-    apply Mem.nonempty_pop. unfold Mem.stack_mem.
+  assert ({m3:mem | Mem.pop_stage m2 = Some m3}).
+    apply Mem.nonempty_pop_stage.
     eapply external_call_mem_stackeq in EC2.
     eapply external_call_mem_stackeq in H3.
     unfold Mem.stackeq in *.
-    rewrite <- EC2. rewrite H3. apply Mem.pop_nonempty in H4.
+    rewrite <- EC2. rewrite H3. apply Mem.pop_stage_nonempty in H4.
     auto.
-  destruct X as [m3 POP].
+  destruct X as [m3 POP_STAGE].
   exists (State f Sskip k sp (set_optvar optid vres2 e) m3). econstructor; eauto.
 - exploit external_call_receptive; eauto. intros [vres2 [m2 EC2]].
   exists (Returnstate vres2 k m2). econstructor; eauto.

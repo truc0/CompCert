@@ -192,14 +192,14 @@ Inductive eval_expr: letenv -> expr -> val -> Prop :=
       eval_expr le (Eletvar n) v
   | eval_Ebuiltin: forall le ef al vl v,
       eval_exprlist le al vl ->
-      external_call ef ge vl m E0 v m ->
+      external_call ef ge vl (Mem.push_stage m) E0 v (Mem.push_stage m) ->
       eval_expr le (Ebuiltin ef al) v
   | eval_Eexternal: forall le id sg al b ef vl v,
       Genv.find_symbol ge id = Some b ->
       Genv.find_funct_ptr ge b = Some (External ef) ->
       ef_sig ef = sg ->
       eval_exprlist le al vl ->
-      external_call ef ge vl m E0 v m ->
+      external_call ef ge vl (Mem.push_stage m) E0 v (Mem.push_stage m) ->
       eval_expr le (Eexternal id sg al) v
 
 with eval_exprlist: letenv -> exprlist -> list val -> Prop :=
@@ -368,7 +368,7 @@ Inductive step: state -> trace -> state -> Prop :=
       Genv.find_funct ge vf = Some fd ->
       funsig fd = sig ->
       step (State f (Scall optid sig a bl) k sp e m)
-        E0 (Callstate fd vargs (Kcall optid f sp e k) (Mem.push m) (fn_stack_requirements id))
+        E0 (Callstate fd vargs (Kcall optid f sp e k) (Mem.push_stage m) (fn_stack_requirements id))
 
   | step_tailcall: forall f sig a bl k sp e m vf vargs fd m' id,
       is_function_ident ge vf id ->
@@ -382,8 +382,8 @@ Inductive step: state -> trace -> state -> Prop :=
 
   | step_builtin: forall f res ef al k sp e m vl t v m' m'',
       list_forall2 (eval_builtin_arg sp e m) al vl ->
-      external_call ef ge vl (Mem.push m) t v m' ->
-      Mem.pop m' = Some m'' ->
+      external_call ef ge vl (Mem.push_stage m) t v m' ->
+      Mem.pop_stage m' = Some m'' ->
       step (State f (Sbuiltin res ef al) k sp e m)
          t (State f Sskip k sp (set_builtin_res res v e) m'')
 
@@ -441,7 +441,7 @@ Inductive step: state -> trace -> state -> Prop :=
   | step_internal_function: forall f vargs k m m' m'' sp e sz,
       Mem.alloc m 0 f.(fn_stackspace) = (m', sp) ->
       set_locals f.(fn_vars) (set_params vargs f.(fn_params)) = e ->
-      Mem.record m' sz = Some m'' ->
+      Mem.record_frame_vm m' sz = Some m'' ->
       step (Callstate (Internal f) vargs k m sz)
         E0 (State f f.(fn_body) k (Vptr sp Ptrofs.zero) e m'')
   | step_external_function: forall ef vargs k m t vres m' id,
@@ -450,7 +450,7 @@ Inductive step: state -> trace -> state -> Prop :=
          t (Returnstate vres k m')
 
   | step_return: forall v optid f sp e k m m',
-      Mem.pop m = Some m' ->
+      Mem.pop_stage m = Some m' ->
       step (Returnstate v (Kcall optid f sp e k) m)
         E0 (State f Sskip k sp (set_optvar optid v e) m').
 

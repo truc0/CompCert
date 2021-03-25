@@ -323,12 +323,29 @@ Inductive match_stackframes: list stackframe -> list stackframe -> Prop :=
   over values and register states, and the corresponding ``extends''
   relation over memory states. *)
 
+Inductive match_stacks: Mem.stackadt -> Mem.stackadt -> Prop :=
+  |match_stacks_nil :
+     match_stacks nil nil
+  |match_stacks_push : forall stk stk',
+     match_stacks stk stk' ->
+     match_stacks (nil::stk) (nil::stk')
+  |match_stacks_record : forall t t' stk stk' f,
+      match_stacks (t::stk) (t'::stk') ->
+      match_stacks ((f::t)::stk) ((f::t')::stk)
+  |match_stacks_tail1 : forall stk stk',
+      match_stacks stk stk' ->
+      match_stacks (nil::stk) stk'
+  |match_stack_tail2 : forall stk stk' hd tl f,
+      match_stacks (nil::stk) ((hd::tl)::stk') ->
+      match_stacks ((f::nil)::stk) ((f::hd::tl)::stk').
+
+Theorem match_stacks
 Inductive match_states: state -> state -> Prop :=
   | match_states_normal:
       forall s sp pc rs m s' rs' m' f
              (STACKS: match_stackframes s s')
              (RLD: regs_lessdef rs rs')
-             (MLD: Mem.extends m m'),
+             (MLD: Mem.extends' m m'),
       match_states (State s f (Vptr sp Ptrofs.zero) pc rs m)
                    (State s' (transf_function f) (Vptr sp Ptrofs.zero) pc rs' m')
   | match_states_call:
@@ -346,7 +363,7 @@ Inductive match_states: state -> state -> Prop :=
       match_states (Returnstate s v m)
                    (Returnstate s' v' m')
   | match_states_interm:
-      forall s sp pc rs m s' m' f r v'
+      forall s sp pc rs m s' m' f r v'c
              (STACKS: match_stackframes s s')
              (MLD: Mem.extends m m'),
       is_return_spec f pc r ->

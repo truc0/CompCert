@@ -699,14 +699,17 @@ Lemma transl_expr_Ebuiltin_correct:
   forall le ef al vl v,
   eval_exprlist ge sp e m le al vl ->
   transl_exprlist_prop le al vl ->
-  external_call ef ge vl m E0 v m ->
+  external_call ef ge vl (Mem.push_stage m) E0 v (Mem.push_stage m) ->
   transl_expr_prop le (Ebuiltin ef al) v.
 Proof.
   intros; red; intros. inv TE.
   exploit H0; eauto. intros [rs1 [tm1 [EX1 [ME1 [RR1 [RO1 EXT1]]]]]].
   exploit external_call_mem_extends; eauto.
+  exploit Mem.push_stage_extends; eauto.
   intros [v' [tm2 [A [B [C D]]]]].
-  exists (rs1#rd <- v'); exists tm2.
+  edestruct Mem.pop_stage_extends as (tm2' & USB & EXT'). apply C.
+  apply Mem.pop_push_stage.
+  exists (rs1#rd <- v'); exists tm2'.
 (* Exec *)
   split. eapply star_right. eexact EX1.
   change (rs1#rd <- v') with (regmap_setres (BR rd) v' rs1).
@@ -731,15 +734,18 @@ Lemma transl_expr_Eexternal_correct:
   ef_sig ef = sg ->
   eval_exprlist ge sp e m le al vl ->
   transl_exprlist_prop le al vl ->
-  external_call ef ge vl m E0 v m ->
+  external_call ef ge vl (Mem.push_stage m) E0 v (Mem.push_stage m) ->
   transl_expr_prop le (Eexternal id sg al) v.
 Proof.
   intros; red; intros. inv TE.
   exploit H3; eauto. intros [rs1 [tm1 [EX1 [ME1 [RR1 [RO1 EXT1]]]]]].
   exploit external_call_mem_extends; eauto.
+  exploit Mem.push_stage_extends; eauto.
   intros [v' [tm2 [A [B [C D]]]]].
+  edestruct Mem.pop_stage_extends as (tm2' & USB & EXT'). apply C.
+  apply Mem.pop_push_stage.
   exploit function_ptr_translated; eauto. simpl. intros [tf [P Q]]. inv Q.
-  exists (rs1#rd <- v'); exists tm2.
+  exists (rs1#rd <- v'); exists tm2'.
 (* Exec *)
   split. eapply star_trans. eexact EX1.
   eapply star_left. eapply exec_Icall; eauto.
@@ -747,7 +753,7 @@ Proof.
   simpl. rewrite symbols_preserved. rewrite H. eauto. auto.
   eapply star_left. eapply exec_function_external.
   eapply external_call_symbols_preserved; eauto. apply senv_preserved.
-  apply star_one. apply exec_return.
+  apply star_one. apply exec_return. auto.
   reflexivity. reflexivity. reflexivity.
 (* Match-env *)
   split. eauto with rtlg.
@@ -874,7 +880,7 @@ Theorem transl_expr_correct:
   forall le a v,
   eval_expr ge sp e m le a v ->
   transl_expr_prop le a v.
-Proof
+Proof. apply
   (eval_expr_ind3 ge sp e m
      transl_expr_prop
      transl_exprlist_prop
@@ -892,12 +898,13 @@ Proof
      transl_condexpr_CEcond_correct
      transl_condexpr_CEcondition_correct
      transl_condexpr_CElet_correct).
+Qed.
 
 Theorem transl_exprlist_correct:
   forall le a v,
   eval_exprlist ge sp e m le a v ->
   transl_exprlist_prop le a v.
-Proof
+Proof. apply
   (eval_exprlist_ind3 ge sp e m
      transl_expr_prop
      transl_exprlist_prop
@@ -915,12 +922,13 @@ Proof
      transl_condexpr_CEcond_correct
      transl_condexpr_CEcondition_correct
      transl_condexpr_CElet_correct).
+Qed.
 
 Theorem transl_condexpr_correct:
   forall le a v,
   eval_condexpr ge sp e m le a v ->
   transl_condexpr_prop le a v.
-Proof
+Proof. apply
   (eval_condexpr_ind3 ge sp e m
      transl_expr_prop
      transl_exprlist_prop
@@ -938,7 +946,7 @@ Proof
      transl_condexpr_CEcond_correct
      transl_condexpr_CEcondition_correct
      transl_condexpr_CElet_correct).
-
+Qed.
 (** Exit expressions. *)
 
 Definition transl_exitexpr_prop
@@ -1320,14 +1328,13 @@ Proof.
   assert ((fn_code tf)!ncont = Some(Ireturn rret)
           /\ match_stacks k cs).
     inv TK; simpl in H; try contradiction; auto.
-  destruct H2.
+  destruct H1.
   assert (fn_stacksize tf = fn_stackspace f).
     inv TF. auto.
   edestruct Mem.free_parallel_extends as [tm' []]; eauto.
-  edestruct Mem.pop_extends as [tm'' []]; eauto.
   econstructor; split.
   left; apply plus_one. eapply exec_Ireturn. eauto.
-  rewrite H4. eauto. eauto.
+  rewrite H3. eauto. eauto.
   constructor; auto.
 
   (* assign *)
@@ -1377,6 +1384,7 @@ Proof.
   apply sig_transl_function; auto.
   traceEq.
   constructor; auto. econstructor; eauto.
+  apply Mem.push_stage_extends; eauto.
   (* direct *)
   exploit transl_exprlist_correct; eauto.
   intros [rs'' [tm'' [E [F [G [J Y]]]]]].
@@ -1394,6 +1402,7 @@ Proof.
   traceEq.
   replace id0 with id.
   constructor; auto. econstructor; eauto.
+  apply Mem.push_stage_extends; eauto.
   apply Genv.find_invert_symbol in H5.
   destruct H3 as (o & EQ3 & EQ2). inv EQ3.
   apply Genv.find_invert_symbol in EQ2. congruence.
@@ -1456,11 +1465,13 @@ Proof.
   intros (vargs'' & X & Y).
   assert (Z: Val.lessdef_list vl vargs'') by (eapply Val.lessdef_list_trans; eauto).
   edestruct external_call_mem_extends as [tv [tm'' [A [B [C D]]]]]; eauto.
+  eapply Mem.push_stage_extends; eauto.
+  exploit Mem.pop_stage_extends; eauto. intros (tm''' & A' & B').
   econstructor; split.
   left. eapply plus_right. eexact E.
   eapply exec_Ibuiltin. eauto.
   eapply eval_builtin_args_preserved with (ge1 := ge); eauto. exact symbols_preserved.
-  eapply external_call_symbols_preserved. apply senv_preserved. eauto.
+  eapply external_call_symbols_preserved. apply senv_preserved. eauto. eauto.
   traceEq.
   econstructor; eauto. constructor.
   eapply match_env_update_res; eauto.
@@ -1523,12 +1534,11 @@ Proof.
   exploit match_stacks_call_cont; eauto. intros [U V].
   inversion TF.
   edestruct Mem.free_parallel_extends as [tm' []]; eauto.
-  edestruct Mem.pop_extends as [tm'' []]; eauto.
   econstructor; split.
   left; apply plus_one. eapply exec_Ireturn; eauto.
-  rewrite H3; eauto.
+  rewrite H2; eauto.
   constructor; auto.
-  
+
   (* return some *)
   inv TS.
   exploit transl_expr_correct; eauto.
@@ -1536,10 +1546,9 @@ Proof.
   exploit match_stacks_call_cont; eauto. intros [U V].
   inversion TF.
   edestruct Mem.free_parallel_extends as [tm'' []]; eauto.
-  edestruct Mem.pop_extends as [tm''' []]; eauto.
   econstructor; split.
   left; eapply plus_right. eexact A. eapply exec_Ireturn; eauto.
-  rewrite H5; eauto. traceEq.
+  rewrite H4; eauto. traceEq.
   simpl. constructor; auto.
 
   (* label *)
@@ -1568,12 +1577,12 @@ Proof.
     exploit (add_vars_valid (CminorSel.fn_params f)); eauto. intros [A B].
     eapply add_vars_wf; eauto. eapply add_vars_wf; eauto. apply init_mapping_wf.
   edestruct Mem.alloc_extends as [tm' []]; eauto; try apply Z.le_refl.
+  edestruct Mem.record_frame_vm_extends as [tm'' []]; eauto.
   econstructor; split.
   left; apply plus_one. eapply exec_function_internal; simpl; eauto.
   simpl. econstructor; eauto.
   econstructor; eauto.
   inversion MS; subst; econstructor; eauto.
-  apply Mem.push_extends. auto.
 
   (* external call *)
   monadInv TF.
@@ -1585,8 +1594,9 @@ Proof.
 
   (* return *)
   inv MS.
+  edestruct Mem.pop_stage_extends as [tm' []]; eauto.
   econstructor; split.
-  left; apply plus_one; constructor.
+  left; apply plus_one; constructor. eauto.
   econstructor; eauto. constructor.
   eapply match_env_update_dest; eauto.
 Qed.

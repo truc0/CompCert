@@ -108,7 +108,34 @@ Definition frame := Z.
 
 Definition stage := list frame.
 
+Fixpoint size_of_all_frames (t:stage) : Z :=
+  match t with
+    |nil => 0
+    |hd :: tl => hd + size_of_all_frames tl
+  end.
+
+Definition size_of_head_frame (t:stage) : Z :=
+  match t with
+    |nil => 0
+    |hd::tl => hd
+  end.
+
 Definition stackadt := list stage.
+(* At the virtual machine level, each frame in the tailcall occupies stackspze*)
+Fixpoint stack_size_vm (s:stackadt): Z :=
+  match s with
+    |nil => 0
+    |hd::tl => size_of_all_frames hd + stack_size_vm tl
+  end.
+(*After the tailcall and inline pass, only head frame occupies stackspace *)
+Fixpoint stack_size_mach (s:stackadt): Z :=
+  match s with
+    |nil => 0
+    |hd::tl => (size_of_head_frame hd) + stack_size_mach tl
+  end.
+
+Definition max_stacksize : Z := 4096.
+
 Record sup' : Type := mksup {
   supp : list block;
   stack : stackadt
@@ -194,32 +221,35 @@ Proof.
   intros. apply sup_add_in2.
 Qed.
 
-Definition sup_push (s:sup) := mksup (supp s) (nil::(stack s)).
+Definition sup_push_stage (s:sup) := mksup (supp s) (nil::(stack s)).
 
-Definition sup_record (sz:Z)(s:sup) :=
+Definition sup_record_frame (f:frame)(s:sup) :=
   match (stack s) with
-    |nil => s
-    |hd::tl => mksup (supp s) ((sz::hd)::tl)
+    |nil => None
+    |hd::tl => Some(mksup (supp s) ((f::hd)::tl))
   end.
 
-Definition sup_pop (s:sup) :=
+Definition sup_pop_stage (s:sup) :=
   match (stack s) with
-  |nil => s
-  |hd::tl => (mksup (supp s) (tl))
+  |nil => None
+  |hd::tl => Some(mksup (supp s) (tl))
   end.
 
-Theorem sup_push_supp : forall s, supp s = supp (sup_push s).
+Theorem sup_push_stage_supp : forall s, supp s = supp (sup_push_stage s).
 Proof.
-  intros. unfold sup_push. reflexivity. Qed.
+  intros. unfold sup_push_stage. reflexivity. Qed.
 
-Theorem sup_record_supp :forall sz s, supp s = supp (sup_record sz s).
+Theorem sup_record_frame_supp :forall sz s s', sup_record_frame sz s = Some s' -> supp s = supp s'.
 Proof.
-  intros. unfold sup_record. destruct (stack s); reflexivity. Qed.
+  intros. unfold sup_record_frame in H. destruct (stack s). discriminate. simpl in H.
+  inv H.  reflexivity. Qed.
 
-Theorem sup_pop_supp : forall s, supp s = supp (sup_pop s).
+Theorem sup_pop_stage_supp : forall s s', sup_pop_stage s = Some s' -> supp s = supp s'.
 Proof.
-  intros. unfold sup_pop.  destruct (stack s); auto.
+  intros. unfold sup_pop_stage in H.  destruct (stack s); auto. discriminate.
+  inv H. reflexivity.
 Qed.
+
 (*
 Definition size_frame (f: frame) : Z :=
   align f 8.
@@ -577,10 +607,10 @@ Next Obligation.
   rewrite NMap.gsspec. destruct (NMap.elt_eq b (nextblock m)). auto. apply contents_default.
 Qed.
 
-Program Definition push (m:mem):=
+Program Definition push_stage (m:mem):=
   (mkmem m.(mem_contents)
          m.(mem_access)
-         (sup_push m.(support))
+         (sup_push_stage m.(support))
          m.(access_max)
          m.(nextblock_noaccess)
          m.(contents_default)
@@ -626,7 +656,7 @@ Fixpoint free_list (m: mem) (l: list (block * Z * Z)) {struct l}: option mem :=
       | Some m' => free_list m' l'
       end
   end.
-
+(*
 Definition stack_mem (m:mem) := stack (m.(support)).
 
 Theorem empty_stack_dec : forall m,
@@ -635,44 +665,54 @@ Proof.
   intros. unfold stack_mem. destruct (stack (support m)).
   auto. right. congruence.
 Qed.
-
-Program Definition unchecked_pop (m:mem):=
-  (mkmem m.(mem_contents)
+*)
+Program Definition pop_stage (m:mem) :=
+  match stack (support m) with
+    |hd::tl =>
+       Some (mkmem m.(mem_contents)
          m.(mem_access)
-         (sup_pop m.(support))
+         (mksup (supp (support m)) tl)
          m.(access_max)
          m.(nextblock_noaccess)
          m.(contents_default)
-  ).
-Next Obligation.
-unfold sup_pop in *. destruct (stack(support m)); auto.
-apply x2 in x3. destruct x3.
-unfold sup_In in *. simpl in x2.
-apply x2 in x3. destruct x3.
-Qed.
-Program Definition pop (m:mem) :=
-  if empty_stack_dec m then None else
-  Some (unchecked_pop m).
+  )
+    |nil => None
+  end.
 
-Program Definition unchecked_record (m:mem)(sz:Z):=
-  (mkmem m.(mem_contents)
+Lemma pop_push_stage : forall m, pop_stage (push_stage m) = Some m.
+Proof.
+  intro. unfold push_stage.
+  unfold pop_stage. simpl. apply f_equal.
+  destruct m. simpl. apply mkmem_ext; auto.
+  destruct support0. reflexivity.
+Qed.
+
+Program Definition record_frame (m:mem)(sz:Z) :=
+  match stack (support m) with
+    |hd::tl =>
+       Some (mkmem m.(mem_contents)
          m.(mem_access)
-         (sup_record sz m.(support))
+         (mksup (supp (support m)) ((sz::hd)::tl))
          m.(access_max)
          m.(nextblock_noaccess)
          m.(contents_default)
-  ).
-Next Obligation.
-unfold sup_record in *. destruct (stack(support m)); auto.
-apply x2 in x3. destruct x3.
-unfold sup_In in *. simpl in x2.
-apply x2 in x3. destruct x3.
-Qed.
+  )
+    |nil => None
+  end.
 
-Program Definition record (m:mem)(sz:Z) :=
-  if empty_stack_dec m then None else
-  Some (unchecked_record m sz).
+Definition record_frame_mach (m:mem)(sz:Z) :=
+  match record_frame m sz with
+    |Some m' => if (zle (stack_size_mach (stack(support m')))  max_stacksize)
+                     then Some m' else None
+    |None => None
+  end.
 
+Definition record_frame_vm (m:mem)(sz:Z) :=
+  match record_frame m sz with
+    |Some m' => if (zle (stack_size_vm (stack(support m')))  max_stacksize)
+                     then Some m' else None
+    |None => None
+  end.
 
 (** Memory reads. *)
 
@@ -2387,200 +2427,167 @@ Local Hint Resolve valid_block_free_1 valid_block_free_2
              perm_free_1 perm_free_2 perm_free_3
              valid_access_free_1 valid_access_free_inv_1: mem.
 
-Lemma nonempty_pop : forall m1,
-   stack_mem m1 <> nil -> {m2:mem|pop m1 = Some m2}.
+Lemma nonempty_pop_stage : forall m1,
+   stack (support m1) <> nil -> {m2:mem|pop_stage m1 = Some m2}.
 Proof.
-  intros; unfold pop. rewrite pred_dec_false; auto. econstructor; eauto.
+  intros; unfold pop_stage. destruct (stack (support m1)). congruence.
+  econstructor; eauto.
 Qed.
 
-Section POP.
+Section POP_STAGE.
 
 Variable m1: mem.
 Variable m2: mem.
-Hypothesis POP: pop m1 = Some m2.
+Hypothesis POP_STAGE: pop_stage m1 = Some m2.
 
-Lemma pop_nonempty :
-   stack_mem m1 <> nil.
+Lemma pop_stage_nonempty :
+   stack (support m1) <> nil.
 Proof.
-  intros. unfold pop in POP. destruct (empty_stack_dec m1); auto.
-  discriminate.
+  intros. unfold pop_stage in POP_STAGE. destruct (stack(support m1)); auto.
+  discriminate. congruence.
 Qed.
 
-Theorem pop_result :
-  m2 = unchecked_pop m1.
+Lemma support_pop_stage :
+    sup_pop_stage (support m1) = Some (support m2).
 Proof.
-  intros. unfold pop in POP. destruct (empty_stack_dec m1); auto.
-  congruence. congruence.
+  intros.  unfold pop_stage in POP_STAGE. destruct (stack(support m1)) eqn:H0; auto.
+  discriminate. inv POP_STAGE. unfold sup_pop_stage. simpl. rewrite H0. auto.
 Qed.
 
-Lemma support_pop :
-    support m2 = sup_pop (support m1).
-Proof.
-  intros. unfold pop in POP. destruct (empty_stack_dec m1); auto.
-  discriminate. inv POP. reflexivity.
-Qed.
-
-Lemma stack_pop:
+Lemma stack_pop_stage:
       exists hd,
         stack(support m1) = hd :: (stack(support m2)).
 Proof.
   intros.
-  unfold pop in POP.
-  destruct (empty_stack_dec m1).
+  unfold pop_stage in POP_STAGE.
+  destruct (stack (support m1)).
   discriminate.
-  inv POP. simpl. unfold sup_pop.
-  destruct (stack (support m1)) eqn : Hstk.
-  unfold stack_mem in *. congruence. simpl.
+  inv POP_STAGE. simpl.
   exists s. auto.
 Qed.
 
-Theorem nextblock_pop:
+Lemma supp_pop_stage :
+  supp (support m1) = supp (support m2).
+Proof.
+  intros. unfold pop_stage in POP_STAGE. destruct (stack (support m1)).
+  discriminate. inv POP_STAGE. auto.
+Qed.
+
+Theorem nextblock_pop_stage:
   nextblock m2 = nextblock m1.
 Proof.
-  unfold nextblock. rewrite support_pop. unfold fresh_block.
-  unfold sup_pop.
-  destruct (stack (support m1)); reflexivity.
+  unfold nextblock. unfold fresh_block.
+  erewrite <- sup_pop_stage_supp. reflexivity.
+  apply support_pop_stage.
 Qed.
 
-Theorem valid_block_pop_1:
+Theorem valid_block_pop_stage_1:
   forall b, valid_block m1 b -> valid_block m2 b.
 Proof.
-  unfold valid_block. rewrite support_pop. unfold sup_In. rewrite <- sup_pop_supp. auto.
+  unfold valid_block.  unfold sup_In. erewrite sup_pop_stage_supp. eauto. apply support_pop_stage.
 Qed.
 
-Theorem valid_block_pop_2:
+Theorem valid_block_pop_stage_2:
   forall b, valid_block m2 b -> valid_block m1 b.
 Proof.
-  unfold valid_block. rewrite support_pop. unfold sup_In. rewrite <- sup_pop_supp. auto.
+    unfold valid_block.  unfold sup_In. erewrite <- sup_pop_stage_supp. eauto. apply support_pop_stage.
 Qed.
 
-Local Hint Resolve valid_block_free_1 valid_block_free_2: mem.
+Local Hint Resolve valid_block_pop_stage_1 valid_block_pop_stage_2: mem.
 
-Theorem perm_pop:
+Theorem perm_pop_stage:
   forall b ofs k p,
   perm m1 b ofs k p <->
   perm m2 b ofs k p.
 Proof.
   split.
-  intros. rewrite pop_result. unfold perm, unchecked_pop; simpl.
-  auto.
-
-  rewrite pop_result. unfold perm, unchecked_free; simpl.
-  auto.
+  intros. unfold pop_stage in POP_STAGE. destruct (stack(support m1)); auto.
+  discriminate. inv POP_STAGE. auto.
+ intros. unfold pop_stage in POP_STAGE. destruct (stack(support m1)); auto.
+  discriminate. inv POP_STAGE. auto.
 Qed.
 
 
-Theorem valid_access_pop:
+Theorem valid_access_pop_stage:
   forall chunk b ofs p,
   valid_access m1 chunk b ofs p <->
   valid_access m2 chunk b ofs p.
 Proof.
   split.
   intros. inv H. constructor; auto with mem.
-  red; intros. eapply perm_pop; eauto.
+  red; intros. eapply perm_pop_stage; eauto.
   intros. inv H. constructor; auto with mem.
-  red; intros. eapply perm_pop; eauto.
+  red; intros. eapply perm_pop_stage; eauto.
 Qed.
 
-Theorem load_pop:
+Theorem load_pop_stage:
   forall chunk b ofs,
   load chunk m2 b ofs = load chunk m1 b ofs.
 Proof.
-  intros. unfold load.
-  destruct (valid_access_dec m2 chunk b ofs Readable).
-  rewrite pred_dec_true.
-  rewrite pop_result; auto.
-  eapply valid_access_pop; eauto.
-  rewrite pred_dec_false; auto.
-  red; intro; elim n. eapply valid_access_pop; eauto.
+  intros. unfold pop_stage in POP_STAGE. destruct (stack(support m1)); auto. discriminate. inv POP_STAGE. simpl. reflexivity.
 Qed.
 
-Theorem load_pop_2:
-  forall chunk b ofs v,
-  load chunk m2 b ofs = Some v -> load chunk m1 b ofs = Some v.
-Proof.
-  intros. unfold load. rewrite pred_dec_true.
-  rewrite (load_result _ _ _ _ _ H). rewrite pop_result; auto.
-  apply valid_access_pop. eauto with mem.
-Qed.
-
-Theorem loadbytes_pop:
+Theorem loadbytes_pop_stage:
   forall b ofs n,
   loadbytes m2 b ofs n = loadbytes m1 b ofs n.
 Proof.
-  intros. unfold loadbytes.
-  destruct (range_perm_dec m2 b ofs (ofs + n) Cur Readable).
-  rewrite pred_dec_true.
-  rewrite pop_result; auto.
-  red; intros. eapply perm_pop; eauto.
-  rewrite pred_dec_false; auto.
-  red; intros. elim n0; red; intros.
-  eapply perm_pop; eauto.
+  intros. unfold pop_stage in POP_STAGE. destruct (stack(support m1)); auto. discriminate. inv POP_STAGE. simpl. reflexivity.
 Qed.
 
-Theorem loadbytes_pop_2:
-  forall b ofs n bytes,
-  loadbytes m2 b ofs n = Some bytes -> loadbytes m1 b ofs n = Some bytes.
-Proof.
-  intros. unfold loadbytes in *.
-  destruct (range_perm_dec m2 b ofs (ofs + n) Cur Readable); inv H.
-  rewrite pred_dec_true. rewrite pop_result; auto.
-  red; intros. apply perm_pop; auto.
-Qed.
 
-End POP.
+End POP_STAGE.
 
-Local Hint Resolve valid_block_pop_1 valid_block_pop_2
-             perm_pop
-             valid_access_pop: mem.
+Local Hint Resolve valid_block_pop_stage_1 valid_block_pop_stage_2
+             perm_pop_stage
+             valid_access_pop_stage: mem.
 
-Section PUSH.
+Section PUSH_STAGE.
 
 Variable m1: mem.
 Variable m2: mem.
-Hypothesis PUSH: push m1 = m2.
+Hypothesis PUSH_STAGE: push_stage m1 = m2.
 
-Lemma support_push :
-    support m2 = sup_push (support m1).
+Lemma support_push_stage :
+    support m2 = sup_push_stage (support m1).
 Proof.
-  intros. unfold push in PUSH. rewrite <- PUSH.
+  intros. unfold push_stage in PUSH_STAGE. rewrite <- PUSH_STAGE.
   reflexivity.
 Qed.
 
-Theorem nextblock_push:
+Theorem nextblock_push_stage:
   nextblock m2 = nextblock m1.
 Proof.
-  unfold nextblock. rewrite support_push. unfold fresh_block.
+  unfold nextblock. rewrite support_push_stage. unfold fresh_block.
   reflexivity.
 Qed.
 
-Theorem valid_block_push_1:
+Theorem valid_block_push_stage_1:
   forall b, valid_block m1 b -> valid_block m2 b.
 Proof.
-  unfold valid_block. rewrite support_push. unfold sup_In. rewrite <- sup_push_supp. auto.
+  unfold valid_block. rewrite support_push_stage. unfold sup_In. rewrite <- sup_push_stage_supp. auto.
 Qed.
 
-Theorem valid_block_push_2:
+Theorem valid_block_push_stage_2:
   forall b, valid_block m2 b -> valid_block m1 b.
 Proof.
-  unfold valid_block. rewrite support_push. unfold sup_In. rewrite <- sup_push_supp. auto.
+  unfold valid_block. rewrite support_push_stage. unfold sup_In. rewrite <- sup_push_stage_supp. auto.
 Qed.
 
-Local Hint Resolve valid_block_push_1 valid_block_push_2: mem.
+Local Hint Resolve valid_block_push_stage_1 valid_block_push_stage_2: mem.
 
-Theorem perm_push:
+Theorem perm_push_stage:
   forall b ofs k p,
   perm m1 b ofs k p <->
   perm m2 b ofs k p.
 Proof.
   split.
-  intros. rewrite <- PUSH. unfold perm; simpl.
+  intros. rewrite <- PUSH_STAGE. unfold perm; simpl.
   auto.
-  intros. rewrite <- PUSH in H. unfold perm in H; simpl.
+  intros. rewrite <- PUSH_STAGE in H. unfold perm in H; simpl.
   auto.
 Qed.
 
-Theorem valid_access_push:
+Theorem valid_access_push_stage:
   forall chunk b ofs p,
   valid_access m1 chunk b ofs p <->
   valid_access m2 chunk b ofs p.
@@ -2590,184 +2597,163 @@ Proof.
   intros. inv H. constructor; auto with mem.
 Qed.
 
-Theorem load_push:
+Theorem load_push_stage:
   forall chunk b ofs,
   load chunk m2 b ofs = load chunk m1 b ofs.
 Proof.
   intros. unfold load.
   destruct (valid_access_dec m2 chunk b ofs Readable).
-  rewrite pred_dec_true. rewrite <- PUSH. reflexivity.
-  eapply valid_access_push; eauto.
+  rewrite pred_dec_true. rewrite <- PUSH_STAGE. reflexivity.
+  eapply valid_access_push_stage; eauto.
   rewrite pred_dec_false; auto.
-  red; intro; elim n. eapply valid_access_push; eauto.
+  red; intro; elim n. eapply valid_access_push_stage; eauto.
 Qed.
 
-Theorem load_push_2:
+Theorem load_push_stage_2:
   forall chunk b ofs v,
   load chunk m2 b ofs = Some v -> load chunk m1 b ofs = Some v.
 Proof.
   intros. unfold load. rewrite pred_dec_true.
-  rewrite (load_result _ _ _ _ _ H). rewrite <- PUSH. reflexivity.
-  apply valid_access_push. eauto with mem.
+  rewrite (load_result _ _ _ _ _ H). rewrite <- PUSH_STAGE. reflexivity.
+  apply valid_access_push_stage. eauto with mem.
 Qed.
 
-Theorem loadbytes_push:
+Theorem loadbytes_push_stage:
   forall b ofs n,
   loadbytes m2 b ofs n = loadbytes m1 b ofs n.
 Proof.
   intros. unfold loadbytes.
   destruct (range_perm_dec m2 b ofs (ofs + n) Cur Readable).
   rewrite pred_dec_true.
-  rewrite <- PUSH. reflexivity.
-  red; intros. eapply perm_push; eauto.
+  rewrite <- PUSH_STAGE. reflexivity.
+  red; intros. eapply perm_push_stage; eauto.
   rewrite pred_dec_false; auto.
   red; intros. elim n0; red; intros.
-  eapply perm_push; eauto.
+  eapply perm_push_stage; eauto.
 Qed.
 
-End PUSH.
+End PUSH_STAGE.
 (*
-Local Hint Resolve valid_block_push_1 valid_block_push_2
-             perm_push
-             valid_access_push: mem.
+Local Hint Resolve valid_block_push_stage_1 valid_block_push_stage_2
+             perm_push_stage
+             valid_access_push_stage: mem.
 *)
-Lemma nonempty_record : forall m1 sz,
-   stack_mem m1 <> nil -> {m2:mem| record m1 sz = Some m2}.
+
+
+Lemma nonempty_record_frame : forall m1 sz,
+   stack (support m1) <> nil -> {m2:mem| record_frame m1 sz = Some m2}.
 Proof.
-  intros; unfold record. rewrite pred_dec_false; auto. econstructor; eauto.
+  intros; unfold record_frame. destruct (stack (support m1)); auto.
+  congruence. econstructor; eauto.
 Qed.
 
-Section RECORD.
+Section RECORD_FRAME.
 
 Variable m1: mem.
 Variable m2: mem.
 Variable sz: Z.
 
-Hypothesis RECORD: record m1 sz = Some m2.
+Hypothesis RECORD_FRAME: record_frame m1 sz = Some m2.
 
-Lemma record_nonempty :
-   stack_mem m1 <> nil.
+Lemma record_frame_nonempty :
+   stack (support m1) <> nil.
 Proof.
-  intros. unfold record in RECORD. destruct (empty_stack_dec m1); auto.
-  discriminate.
+  intros. unfold record_frame in RECORD_FRAME. destruct (stack (support m1)); auto.
+  discriminate. congruence.
 Qed.
 
-Theorem record_result :
-  m2 = unchecked_record m1 sz.
+Lemma support_record_frame :
+    sup_record_frame sz (support m1) = Some (support m2).
 Proof.
-  intros. unfold record in RECORD. destruct (empty_stack_dec m1); auto.
-  congruence. congruence.
+  intros. unfold record_frame in RECORD_FRAME. destruct (stack (support m1))eqn: H0; auto.
+  discriminate. inv RECORD_FRAME. unfold sup_record_frame. rewrite H0. simpl. reflexivity.
 Qed.
 
-Lemma support_record :
-    support m2 = sup_record sz (support m1).
+Lemma stack_record_frame : exists hd tl,
+  stack (support m1) = hd::tl /\
+  stack (support m2) = (sz::hd)::tl.
 Proof.
-  intros. unfold record in RECORD. destruct (empty_stack_dec m1); auto.
-  discriminate. inv RECORD. reflexivity.
+  intros. unfold record_frame in RECORD_FRAME. destruct (stack(support m1)).
+  discriminate. inv RECORD_FRAME.
+  exists s. exists s0. auto.
 Qed.
 
+Lemma supp_record_frame :
+  supp (support m1) = supp (support m2).
+Proof.
+  intros. unfold record_frame in RECORD_FRAME. destruct (stack (support m1)).
+  discriminate. inv RECORD_FRAME. auto.
+Qed.
 
-Theorem nextblock_record:
+Theorem nextblock_record_frame:
   nextblock m2 = nextblock m1.
 Proof.
-  unfold nextblock. rewrite support_record. unfold fresh_block.
-  unfold sup_record.
-  destruct (stack (support m1)); reflexivity.
+  unfold nextblock. unfold fresh_block.
+  erewrite <- sup_record_frame_supp; eauto. apply support_record_frame.
 Qed.
 
-Theorem valid_block_record_1:
+Theorem valid_block_record_frame_1:
   forall b, valid_block m1 b -> valid_block m2 b.
 Proof.
-  unfold valid_block. rewrite support_record. unfold sup_In. rewrite <- sup_record_supp.
-  auto.
+  unfold valid_block. unfold sup_In. erewrite sup_record_frame_supp; eauto.
+  apply support_record_frame.
 Qed.
 
-Theorem valid_block_record_2:
+Theorem valid_block_record_frame_2:
   forall b, valid_block m2 b -> valid_block m1 b.
 Proof.
-  unfold valid_block. rewrite support_record. unfold sup_In. rewrite <- sup_record_supp.
-  auto.
+  unfold valid_block. unfold sup_In. erewrite <- sup_record_frame_supp; eauto.
+  apply support_record_frame.
 Qed.
 
-Local Hint Resolve valid_block_record_1 valid_block_record_2: mem.
+Local Hint Resolve valid_block_record_frame_1 valid_block_record_frame_2: mem.
 
-Theorem perm_record:
+Theorem perm_record_frame:
   forall b ofs k p,
   perm m1 b ofs k p <->
   perm m2 b ofs k p.
 Proof.
   split.
-  intros. rewrite record_result. unfold perm, unchecked_record; simpl.
-  auto.
-
-  rewrite record_result. unfold perm, unchecked_free; simpl.
-  auto.
+  intros. unfold record_frame in RECORD_FRAME. destruct (stack(support m1)); auto.
+  discriminate. inv RECORD_FRAME. auto.
+  intros. unfold record_frame in RECORD_FRAME. destruct (stack(support m1)); auto.
+  discriminate. inv RECORD_FRAME. auto.
 Qed.
 
 
-Theorem valid_access_record:
+Theorem valid_access_record_frame:
   forall chunk b ofs p,
   valid_access m1 chunk b ofs p <->
   valid_access m2 chunk b ofs p.
 Proof.
   split.
   intros. inv H. constructor; auto with mem.
-  red; intros. eapply perm_record; eauto.
+  red; intros. eapply perm_record_frame; eauto.
   intros. inv H. constructor; auto with mem.
-  red; intros. eapply perm_record; eauto.
+  red; intros. eapply perm_record_frame; eauto.
 Qed.
 
-Theorem load_record:
+Theorem load_record_frame:
   forall chunk b ofs,
   load chunk m2 b ofs = load chunk m1 b ofs.
 Proof.
-  intros. unfold load.
-  destruct (valid_access_dec m2 chunk b ofs Readable).
-  rewrite pred_dec_true.
-  rewrite record_result; auto.
-  eapply valid_access_record; eauto.
-  rewrite pred_dec_false; auto.
-  red; intro; elim n. eapply valid_access_record; eauto.
+  intros. unfold record_frame in RECORD_FRAME. destruct (stack(support m1)); auto.
+  discriminate. inv RECORD_FRAME. reflexivity.
 Qed.
 
-Theorem load_record_2:
-  forall chunk b ofs v,
-  load chunk m2 b ofs = Some v -> load chunk m1 b ofs = Some v.
-Proof.
-  intros. unfold load. rewrite pred_dec_true.
-  rewrite (load_result _ _ _ _ _ H). rewrite record_result; auto.
-  apply valid_access_record. eauto with mem.
-Qed.
-
-Theorem loadbytes_record:
+Theorem loadbytes_record_frame:
   forall b ofs n,
   loadbytes m2 b ofs n = loadbytes m1 b ofs n.
 Proof.
-  intros. unfold loadbytes.
-  destruct (range_perm_dec m2 b ofs (ofs + n) Cur Readable).
-  rewrite pred_dec_true.
-  rewrite record_result; auto.
-  red; intros. eapply perm_record; eauto.
-  rewrite pred_dec_false; auto.
-  red; intros. elim n0; red; intros.
-  eapply perm_record; eauto.
+  intros. unfold record_frame in RECORD_FRAME. destruct (stack(support m1)); auto.
+  discriminate. inv RECORD_FRAME. reflexivity.
 Qed.
 
-Theorem loadbytes_record_2:
-  forall b ofs n bytes,
-  loadbytes m2 b ofs n = Some bytes -> loadbytes m1 b ofs n = Some bytes.
-Proof.
-  intros. unfold loadbytes in *.
-  destruct (range_perm_dec m2 b ofs (ofs + n) Cur Readable); inv H.
-  rewrite pred_dec_true. rewrite record_result; auto.
-  red; intros. apply perm_record; auto.
-Qed.
+End RECORD_FRAME.
 
-End RECORD.
-
-Local Hint Resolve valid_block_record_1 valid_block_record_2
-             perm_record
-             valid_access_record: mem.
+Local Hint Resolve valid_block_record_frame_1 valid_block_record_frame_2
+             perm_record_frame
+             valid_access_record_frame: mem.
 (** ** Properties related to [drop_perm] *)
 
 Theorem range_perm_drop_1:
@@ -3438,105 +3424,105 @@ Proof.
   intros. rewrite FREE; simpl. eauto.
 Qed.
 
-Lemma push_left_inj:
+Lemma push_stage_left_inj:
   forall f m1 m2 m1',
   mem_inj f m1 m2 ->
-  push m1 = m1' ->
+  push_stage m1 = m1' ->
   mem_inj f m1' m2.
 Proof.
   intros. inversion H. constructor.
 (* perm *)
-  intros. eapply mi_perm0; eauto. eapply perm_push; eauto.
+  intros. eapply mi_perm0; eauto. eapply perm_push_stage; eauto.
 (* align *)
   intros. eapply mi_align0 with (ofs := ofs) (p := p); eauto.
-  red; intros; eapply perm_push; eauto.
+  red; intros; eapply perm_push_stage; eauto.
 (* mem_contents *)
   intros. rewrite <- H0; simpl. eapply mi_memval0; eauto.
-  eapply perm_push; eauto.
+  eapply perm_push_stage; eauto.
 Qed.
 
-Lemma push_right_inj:
+Lemma push_stage_right_inj:
   forall f m1 m2 m2',
   mem_inj f m1 m2 ->
-  push m2 = m2' ->
+  push_stage m2 = m2' ->
   mem_inj f m1 m2'.
 Proof.
   intros. inversion H.
   constructor.
 (* perm *)
-  intros. eapply perm_push in H0. apply H0. eauto.
+  intros. eapply perm_push_stage in H0. apply H0. eauto.
 (* align *)
   eapply mi_align0; eauto.
 (* mem_contents *)
   intros. rewrite <- H0; simpl. eauto.
 Qed.
 
-Lemma pop_left_inj:
+Lemma pop_stage_left_inj:
   forall f m1 m2 m1',
   mem_inj f m1 m2 ->
-  pop m1 = Some m1' ->
+  pop_stage m1 = Some m1' ->
   mem_inj f m1' m2.
 Proof.
-  intros. exploit pop_result; eauto. intro POP. inversion H. constructor.
+  intros. unfold pop_stage in H0. destruct (stack(support m1)).
+  discriminate. inv H0. inversion H.
+  constructor.
 (* perm *)
-  intros. eapply mi_perm0; eauto. eapply perm_pop; eauto.
+  intros. simpl. eapply mi_perm0; eauto.
 (* align *)
   intros. eapply mi_align0 with (ofs := ofs) (p := p); eauto.
-  red; intros; eapply perm_pop; eauto.
 (* mem_contents *)
-  intros. rewrite POP; simpl. eapply mi_memval0; eauto.
-  eapply perm_pop; eauto.
+  intros. eapply mi_memval0; eauto.
 Qed.
 
-Lemma pop_right_inj:
+Lemma pop_stage_right_inj:
   forall f m1 m2 m2',
   mem_inj f m1 m2 ->
-  pop m2 = Some m2' ->
+  pop_stage m2 = Some m2' ->
   mem_inj f m1 m2'.
 Proof.
-  intros. exploit pop_result; eauto. intro POP. inversion H.
+  intros. unfold pop_stage in H0. destruct (stack(support m2)).
+  discriminate. inv H0. inversion H.
   constructor.
 (* perm *)
-  intros. eapply perm_pop in H0. apply H0. eauto.
-(* align *)
-  eapply mi_align0; eauto.
-(* mem_contents *)
-  intros. rewrite POP; simpl. eauto.
-Qed.
-
-
-
-Lemma record_left_inj:
-  forall f m1 m2 m1' sz,
-  mem_inj f m1 m2 ->
-  record m1 sz = Some m1' ->
-  mem_inj f m1' m2.
-Proof.
-  intros. exploit record_result; eauto. intro RECORD. inversion H. constructor.
-(* perm *)
-  intros. eapply mi_perm0; eauto. eapply perm_record; eauto.
+  intros. simpl. eapply mi_perm0; eauto.
 (* align *)
   intros. eapply mi_align0 with (ofs := ofs) (p := p); eauto.
-  red; intros; eapply perm_record; eauto.
 (* mem_contents *)
-  intros. rewrite RECORD; simpl. eapply mi_memval0; eauto.
-  eapply perm_record; eauto.
+  intros. eapply mi_memval0; eauto.
 Qed.
 
-Lemma record_right_inj:
-  forall f m1 m2 m2' sz,
+Lemma record_frame_left_inj:
+  forall f sz m1 m2 m1',
   mem_inj f m1 m2 ->
-  record m2 sz = Some m2' ->
-  mem_inj f m1 m2'.
+  record_frame m1 sz = Some m1' ->
+  mem_inj f m1' m2.
 Proof.
-  intros. exploit record_result; eauto. intro RECORD. inversion H.
+  intros. unfold record_frame in H0. destruct (stack(support m1)).
+  discriminate. inv H0. inversion H.
   constructor.
 (* perm *)
-  intros. eapply perm_record in H0. apply H0. eauto.
+  intros. simpl. eapply mi_perm0; eauto.
 (* align *)
-  eapply mi_align0; eauto.
+  intros. eapply mi_align0 with (ofs := ofs) (p := p); eauto.
 (* mem_contents *)
-  intros. rewrite RECORD; simpl. eauto.
+  intros. eapply mi_memval0; eauto.
+Qed.
+
+Lemma record_frame_right_inj:
+  forall f sz m1 m2 m2',
+  mem_inj f m1 m2 ->
+  record_frame m2 sz = Some m2' ->
+  mem_inj f m1 m2'.
+Proof.
+  intros. unfold record_frame in H0. destruct (stack(support m2)).
+  discriminate. inv H0. inversion H.
+  constructor.
+(* perm *)
+  intros. simpl. eapply mi_perm0; eauto.
+(* align *)
+  intros. eapply mi_align0 with (ofs := ofs) (p := p); eauto.
+(* mem_contents *)
+  intros. eapply mi_memval0; eauto.
 Qed.
 
 (** Preservation of [drop_perm] operations. *)
@@ -3796,40 +3782,39 @@ Proof.
   intros. eauto using perm_storebytes_2.
 Qed.
 
-Theorem push_extends':
+Theorem push_stage_extends':
   forall m1 m2,
   extends' m1 m2 ->
-  extends' (push m1) (push m2).
+  extends' (push_stage m1) (push_stage m2).
 Proof.
   intros. inv H.
-  constructor; unfold push;simpl.
+  constructor; unfold push_stage;simpl.
   - rewrite mext_sup0. reflexivity.
   - inv mext_inj0. constructor; auto.
   - auto.
 Qed.
 
-Theorem pop_left_extends' : forall m1 m1' m2,
+Theorem pop_stage_left_extends' : forall m1 m1' m2,
     extends' m1 m2 ->
-    pop m1 = Some m1' ->
+    pop_stage m1 = Some m1' ->
     extends' m1' m2.
 Proof.
   intros. inv H. constructor.
-  symmetry. apply support_pop in H0.
-  rewrite H0. rewrite <- mext_sup0. apply sup_pop_supp.
-  eapply pop_left_inj; eauto.
-  intros. apply mext_perm_inv0 in H. destruct H.
-  left. eapply perm_pop in H0. apply H0. auto.
-  right. eapply perm_pop in H0. intro.
-  apply H. apply H0. auto.
+  - erewrite <- supp_pop_stage; eauto.
+  - eapply pop_stage_left_inj; eauto.
+  - intros. apply mext_perm_inv0 in H. destruct H.
+    left. eapply perm_pop_stage in H0. apply H0. auto.
+    right. eapply perm_pop_stage in H0. intro. apply H.
+    apply H0. auto.
 Qed.
 
-Theorem push_left_extends' : forall m1 m1' m2,
+Theorem push_stage_left_extends' : forall m1 m1' m2,
     extends' m1 m2 ->
-    push m1 = m1' ->
+    push_stage m1 = m1' ->
     extends' m1' m2.
 Proof.
   intros. inv H. constructor; eauto.
-  eapply push_left_inj; eauto.
+  eapply push_stage_left_inj; eauto.
 Qed.
 
 Theorem alloc_extends':
@@ -4085,13 +4070,13 @@ Proof.
   rewrite (support_storebytes _ _ _ _ _ H0). auto.
 Qed.
 
-Theorem push_extends:
+Theorem push_stage_extends:
   forall m1 m2,
   extends m1 m2 ->
-  extends (push m1) (push m2).
+  extends (push_stage m1) (push_stage m2).
 Proof.
-  intros. inv H. split. apply push_extends'. auto.
-  unfold stackeq in *. unfold push. simpl. congruence.
+  intros. inv H. split. apply push_stage_extends'. auto.
+  unfold stackeq in *. unfold push_stage. simpl. congruence.
 Qed.
 
 Theorem alloc_extends:
@@ -4150,71 +4135,98 @@ Proof.
   rewrite (support_free _ _ _ _ _ A). auto.
 Qed.
 
-Theorem pop_extends:
+Theorem pop_stage_extends:
   forall (m1 m2 m1':mem),
   extends m1 m2 ->
-  pop m1 = Some m1' ->
+  pop_stage m1 = Some m1' ->
   exists m2',
-    pop m2 = Some m2'
+    pop_stage m2 = Some m2'
     /\ extends m1' m2'.
 Proof.
   intros. inversion H.
-  assert ({m2':mem|pop m2 = Some m2'}).
-    apply nonempty_pop. unfold stack_mem. unfold stackeq in H2.
-    rewrite <- H2. eapply pop_nonempty. eauto.
-  destruct X as [m2' POP]. exists m2'; split; auto. split.
+  assert ({m2':mem|pop_stage m2 = Some m2'}).
+    apply nonempty_pop_stage. unfold stackeq in H2.
+    rewrite <- H2. eapply pop_stage_nonempty. eauto.
+  destruct X as [m2' POP_STAGE]. exists m2'; split; auto. split.
    inv H1.
   constructor.
-  - apply support_pop in H0. apply support_pop in POP.
-    rewrite H0. rewrite POP. rewrite <- sup_pop_supp.
-    rewrite <- sup_pop_supp. auto.
-  - eapply pop_right_inj with (m1 := m1'); eauto.
-    eapply pop_left_inj; eauto.
-  - intros. exploit mext_perm_inv0. eapply perm_pop in POP; eauto. apply POP in H1.
+  - apply supp_pop_stage in H0. apply supp_pop_stage in POP_STAGE.
+    congruence.
+  - eapply pop_stage_right_inj with (m1 := m1'); eauto.
+    eapply pop_stage_left_inj; eauto.
+  - intros. exploit mext_perm_inv0. eapply perm_pop_stage in POP_STAGE; eauto. apply POP_STAGE in H1.
     apply H1. intros [A|A].
-    eapply perm_pop in H0; eauto. left. apply H0. auto.
+    eapply perm_pop_stage in H0; eauto. left. apply H0. auto.
     right; intuition eauto.
-    apply A. eapply perm_pop in H0; eauto. apply H0. auto.
+    apply A. eapply perm_pop_stage in H0; eauto. apply H0. auto.
   - unfold stackeq in *.
-    rewrite  (support_pop _ _ H0).
-    rewrite (support_pop _ _ POP).
-    unfold sup_pop. destruct (stack (support m1)) eqn:Hstk.
-    rewrite <- H2. congruence.
-    rewrite <- H2. reflexivity.
+    destruct (stack_pop_stage _ _ H0).
+    destruct (stack_pop_stage _ _ POP_STAGE).
+    congruence.
 Qed.
 
-Theorem record_extends:
+Theorem record_frame_extends:
   forall (m1 m2 m1':mem) sz,
   extends m1 m2 ->
-  record m1 sz = Some m1' ->
+  record_frame m1 sz = Some m1' ->
   exists m2',
-    record m2 sz = Some m2'
+    record_frame m2 sz = Some m2'
     /\ extends m1' m2'.
 Proof.
   intros. inversion H.
-  assert ({m2':mem|record m2 sz = Some m2'}).
-    apply nonempty_record. unfold stack_mem.
+  assert ({m2':mem|record_frame m2 sz = Some m2'}).
+    apply nonempty_record_frame.
     rewrite <- H2.
-    eapply record_nonempty; eauto.
-  destruct X as [m2' RECORD]. exists m2'; split; auto. inv H1. split.
+    eapply record_frame_nonempty; eauto.
+  destruct X as [m2' RECORD_FRAME]. exists m2'; split; auto. inv H1. split.
   constructor.
-  - rewrite (support_record _ _ _ H0).
-    rewrite (support_record _ _ _ RECORD).
-    rewrite <- sup_record_supp.
-    rewrite <- sup_record_supp. auto.
-  - eapply record_right_inj with (m1 := m1'); eauto.
-    eapply record_left_inj; eauto.
-  - intros. exploit mext_perm_inv0. eapply perm_record in RECORD; eauto. apply RECORD in H1.
+  - apply supp_record_frame in H0. apply supp_record_frame in RECORD_FRAME.
+    congruence.
+  - eapply record_frame_right_inj with (m1 := m1'); eauto.
+    eapply record_frame_left_inj; eauto.
+  - intros. exploit mext_perm_inv0. eapply perm_record_frame in RECORD_FRAME; eauto. apply RECORD_FRAME in H1.
     apply H1. intros [A|A].
-    eapply perm_record in H0; eauto. left. apply H0. auto.
+    eapply perm_record_frame in H0; eauto. left. apply H0. auto.
     right; intuition eauto.
-    apply A. eapply perm_record in H0; eauto. apply H0. auto.
+    apply A. eapply perm_record_frame in H0; eauto. apply H0. auto.
   - unfold stackeq in *.
-    rewrite (support_record _ _ _ H0).
-    rewrite (support_record _ _ _ RECORD).
-    unfold sup_record. destruct (stack (support m1)) eqn:Hstk.
-    rewrite <- H2. congruence.
-    rewrite <- H2. reflexivity.
+    destruct (stack_record_frame _ _ _ H0) as (hd & tl & A & B).
+    destruct (stack_record_frame _ _ _ RECORD_FRAME) as (hd' & tl' & A' & B').
+    congruence.
+Qed.
+
+Theorem record_frame_vm_extends:
+  forall (m1 m2 m1':mem) sz,
+  extends m1 m2 ->
+  record_frame_vm m1 sz = Some m1' ->
+  exists m2',
+    record_frame_vm m2 sz = Some m2'
+    /\ extends m1' m2'.
+Proof.
+  intros. unfold record_frame_vm in *.
+  destruct (record_frame m1 sz) eqn:RECORD.
+  destruct (zle (stack_size_vm(stack (support m))) (max_stacksize)).
+  exploit record_frame_extends; eauto. intros (m2'& A & B & C).
+  exists m2'. inv H0. rewrite A. rewrite <- C.
+  rewrite zle_true; auto. split; auto. split; auto.
+  discriminate. discriminate.
+Qed.
+
+Theorem record_frame_mach_extends:
+  forall (m1 m2 m1':mem) sz,
+  extends m1 m2 ->
+  record_frame_mach m1 sz = Some m1' ->
+  exists m2',
+    record_frame_mach m2 sz = Some m2'
+    /\ extends m1' m2'.
+Proof.
+  intros. unfold record_frame_mach in *.
+  destruct (record_frame m1 sz) eqn:RECORD.
+  destruct (zle (stack_size_mach(stack (support m))) (max_stacksize)).
+  exploit record_frame_extends; eauto. intros (m2'& A & B & C).
+  exists m2'. inv H0. rewrite A. rewrite <- C.
+  rewrite zle_true; auto. split; auto. split; auto.
+  discriminate. discriminate.
 Qed.
 
 Theorem valid_block_extends:
