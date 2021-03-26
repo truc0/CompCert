@@ -478,7 +478,7 @@ Proof.
   econstructor; simpl; auto. rewrite Heqo. eauto.
   simpl in *. lia.
 Qed.
-
+(* to mem*)
 Lemma stack_size_vm_app : forall s1 s2,
     Mem.stack_size_vm (s1++s2) = Mem.stack_size_vm s1 + Mem.stack_size_vm s2.
 Proof.
@@ -750,8 +750,8 @@ Proof.
   apply Mem.record_frame_vm_size in H0 as H1.
   inversion H10. subst.
     (*we need stacksize here*)
-  assert ({m'2:mem|Mem.record_frame_vm m'1 sz = Some m'2}).
-    assert ({m'2:mem|Mem.record_frame m'1 sz = Some m'2}).
+  assert ({m'2:mem|Mem.record_frame_vm m'1 (Mem.mk_frame sz) = Some m'2}).
+    assert ({m'2:mem|Mem.record_frame m'1 (Mem.mk_frame sz) = Some m'2}).
     apply Mem.nonempty_record_frame.
     apply Mem.support_alloc in ALLOC. rewrite ALLOC. simpl.
     congruence.

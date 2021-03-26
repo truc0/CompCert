@@ -104,20 +104,31 @@ End NMap.
 
 Module Sup <: SUP.
 
-Definition frame := Z.
+Record frame : Type :=
+  {
+    frame_size : Z;
+    frame_size_pos:
+      (0 <= frame_size)%Z;
+  }.
+
+Definition mk_frame (sz:Z) :=
+  {|
+   frame_size := Z.max 0 sz;
+   frame_size_pos := Z.le_max_l _ _
+  |}.
 
 Definition stage := list frame.
 
 Fixpoint size_of_all_frames (t:stage) : Z :=
   match t with
     |nil => 0
-    |hd :: tl => hd + size_of_all_frames tl
+    |hd :: tl => (frame_size hd) + size_of_all_frames tl
   end.
 
 Definition size_of_head_frame (t:stage) : Z :=
   match t with
     |nil => 0
-    |hd::tl => hd
+    |hd::tl => (frame_size hd)
   end.
 
 Definition stackadt := list stage.
@@ -133,6 +144,58 @@ Fixpoint stack_size_mach (s:stackadt): Z :=
     |nil => 0
     |hd::tl => (size_of_head_frame hd) + stack_size_mach tl
   end.
+
+Lemma size_of_all_frames_pos:
+  forall t,
+    (0 <= size_of_all_frames t)%Z.
+Proof.
+  intros. induction t.
+  simpl. lia.
+  simpl. generalize (frame_size_pos a). intro.
+  lia.
+Qed.
+
+Lemma size_of_head_frame_pos:
+  forall t,
+    (0 <= size_of_head_frame t)%Z.
+Proof.
+  intros. destruct t.
+  simpl. lia.
+  simpl.
+  apply frame_size_pos.
+Qed.
+
+Lemma stack_size_vm_pos:
+  forall s,
+    (0 <= stack_size_vm s)%Z.
+Proof.
+  induction s; simpl; intros; eauto. lia.
+  generalize (size_of_all_frames_pos a); lia.
+Qed.
+
+Lemma stack_size_mach_pos:
+  forall s,
+    (0 <= stack_size_mach s)%Z.
+Proof.
+  induction s; simpl; intros; eauto. lia.
+  generalize (size_of_head_frame_pos a); lia.
+Qed.
+
+Lemma stack_size_vm_tl:
+  forall l,
+    (stack_size_vm (tl l) <= stack_size_vm l)%Z.
+Proof.
+  induction l; simpl; intros. lia.
+  generalize (size_of_all_frames_pos a); lia.
+Qed.
+
+Lemma stack_size_mach_tl:
+  forall l,
+    (stack_size_mach (tl l) <= stack_size_mach l)%Z.
+Proof.
+  induction l; simpl; intros. lia.
+  generalize (size_of_head_frame_pos a); lia.
+Qed.
 
 Definition max_stacksize : Z := 4096.
 
@@ -150,10 +213,6 @@ Definition empty_in: forall b, ~ sup_In b sup_empty.
 Proof. intros. auto. Qed.
 Definition sup_dec : forall b s, {sup_In b s}+{~sup_In b s}.
 Proof. intros. unfold sup_In. apply In_dec. apply eq_block. Qed.
-(*
-Parameter fresh_block : sup -> block.
-Parameter freshness : forall s, ~sup_In (fresh_block s) s.
-*)
 
 Fixpoint find_max_pos (l: list positive) : positive :=
   match l with
@@ -687,12 +746,12 @@ Proof.
   destruct support0. reflexivity.
 Qed.
 
-Program Definition record_frame (m:mem)(sz:Z) :=
+Program Definition record_frame (m:mem)(fr:frame) :=
   match stack (support m) with
     |hd::tl =>
        Some (mkmem m.(mem_contents)
          m.(mem_access)
-         (mksup (supp (support m)) ((sz::hd)::tl))
+         (mksup (supp (support m)) ((fr::hd)::tl))
          m.(access_max)
          m.(nextblock_noaccess)
          m.(contents_default)
@@ -700,15 +759,15 @@ Program Definition record_frame (m:mem)(sz:Z) :=
     |nil => None
   end.
 
-Definition record_frame_mach (m:mem)(sz:Z) :=
-  match record_frame m sz with
+Definition record_frame_mach (m:mem)(fr:frame) :=
+  match record_frame m fr with
     |Some m' => if (zle (stack_size_mach (stack(support m')))  max_stacksize)
                      then Some m' else None
     |None => None
   end.
 
-Definition record_frame_vm (m:mem)(sz:Z) :=
-  match record_frame m sz with
+Definition record_frame_vm (m:mem)(fr:frame) :=
+  match record_frame m fr with
     |Some m' => if (zle (stack_size_vm (stack(support m')))  max_stacksize)
                      then Some m' else None
     |None => None
@@ -2698,9 +2757,9 @@ Section RECORD_FRAME.
 
 Variable m1: mem.
 Variable m2: mem.
-Variable sz: Z.
+Variable fr: frame.
 
-Hypothesis RECORD_FRAME: record_frame m1 sz = Some m2.
+Hypothesis RECORD_FRAME: record_frame m1 fr = Some m2.
 
 Lemma record_frame_nonempty :
    stack (support m1) <> nil.
@@ -2710,7 +2769,7 @@ Proof.
 Qed.
 
 Lemma support_record_frame :
-    sup_record_frame sz (support m1) = Some (support m2).
+    sup_record_frame fr (support m1) = Some (support m2).
 Proof.
   intros. unfold record_frame in RECORD_FRAME. destruct (stack (support m1))eqn: H0; auto.
   discriminate. inv RECORD_FRAME. unfold sup_record_frame. rewrite H0. simpl. reflexivity.
@@ -2718,7 +2777,7 @@ Qed.
 
 Lemma stack_record_frame : exists hd tl,
   stack (support m1) = hd::tl /\
-  stack (support m2) = (sz::hd)::tl.
+  stack (support m2) = (fr::hd)::tl.
 Proof.
   intros. unfold record_frame in RECORD_FRAME. destruct (stack(support m1)).
   discriminate. inv RECORD_FRAME.
@@ -3539,9 +3598,9 @@ Proof.
 Qed.
 
 Lemma record_frame_left_inj:
-  forall f sz m1 m2 m1',
+  forall f fr m1 m2 m1',
   mem_inj f m1 m2 ->
-  record_frame m1 sz = Some m1' ->
+  record_frame m1 fr = Some m1' ->
   mem_inj f m1' m2.
 Proof.
   intros. unfold record_frame in H0. destruct (stack(support m1)).
@@ -3556,9 +3615,9 @@ Proof.
 Qed.
 
 Lemma record_frame_right_inj:
-  forall f sz m1 m2 m2',
+  forall f fr m1 m2 m2',
   mem_inj f m1 m2 ->
-  record_frame m2 sz = Some m2' ->
+  record_frame m2 fr = Some m2' ->
   mem_inj f m1 m2'.
 Proof.
   intros. unfold record_frame in H0. destruct (stack(support m2)).
@@ -3862,9 +3921,9 @@ Proof.
 Qed.
 
 Theorem record_frame_extends':
-  forall m1 m1' m2 m2' sz,
+  forall m1 m1' m2 m2' fr,
   extends' m1 m2 ->
-  record_frame m1 sz= Some m1' -> record_frame m2 sz = Some m2' ->
+  record_frame m1 fr= Some m1' -> record_frame m2 fr = Some m2' ->
   extends' m1' m2'.
 Proof.
   intros. inv H. constructor.
@@ -3882,9 +3941,9 @@ Proof.
 Qed.
 
 Theorem record_frame_mach_extends':
-  forall m1 m1' m2 m2' sz,
+  forall m1 m1' m2 m2' fr,
   extends' m1 m2 ->
-  record_frame_mach m1 sz= Some m1' -> record_frame_mach m2 sz = Some m2' ->
+  record_frame_mach m1 fr= Some m1' -> record_frame_mach m2 fr = Some m2' ->
   extends' m1' m2'.
 Proof.
   intros.
@@ -3894,9 +3953,9 @@ Proof.
 Qed.
 
 Theorem record_frame_vm_extends':
-  forall m1 m1' m2 m2' sz,
+  forall m1 m1' m2 m2' fr,
   extends' m1 m2 ->
-  record_frame_vm m1 sz= Some m1' -> record_frame_vm m2 sz = Some m2' ->
+  record_frame_vm m1 fr= Some m1' -> record_frame_vm m2 fr = Some m2' ->
   extends' m1' m2'.
 Proof.
   intros.
@@ -4277,15 +4336,15 @@ Proof.
 Qed.
 
 Theorem record_frame_extends:
-  forall (m1 m2 m1':mem) sz,
+  forall (m1 m2 m1':mem) fr,
   extends m1 m2 ->
-  record_frame m1 sz = Some m1' ->
+  record_frame m1 fr = Some m1' ->
   exists m2',
-    record_frame m2 sz = Some m2'
+    record_frame m2 fr = Some m2'
     /\ extends m1' m2'.
 Proof.
   intros. inversion H.
-  assert ({m2':mem|record_frame m2 sz = Some m2'}).
+  assert ({m2':mem|record_frame m2 fr = Some m2'}).
     apply nonempty_record_frame.
     rewrite <- H2.
     eapply record_frame_nonempty; eauto.
@@ -4307,15 +4366,15 @@ Proof.
 Qed.
 
 Theorem record_frame_vm_extends:
-  forall (m1 m2 m1':mem) sz,
+  forall (m1 m2 m1':mem) fr,
   extends m1 m2 ->
-  record_frame_vm m1 sz = Some m1' ->
+  record_frame_vm m1 fr = Some m1' ->
   exists m2',
-    record_frame_vm m2 sz = Some m2'
+    record_frame_vm m2 fr = Some m2'
     /\ extends m1' m2'.
 Proof.
   intros. unfold record_frame_vm in *.
-  destruct (record_frame m1 sz) eqn:RECORD.
+  destruct (record_frame m1 fr) eqn:RECORD.
   destruct (zle (stack_size_vm(stack (support m))) (max_stacksize)).
   exploit record_frame_extends; eauto. intros (m2'& A & B & C).
   exists m2'. inv H0. rewrite A. rewrite <- C.
@@ -4324,15 +4383,15 @@ Proof.
 Qed.
 
 Theorem record_frame_mach_extends:
-  forall (m1 m2 m1':mem) sz,
+  forall (m1 m2 m1':mem) fr,
   extends m1 m2 ->
-  record_frame_mach m1 sz = Some m1' ->
+  record_frame_mach m1 fr = Some m1' ->
   exists m2',
-    record_frame_mach m2 sz = Some m2'
+    record_frame_mach m2 fr = Some m2'
     /\ extends m1' m2'.
 Proof.
   intros. unfold record_frame_mach in *.
-  destruct (record_frame m1 sz) eqn:RECORD.
+  destruct (record_frame m1 fr) eqn:RECORD.
   destruct (zle (stack_size_mach(stack (support m))) (max_stacksize)).
   exploit record_frame_extends; eauto. intros (m2'& A & B & C).
   exists m2'. inv H0. rewrite A. rewrite <- C.
@@ -4636,25 +4695,25 @@ Proof.
 Qed.
 
 Theorem disjoint_or_equal_inject:
-  forall f m m' b1 b1' delta1 b2 b2' delta2 ofs1 ofs2 sz,
+  forall f m m' b1 b1' delta1 b2 b2' delta2 ofs1 ofs2 fr,
   inject f m m' ->
   f b1 = Some(b1', delta1) ->
   f b2 = Some(b2', delta2) ->
-  range_perm m b1 ofs1 (ofs1 + sz) Max Nonempty ->
-  range_perm m b2 ofs2 (ofs2 + sz) Max Nonempty ->
-  sz > 0 ->
-  b1 <> b2 \/ ofs1 = ofs2 \/ ofs1 + sz <= ofs2 \/ ofs2 + sz <= ofs1 ->
+  range_perm m b1 ofs1 (ofs1 + fr) Max Nonempty ->
+  range_perm m b2 ofs2 (ofs2 + fr) Max Nonempty ->
+  fr > 0 ->
+  b1 <> b2 \/ ofs1 = ofs2 \/ ofs1 + fr <= ofs2 \/ ofs2 + fr <= ofs1 ->
   b1' <> b2' \/ ofs1 + delta1 = ofs2 + delta2
-             \/ ofs1 + delta1 + sz <= ofs2 + delta2
-             \/ ofs2 + delta2 + sz <= ofs1 + delta1.
+             \/ ofs1 + delta1 + fr <= ofs2 + delta2
+             \/ ofs2 + delta2 + fr <= ofs1 + delta1.
 Proof.
   intros.
   destruct (eq_block b1 b2).
   assert (b1' = b2') by congruence. assert (delta1 = delta2) by congruence. subst.
   destruct H5. congruence. right. destruct H5. left; congruence. right. lia.
   destruct (eq_block b1' b2'); auto. subst. right. right.
-  set (i1 := (ofs1 + delta1, ofs1 + delta1 + sz)).
-  set (i2 := (ofs2 + delta2, ofs2 + delta2 + sz)).
+  set (i1 := (ofs1 + delta1, ofs1 + delta1 + fr)).
+  set (i2 := (ofs2 + delta2, ofs2 + delta2 + fr)).
   change (snd i1 <= fst i2 \/ snd i2 <= fst i1).
   apply Intv.range_disjoint'; simpl; try lia.
   unfold Intv.disjoint, Intv.In; simpl; intros. red; intros.
@@ -4665,18 +4724,18 @@ Proof.
 Qed.
 
 Theorem aligned_area_inject:
-  forall f m m' b ofs al sz b' delta,
+  forall f m m' b ofs al fr b' delta,
   inject f m m' ->
-  al = 1 \/ al = 2 \/ al = 4 \/ al = 8 -> sz > 0 ->
-  (al | sz) ->
-  range_perm m b ofs (ofs + sz) Cur Nonempty ->
+  al = 1 \/ al = 2 \/ al = 4 \/ al = 8 -> fr > 0 ->
+  (al | fr) ->
+  range_perm m b ofs (ofs + fr) Cur Nonempty ->
   (al | ofs) ->
   f b = Some(b', delta) ->
   (al | ofs + delta).
 Proof.
   intros.
   assert (P: al > 0) by lia.
-  assert (Q: Z.abs al <= Z.abs sz). apply Zdivide_bounds; auto. lia.
+  assert (Q: Z.abs al <= Z.abs fr). apply Zdivide_bounds; auto. lia.
   rewrite Z.abs_eq in Q; try lia. rewrite Z.abs_eq in Q; try lia.
   assert (R: exists chunk, al = align_chunk chunk /\ al = size_chunk chunk).
     destruct H0. subst; exists Mint8unsigned; auto.
@@ -4929,6 +4988,34 @@ Proof.
   intuition eauto using perm_storebytes_1, perm_storebytes_2.
 Qed.
 
+(* Preservation of push stage *)
+Theorem push_stage_inject:
+  forall f m1 m2,
+    inject f m1 m2 ->
+    inject f (push_stage m1) (push_stage m2).
+Proof.
+  intros. inversion H. constructor; auto.
+  - inv mi_inj0. constructor; auto.
+Qed.
+
+Theorem push_stage_left_inject:
+  forall f m1 m2,
+    inject f m1 m2 ->
+    inject f (push_stage m1) m2.
+Proof.
+  intros. inv H. constructor; auto.
+  inv mi_inj0. constructor; auto.
+Qed.
+
+Theorem push_stage_right_inject:
+  forall f m1 m2,
+    inject f m1 m2 ->
+    inject f m1 (push_stage m2).
+Proof.
+  intros. inv H. constructor; auto.
+  inv mi_inj0. constructor; auto.
+Qed.
+
 (* Preservation of allocations *)
 
 Theorem alloc_right_inject:
@@ -5124,6 +5211,122 @@ Proof.
   intros. apply (valid_not_valid_diff m2 b2 b2); eauto with mem.
   intros [f' [A [B [C D]]]].
   exists f'; exists m2'; exists b2; auto.
+Qed.
+
+(** Preservation of [pop_stage] operations *)
+
+Lemma pop_stage_left_inject:
+  forall f m1 m2 m1',
+    inject f m1 m2 ->
+    pop_stage m1 = Some m1' ->
+    inject f m1' m2.
+Proof.
+  intros. inversion H. constructor; auto.
+  - eapply pop_stage_left_inj; eauto.
+  - eauto with mem.
+  - red; intros. eapply mi_no_overlap0; eauto.
+    rewrite perm_pop_stage. apply H4. auto.
+    rewrite perm_pop_stage. apply H5. auto.
+  - intros. eapply mi_representable0; eauto.
+    destruct H2. left.
+    rewrite perm_pop_stage; eauto. right.
+    rewrite perm_pop_stage; eauto.
+  - intros. exploit mi_perm_inv0; eauto. intros [H'|H'].
+    left. rewrite <- perm_pop_stage; eauto.
+    right. rewrite <- perm_pop_stage; eauto.
+Qed.
+
+Lemma pop_stage_right_inject:
+  forall f m1 m2 m2',
+    inject f m1 m2 ->
+    pop_stage m2 = Some m2' ->
+    inject f m1 m2'.
+Proof.
+  intros. inversion H. constructor; eauto.
+  eapply pop_stage_right_inj; eauto.
+  intros. eauto with mem.
+  intros. rewrite <- perm_pop_stage in H2; eauto.
+Qed.
+
+Theorem pop_stage_parallel_inject:
+  forall f m1 m2 m1' m2',
+  inject f m1 m2 ->
+  pop_stage m1 = Some m1' ->
+  pop_stage m2 = Some m2' ->
+  inject f m1' m2'.
+Proof.
+  intros. inversion H. constructor; auto.
+  - eapply pop_stage_right_inj with (m1 := m1'); eauto.
+    eapply pop_stage_left_inj; eauto.
+  - eauto with mem.
+  - eauto with mem.
+  - red. intros.
+    rewrite <- perm_pop_stage in H5; eauto.
+    rewrite <- perm_pop_stage in H6; eauto.
+  - intros. eapply mi_representable0; eauto.
+    destruct H3. left. rewrite perm_pop_stage; eauto.
+    right. rewrite perm_pop_stage; eauto.
+  - intros. exploit mi_perm_inv0; eauto.
+    rewrite <- perm_pop_stage in H3; eauto. intros [A|A].
+    left. rewrite <- perm_pop_stage; eauto.
+    right. rewrite <- perm_pop_stage; eauto.
+Qed.
+
+Lemma record_frame_left_inject:
+  forall f m1 m2 m1' fr,
+    inject f m1 m2 ->
+    record_frame m1 fr = Some m1' ->
+    inject f m1' m2.
+Proof.
+  intros. inversion H. constructor; auto.
+  - eapply record_frame_left_inj; eauto.
+  - eauto with mem.
+  - red; intros. eapply mi_no_overlap0; eauto.
+    rewrite perm_record_frame; eauto.
+    rewrite perm_record_frame; eauto.
+  - intros. eapply mi_representable0; eauto.
+    destruct H2. left.
+    rewrite perm_record_frame; eauto. right.
+    rewrite perm_record_frame; eauto.
+  - intros. exploit mi_perm_inv0; eauto. intros [H'|H'].
+    left. rewrite <- perm_record_frame; eauto.
+    right. rewrite <- perm_record_frame; eauto.
+Qed.
+
+Lemma record_frame_right_inject:
+  forall f m1 m2 m2' fr,
+    inject f m1 m2 ->
+    record_frame m2 fr = Some m2' ->
+    inject f m1 m2'.
+Proof.
+  intros. inversion H. constructor; eauto.
+  eapply record_frame_right_inj; eauto.
+  intros. eauto with mem.
+  intros. rewrite <- perm_record_frame in H2; eauto.
+Qed.
+
+Theorem record_frame_parallel_inject:
+  forall f m1 m2 m1' m2' fr,
+  inject f m1 m2 ->
+  record_frame m1 fr = Some m1' ->
+  record_frame m2 fr = Some m2' ->
+  inject f m1' m2'.
+Proof.
+  intros. inversion H. constructor; auto.
+  - eapply record_frame_right_inj with (m1 := m1'); eauto.
+    eapply record_frame_left_inj; eauto.
+  - eauto with mem.
+  - eauto with mem.
+  - red. intros.
+    rewrite <- perm_record_frame in H5; eauto.
+    rewrite <- perm_record_frame in H6; eauto.
+  - intros. eapply mi_representable0; eauto.
+    destruct H3. left. rewrite perm_record_frame; eauto.
+    right. rewrite perm_record_frame; eauto.
+  - intros. exploit mi_perm_inv0; eauto.
+    rewrite <- perm_record_frame in H3; eauto. intros [A|A].
+    left. rewrite <- perm_record_frame; eauto.
+    right. rewrite <- perm_record_frame; eauto.
 Qed.
 
 (** Preservation of [free] operations *)
