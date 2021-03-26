@@ -1328,6 +1328,16 @@ Section EVAL_LESSDEF.
 Variable F V: Type.
 Variable genv: Genv.t F V.
 
+Remark valid_pointer_extends':
+  forall m1 m2, Mem.extends' m1 m2 ->
+  forall b1 ofs b2 delta,
+  Some(b1, 0) = Some(b2, delta) ->
+  Mem.valid_pointer m1 b1 (Ptrofs.unsigned ofs) = true ->
+  Mem.valid_pointer m2 b2 (Ptrofs.unsigned (Ptrofs.add ofs (Ptrofs.repr delta))) = true.
+Proof.
+  intros. inv H0. rewrite Ptrofs.add_zero. eapply Mem.valid_pointer_extends'; eauto.
+Qed.
+
 Remark valid_pointer_extends:
   forall m1 m2, Mem.extends m1 m2 ->
   forall b1 ofs b2 delta,
@@ -1335,7 +1345,17 @@ Remark valid_pointer_extends:
   Mem.valid_pointer m1 b1 (Ptrofs.unsigned ofs) = true ->
   Mem.valid_pointer m2 b2 (Ptrofs.unsigned (Ptrofs.add ofs (Ptrofs.repr delta))) = true.
 Proof.
-  intros. inv H0. rewrite Ptrofs.add_zero. eapply Mem.valid_pointer_extends; eauto.
+  intros. exploit valid_pointer_extends'; eauto. apply H.
+Qed.
+
+Remark weak_valid_pointer_extends':
+  forall m1 m2, Mem.extends' m1 m2 ->
+  forall b1 ofs b2 delta,
+  Some(b1, 0) = Some(b2, delta) ->
+  Mem.weak_valid_pointer m1 b1 (Ptrofs.unsigned ofs) = true ->
+  Mem.weak_valid_pointer m2 b2 (Ptrofs.unsigned (Ptrofs.add ofs (Ptrofs.repr delta))) = true.
+Proof.
+  intros. inv H0. rewrite Ptrofs.add_zero. eapply Mem.weak_valid_pointer_extends'; eauto.
 Qed.
 
 Remark weak_valid_pointer_extends:
@@ -1345,7 +1365,7 @@ Remark weak_valid_pointer_extends:
   Mem.weak_valid_pointer m1 b1 (Ptrofs.unsigned ofs) = true ->
   Mem.weak_valid_pointer m2 b2 (Ptrofs.unsigned (Ptrofs.add ofs (Ptrofs.repr delta))) = true.
 Proof.
-  intros. inv H0. rewrite Ptrofs.add_zero. eapply Mem.weak_valid_pointer_extends; eauto.
+  intros. exploit weak_valid_pointer_extends'; eauto. apply H.
 Qed.
 
 Remark weak_valid_pointer_no_overflow_extends:
@@ -1373,13 +1393,13 @@ Qed.
 Lemma eval_condition_lessdef:
   forall cond vl1 vl2 b m1 m2,
   Val.lessdef_list vl1 vl2 ->
-  Mem.extends m1 m2 ->
+  Mem.extends' m1 m2 ->
   eval_condition cond vl1 m1 = Some b ->
   eval_condition cond vl2 m2 = Some b.
 Proof.
   intros. eapply eval_condition_inj with (f := fun b => Some(b, 0)) (m1 := m1).
-  apply valid_pointer_extends; auto.
-  apply weak_valid_pointer_extends; auto.
+  apply valid_pointer_extends'; auto.
+  apply weak_valid_pointer_extends'; auto.
   apply weak_valid_pointer_no_overflow_extends.
   apply valid_different_pointers_extends; auto.
   rewrite <- val_inject_list_lessdef. eauto. auto.
@@ -1388,7 +1408,7 @@ Qed.
 Lemma eval_operation_lessdef:
   forall sp op vl1 vl2 v1 m1 m2,
   Val.lessdef_list vl1 vl2 ->
-  Mem.extends m1 m2 ->
+  Mem.extends' m1 m2 ->
   eval_operation genv sp op vl1 m1 = Some v1 ->
   exists v2, eval_operation genv sp op vl2 m2 = Some v2 /\ Val.lessdef v1 v2.
 Proof.
@@ -1397,8 +1417,8 @@ Proof.
           eval_operation genv sp op vl2 m2 = Some v2
           /\ Val.inject (fun b => Some(b, 0)) v1 v2).
   eapply eval_operation_inj with (m1 := m1) (sp1 := sp).
-  apply valid_pointer_extends; auto.
-  apply weak_valid_pointer_extends; auto.
+  apply valid_pointer_extends'; auto.
+  apply weak_valid_pointer_extends'; auto.
   apply weak_valid_pointer_no_overflow_extends.
   apply valid_different_pointers_extends; auto.
   intros. apply val_inject_lessdef. auto.

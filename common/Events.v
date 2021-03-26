@@ -1795,7 +1795,7 @@ Variable sp: val.
 Variables m1 m2: mem.
 
 Hypothesis env_lessdef: forall x, Val.lessdef (e1 x) (e2 x).
-Hypothesis mem_extends: Mem.extends m1 m2.
+Hypothesis mem_extends': Mem.extends' m1 m2.
 
 Lemma eval_builtin_arg_lessdef:
   forall a v1, eval_builtin_arg ge e1 sp m1 a v1 ->
@@ -1807,16 +1807,16 @@ Proof.
 - econstructor; eauto with barg.
 - econstructor; eauto with barg.
 - econstructor; eauto with barg.
-- exploit Mem.loadv_extends; eauto. intros (v' & P & Q). exists v'; eauto with barg.
+- exploit Mem.loadv_extends'; eauto. intros (v' & P & Q). exists v'; eauto with barg.
 - econstructor; eauto with barg.
-- exploit Mem.loadv_extends; eauto. intros (v' & P & Q). exists v'; eauto with barg.
+- exploit Mem.loadv_extends'; eauto. intros (v' & P & Q). exists v'; eauto with barg.
 - econstructor; eauto with barg.
 - destruct IHeval_builtin_arg1 as (vhi' & P & Q).
   destruct IHeval_builtin_arg2 as (vlo' & R & S).
   econstructor; split; eauto with barg. apply Val.longofwords_lessdef; auto.
 - destruct IHeval_builtin_arg1 as (vhi' & P & Q).
   destruct IHeval_builtin_arg2 as (vlo' & R & S).
-  econstructor; split; eauto with barg. 
+  econstructor; split; eauto with barg.
   destruct Archi.ptr64; auto using Val.add_lessdef, Val.addl_lessdef.
 Qed.
 

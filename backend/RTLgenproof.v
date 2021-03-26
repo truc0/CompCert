@@ -553,7 +553,7 @@ Lemma transl_expr_Eop_correct:
 Proof.
   intros; red; intros. inv TE.
 (* normal case *)
-  exploit H0; eauto. intros [rs1 [tm1 [EX1 [ME1 [RR1 [RO1 EXT1]]]]]].
+  exploit H0; eauto. intros [rs1 [tm1 [EX1 [ME1 [RR1 [RO1 [EXT1 STK1]]]]]]].
   edestruct eval_operation_lessdef as [v' []]; eauto.
   exists (rs1#rd <- v'); exists tm1.
 (* Exec *)
@@ -568,7 +568,7 @@ Proof.
 (* Other regs *)
   split. intros. rewrite Regmap.gso. auto. intuition congruence.
 (* Mem *)
-  auto.
+  split; auto.
 Qed.
 
 Lemma transl_expr_Eload_correct:
@@ -814,7 +814,7 @@ Lemma transl_condexpr_CEcond_correct:
   transl_condexpr_prop le (CEcond cond al) vb.
 Proof.
   intros; red; intros. inv TE.
-  exploit H0; eauto. intros [rs1 [tm1 [EX1 [ME1 [RES1 [OTHER1 EXT1]]]]]].
+  exploit H0; eauto. intros [rs1 [tm1 [EX1 [ME1 [RES1 [OTHER1 [EXT1 STK1]]]]]]].
   exists rs1; exists tm1.
 (* Exec *)
   split. eapply plus_right. eexact EX1. eapply exec_Icond. eauto.
@@ -824,7 +824,7 @@ Proof.
 (* Other regs *)
   split. assumption.
 (* Mem *)
-  auto.
+  split; auto.
 Qed.
 
 Lemma transl_condexpr_CEcondition_correct:
@@ -1462,6 +1462,7 @@ Proof.
   exploit transl_eval_builtin_args; eauto.
   intros (vargs' & U & V).
   exploit (@eval_builtin_args_lessdef _ ge (fun r => rs'#r) (fun r => rs'#r)); eauto.
+  apply K.
   intros (vargs'' & X & Y).
   assert (Z: Val.lessdef_list vl vargs'') by (eapply Val.lessdef_list_trans; eauto).
   edestruct external_call_mem_extends as [tv [tm'' [A [B [C D]]]]]; eauto.
@@ -1469,7 +1470,7 @@ Proof.
   exploit Mem.pop_stage_extends; eauto. intros (tm''' & A' & B').
   econstructor; split.
   left. eapply plus_right. eexact E.
-  eapply exec_Ibuiltin. eauto.
+  eapply exec_Ibuiltin. eauto. inv C.
   eapply eval_builtin_args_preserved with (ge1 := ge); eauto. exact symbols_preserved.
   eapply external_call_symbols_preserved. apply senv_preserved. eauto. eauto.
   traceEq.

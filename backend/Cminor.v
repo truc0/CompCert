@@ -569,7 +569,7 @@ Inductive initial_state (p: program): state -> Prop :=
       Genv.find_symbol ge p.(prog_main) = Some b ->
       Genv.find_funct_ptr ge b = Some f ->
       funsig f = signature_main ->
-      initial_state p (Callstate f nil Kstop m0 (fn_stack_requirements(prog_main p))).
+      initial_state p (Callstate f nil Kstop (Mem.push_stage m0) (fn_stack_requirements(prog_main p))).
 
 (** A final state is a [Returnstate] with an empty continuation. *)
 

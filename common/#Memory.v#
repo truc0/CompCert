@@ -133,7 +133,42 @@ Fixpoint stack_size_mach (s:stackadt): Z :=
     |nil => 0
     |hd::tl => (size_of_head_frame hd) + stack_size_mach tl
   end.
+(*
+Lemma size_stage_pos:
+  forall t,
+    (0 <= size_of_all_frames t)%Z.
+Proof.
+  intros. induction t.
+  simpl. lia.
+  simpl. Search Gt. apply Zle_0_pos. Search "<=".
+Qed.
 
+Lemma opt_size_frame_pos:
+  forall fr,
+    (0 <= opt_size_frame fr)%Z.
+Proof.
+
+Lemma size_frames_pos:
+  forall s,
+    (0 <= size_frames s)%Z.
+Proof.
+
+Lemma size_stack_pos:
+  forall s,
+    (0 <= size_stack s)%Z.
+Proof.
+  induction s; simpl; intros; eauto. omega.
+  generalize (size_frames_pos a); omega.
+Qed.
+
+Lemma size_stack_tl:
+  forall l,
+    (size_stack (tl l) <= size_stack l)%Z.
+Proof.
+  induction l; simpl; intros. omega.
+  generalize (size_frames_pos a); omega.
+Qed.
+*)
 Definition max_stacksize : Z := 4096.
 
 Record sup' : Type := mksup {
