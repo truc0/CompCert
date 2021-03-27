@@ -765,6 +765,30 @@ Proof.
   rewrite H4 in H0; auto.
 Qed.
 
+Lemma match_stacks_record_frame_left:
+  forall F m m' l stk stk' sp',
+  match_stacks F m m' l stk stk' sp' ->
+  forall f m1,
+    Mem.record_frame m f = Some m1 ->
+    match_stacks F m1 m' l stk stk' sp'.
+Proof.
+  intros.
+  eapply match_stacks_invariant; eauto.
+  intros. eapply Mem.perm_record_frame; eauto.
+Qed.
+
+Lemma match_stacks_inside_record_frame_left:
+  forall F m m' n l stk stk' f' ctx sp' rs',
+  match_stacks_inside F m m' n l stk stk' f' ctx sp' rs' ->
+  forall f m1,
+    Mem.record_frame m f = Some m1 ->
+    match_stacks_inside F m1 m' n l stk stk' f' ctx sp' rs'.
+Proof.
+  intros.
+  eapply match_stacks_inside_invariant; eauto.
+  intros. eapply Mem.perm_record_frame; eauto.
+Qed.
+
 (** Preservation by freeing *)
 
 Lemma match_stacks_free_left:
@@ -1343,32 +1367,31 @@ Proof.
   econstructor; simpl; eauto. lia.
   econstructor; simpl; eauto.
 Qed.
-(*
-Lemma loc_private_push_l:
-  forall j m m' b o,
-    loc_private j m m' b o ->
-    loc_private j (Mem.push_stage m) m' b o.
+
+Lemma push_pop_unchanged_on : forall m1 m1' m2 m2' m3  m3' F,
+    Mem.unchanged_on (loc_out_of_reach F (Mem.push_stage m1))(Mem.push_stage m1') m2' ->
+    Mem.pop_stage m2' = Some m3' ->
+    Mem.pop_stage m2 = Some m3 ->
+    Mem.unchanged_on (loc_out_of_reach F m1) m1' m3'.
 Proof.
-  eauto.
-  red; intros. eauto.
+  intros.
+  inv H. constructor.
+  - unfold Mem.sup_include in *. unfold Mem.sup_In in *.
+    simpl in *. eapply Mem.supp_pop_stage in H0.
+    rewrite <- H0. auto.
+  - intros. exploit unchanged_on_perm; eauto. intro.
+    transitivity  (Mem.perm (Mem.push_stage m1') b ofs k p).
+    reflexivity.
+    etransitivity; eauto.
+    eapply Mem.perm_pop_stage; eauto.
+  - intros. exploit unchanged_on_contents; eauto. intros.
+    etransitivity.
+    2:transitivity (ZMap.get ofs (NMap.get (ZMap.t memval) b
+                    (Mem.mem_contents (Mem.push_stage m1'))));eauto.
+    unfold Mem.pop_stage in H0. destruct (Mem.stack(Mem.support m2')).
+    discriminate. inv H0. auto.
 Qed.
 
-Lemma loc_private_push_r:
-  forall j m m' b o,
-    loc_private j m m' b o ->
-    loc_private j m (Mem.push_stage m') b o.
-Proof.
-  red; intros. setoid_rewrite Mem.push_stage_perm. auto.
-Qed.
-*)
-
-    Lemma push_pop_unchanged_on : forall m1 m1' m2 m2' m3  m3' F,
-        Mem.unchanged_on (loc_out_of_reach F (Mem.push_stage m1))(Mem.push_stage m1')
-                         m2' ->
-        Mem.pop_stage m2' = Some m3' ->
-        Mem.pop_stage m2 = Some m3 ->
-        Mem.unchanged_on (loc_out_of_reach F m1) m1' m3'.
-Proof. Admitted.
 Lemma tr_funbody_inv:
   forall fenv sz cts f c pc i,
   tr_funbody fenv sz cts f c -> f.(fn_code)!pc = Some i -> tr_instr fenv sz cts pc i c.
@@ -1652,7 +1675,6 @@ Proof.
   auto.
 + (* inlined *)
   right. split. simpl. lia. split. auto.
-  Print match_states.
   econstructor; eauto.
   eapply match_stacks_inside_invariant; eauto.
     intros. eapply Mem.perm_free_3; eauto.
@@ -1691,44 +1713,62 @@ Proof.
     rewrite B' in H0'. simpl in *.  lia.
     rewrite zle_true; eauto.
   destruct X as [m'2 Y].
+  eapply Mem.record_frame_vm_result in H0 as RECORD1.
+  eapply Mem.record_frame_vm_result in Y as RECORD2.
   left; econstructor; split.
   eapply plus_one. eapply exec_function_internal; eauto.
-  rewrite H6, H7. econstructor.
+  rewrite H7. econstructor; eauto.
   eapply Mem.alloc_result; eauto.
   instantiate (3 := F'). apply match_stacks_inside_base.
   assert (SPS: sp' = fresh_block (Mem.support m'0)) by (eapply Mem.alloc_result; eauto).
   eapply match_stacks_invariant; eauto.
-    *
-    intros. destruct (eq_block b1 stk).
+   { intros. destruct (eq_block b1 stk).
     subst b1. rewrite D in H9; inv H9. eelim freshness; eauto.
     rewrite E in H9; auto.
-   *
-    intros. exploit Mem.perm_alloc_inv. eexact H.
-    apply Mem.record_frame_vm_result in H0.
-    eapply Mem.perm_record_frame in H0. apply H0. eauto.
-    destruct (eq_block b1 stk); intros; auto.
-    
-    subst b1. rewrite D in H9; inv H9. eelim freshness; eauto.
-    * intros. apply Mem.record_frame_vm_result in Y.
-    erewrite <- Mem.perm_record_frame. 2:eauto.
-    eapply Mem.perm_alloc_1; eauto.
-   *
-     intros. 
-    rewrite dec_eq_false; auto with ordered_type.
-  intro.  eelim freshness. rewrite SPS in H9. eauto.
-  auto. auto. auto. eauto. auto.
-  rewrite H5. apply agree_regs_init_regs. eauto. auto. inv H1; auto. congruence. auto.
-  rewrite  Mem.support_alloc with m'0 0 (fn_stacksize f') m1' sp'.
-  rewrite Mem.alloc_result with m'0 0 (fn_stacksize f') m1' sp'. apply Mem.sup_include_refl. auto. auto.
-  red; intros. split.
-  eapply Mem.perm_alloc_2; eauto. inv H1; extlia.
+   }
+   { intros. exploit Mem.perm_alloc_inv. eexact H.
+     eapply Mem.perm_record_frame in RECORD1. apply RECORD1. eauto.
+     destruct (eq_block b1 stk); intros; auto.
+     subst b1. rewrite D in H9; inv H9. eelim freshness; eauto.
+   }
+   { intros.
+     erewrite <- Mem.perm_record_frame. 2:eauto.
+     eapply Mem.perm_alloc_1; eauto.
+   }
+    { intros. exploit Mem.perm_alloc_inv. eexact A.
+      eapply Mem.perm_record_frame in RECORD2.
+      apply RECORD2. apply H10.
+      destruct (eq_block b sp'); intros; auto.
+      subst b. rewrite SPS in H9. eelim freshness; eauto.
+    }
+  auto. auto.
+  rewrite H6. apply agree_regs_init_regs. eauto. auto. inv H2; auto. congruence. auto.
+  eapply Mem.record_frame_parallel_inject; eauto.
+  assert (SPS: sp' = fresh_block (Mem.support m'0)) by (eapply Mem.alloc_result; eauto).
+  rewrite SPS.
+  apply Mem.support_alloc in A. unfold Mem.sup_incr in A.
+  rewrite <- A. unfold Mem.sup_include. unfold Mem.sup_In.
+  erewrite Mem.supp_record_frame; eauto.
+  red; intros. split. erewrite <- (Mem.perm_record_frame _ _ _ RECORD2).
+  eapply Mem.perm_alloc_2; eauto. inv H2; extlia.
   intros; red; intros. exploit Mem.perm_alloc_inv. eexact H. eauto.
+  erewrite (Mem.perm_record_frame _ _ _ RECORD1). eauto.
   destruct (eq_block b stk); intros.
-  subst. rewrite D in H9; inv H9. inv H1; extlia.
-  rewrite E in H9; auto. eelim Mem.fresh_block_alloc. eexact A. eapply Mem.mi_mappedblocks; eauto.
+  subst. rewrite D in H10. inv H10. inv H2; extlia.
+  rewrite E in H10; auto. eelim Mem.fresh_block_alloc. eexact A. eapply Mem.mi_mappedblocks; eauto.
   auto.
-  intros. exploit Mem.perm_alloc_inv; eauto. rewrite dec_eq_true. lia.
-
+  intros. exploit Mem.perm_alloc_inv; eauto.
+  erewrite (Mem.perm_record_frame _ _ _ RECORD2). eauto.
+  rewrite dec_eq_true. lia.
+  apply Mem.stack_record_frame in RECORD1.
+  apply Mem.stack_record_frame in RECORD2.
+  destruct RECORD1 as (hd & tl & Stk1 & Stk2).
+  destruct RECORD2 as (hd' & tl' & Stk1' & Stk2').
+  rewrite Stk2. rewrite Stk2'.
+  apply Mem.stack_alloc in A. rewrite <- A in SIZES.
+  apply Mem.stack_alloc in H. rewrite <- H in SIZES.
+  rewrite Stk1 in SIZES. rewrite Stk1' in SIZES.
+  eapply inline_sizes_record; eauto.
 - (* internal function, inlined *)
   inversion FB; subst.
   exploit Mem.alloc_left_mapped_inject.
@@ -1752,19 +1792,31 @@ Proof.
     replace (ofs + delta' - delta') with ofs by lia.
     apply Mem.perm_max with k. apply Mem.perm_implies with p; auto with mem.
   intros [F' [A [B [C D]]]].
+  eapply Mem.record_frame_vm_result in H0 as RECORD. eauto.
+  eapply Mem.record_frame_left_inject in A; eauto.
   exploit tr_moves_init_regs; eauto. intros [rs'' [P [Q R]]].
   left; econstructor; split.
   eapply plus_left. eapply exec_Inop; eauto. eexact P. traceEq.
   econstructor. auto.
+  eapply match_stacks_inside_record_frame_left.
   eapply match_stacks_inside_alloc_left; eauto.
   eapply match_stacks_inside_invariant; eauto.
   lia.
-  eauto. auto.
+  eauto. eauto. eauto.
   apply agree_regs_incr with F; auto.
   auto. auto. auto.
-  rewrite H2. eapply range_private_alloc_left; eauto.
-  auto. auto.
-
+  rewrite H3.
+  eapply range_private_alloc_left in PRIV. 2:apply H.
+  eapply range_private_invariant. apply PRIV.
+  intros. split. eauto. erewrite Mem.perm_record_frame.
+  eauto. eauto.
+  auto.
+  auto. auto. auto. auto.
+  apply Mem.stack_record_frame in RECORD.
+  destruct RECORD as (hd&tl&Hstk&Hstk').
+  rewrite Hstk'. apply Mem.stack_alloc in H.
+  rewrite <- H in SIZES. rewrite Hstk in SIZES.
+  eapply inline_sizes_record_left; eauto.
 - (* external function *)
   exploit match_stacks_globalenvs; eauto. intros [support MG].
   exploit external_call_mem_inject; eauto.
@@ -1782,57 +1834,134 @@ Proof.
     apply Mem.sup_include_refl.
     eapply external_call_support; eauto.
     auto. auto.
-
+    erewrite <- external_call_mem_stackeq; eauto.
+    erewrite <- (external_call_mem_stackeq _ _  _ _  _ _  _ A). eauto.
 - (* return from noninlined function *)
   inv MS0.
 + (* normal case *)
+  assert ({m'1:mem|Mem.pop_stage m'0 = Some m'1}).
+    apply Mem.nonempty_pop_stage. inv SIZES.
+    congruence.
+  destruct X as [m'1 POP].
   left; econstructor; split.
-  eapply plus_one. eapply exec_return.
+  eapply plus_one. eapply exec_return. eauto.
   econstructor; eauto.
-  apply match_stacks_inside_set_reg; auto.
-  apply agree_set_reg; auto.
+  eapply match_stacks_inside_set_reg; eauto.
+  eapply match_stacks_inside_invariant; eauto.
+  * intros. erewrite Mem.perm_pop_stage; eauto.
+  * intros. erewrite <- Mem.perm_pop_stage; eauto.
+  * intros. erewrite Mem.perm_pop_stage; eauto.
+  * apply agree_set_reg; auto.
+  * eapply Mem.pop_stage_parallel_inject; eauto.
+  * unfold Mem.sup_include in *. unfold sup_In in *.
+    erewrite <- Mem.supp_pop_stage; eauto.
+  * eapply range_private_invariant; eauto.
+    intros. split. auto. erewrite Mem.perm_pop_stage; eauto.
+    intros. erewrite <- Mem.perm_pop_stage; eauto.
+  * intros. apply SSZ2. erewrite Mem.perm_pop_stage; eauto.
+  * apply Mem.stack_pop_stage in H.
+    apply Mem.stack_pop_stage in POP.
+    destruct H as [hd Hstk].
+    destruct POP as [hd' Hstk'].
+    assert (Mem.stack(Mem.support m') = tl (Mem.stack(Mem.support m))).
+    rewrite Hstk. auto.
+    assert (Mem.stack(Mem.support m'1) = tl (Mem.stack(Mem.support m'0))).
+    rewrite Hstk'. auto. rewrite H. rewrite H0.
+    apply inline_sizes_down. auto.
 + (* untailcall case *)
   inv MS; try congruence.
   rewrite RET in RET0; inv RET0.
+  assert ({m'1:mem|Mem.pop_stage m'0 = Some m'1}).
+    apply Mem.nonempty_pop_stage. inv SIZES.
+    congruence.
+  destruct X as [m'1 POP].
   left; econstructor; split.
-  eapply plus_one. eapply exec_return.
+  eapply plus_one. eapply exec_return. eauto.
   eapply match_regular_states. auto.
   eapply match_stacks_inside_set_reg; eauto.
-  eauto. auto.
-  apply agree_set_reg; auto.
-  auto. auto. auto.
-  red; intros. destruct (zlt ofs (dstk ctx)). apply PAD; lia. apply PRIV; lia.
-  auto. auto.
-
+  eapply match_stacks_inside_invariant; eauto.
+  * intros. erewrite Mem.perm_pop_stage; eauto.
+  * intros. erewrite <- Mem.perm_pop_stage; eauto.
+  * intros. erewrite Mem.perm_pop_stage; eauto.
+  * eauto. * eauto.
+  * apply agree_set_reg; auto.
+  * auto.
+  * eapply Mem.pop_stage_parallel_inject; eauto.
+  * unfold Mem.sup_include in *. unfold sup_In in *.
+    erewrite <- Mem.supp_pop_stage; eauto.
+  * eapply range_private_invariant.
+    red; intros. destruct (zlt ofs (dstk ctx)). apply PAD; lia. apply PRIV; lia.
+    intros. split. auto. erewrite Mem.perm_pop_stage; eauto.
+    intros. erewrite <- Mem.perm_pop_stage; eauto.
+  * lia.
+  * intros. apply SSZ2. erewrite Mem.perm_pop_stage; eauto.
+  * apply Mem.stack_pop_stage in H.
+    apply Mem.stack_pop_stage in POP.
+    destruct H as [hd Hstk].
+    destruct POP as [hd' Hstk'].
+    assert (Mem.stack(Mem.support m') = tl (Mem.stack(Mem.support m))).
+    rewrite Hstk. auto.
+    assert (Mem.stack(Mem.support m'1) = tl (Mem.stack(Mem.support m'0))).
+    rewrite Hstk'. auto. rewrite H. rewrite H0.
+    apply inline_sizes_down. auto.
 - (* return from inlined function *)
   inv MS0; try congruence. rewrite RET0 in RET; inv RET.
   unfold inline_return in AT.
-  assert (PRIV': range_private F m m' (fresh_block sps') (dstk ctx' + mstk ctx') f'.(fn_stacksize)).
+(*
+  assert ({m'1:mem|Mem.pop_stage m'0 = Some m'1}).
+    apply Mem.nonempty_pop_stage. inv SIZES.
+    congruence.
+  destruct X as [m'1 POP]. *)
+  assert (PRIV': range_private F m m'0 (fresh_block sps') (dstk ctx' + mstk ctx') f'.(fn_stacksize)).
     red; intros. destruct (zlt ofs (dstk ctx)). apply PAD. lia. apply PRIV. lia.
   destruct or.
 + (* with a result *)
   left; econstructor; split.
   eapply plus_one. eapply exec_Iop; eauto. simpl. reflexivity.
-  econstructor; eauto. apply match_stacks_inside_set_reg; auto. apply agree_set_reg; auto.
+  econstructor; eauto.
+  apply match_stacks_inside_set_reg; auto.
+  eapply match_stacks_inside_invariant. 2:apply MS. all: eauto.
+  * intros. erewrite Mem.perm_pop_stage; eauto.
+  * apply agree_set_reg; auto.
+  * eapply Mem.pop_stage_left_inject; eauto.
+  * eapply range_private_invariant; eauto.
+    intros. split. auto. erewrite Mem.perm_pop_stage; eauto.
+  * apply Mem.stack_pop_stage in H.
+    destruct H as [hd Hstk].
+    assert (Mem.stack(Mem.support m') = tl (Mem.stack(Mem.support m))).
+    rewrite Hstk. auto. rewrite H.
+    apply inline_sizes_downstar. auto.
 + (* without a result *)
   left; econstructor; split.
   eapply plus_one. eapply exec_Inop; eauto.
-  econstructor; eauto. subst vres. apply agree_set_reg_undef'; auto.
+  econstructor; eauto.
+  eapply match_stacks_inside_invariant. 2:apply MS. all: eauto.
+  * intros. erewrite Mem.perm_pop_stage; eauto.
+  * subst vres.  apply agree_set_reg_undef'; auto.
+  * eapply Mem.pop_stage_left_inject; eauto.
+  * eapply range_private_invariant; eauto.
+    intros. split. auto. erewrite Mem.perm_pop_stage; eauto.
+  * apply Mem.stack_pop_stage in H.
+    destruct H as [hd Hstk].
+    assert (Mem.stack(Mem.support m') = tl (Mem.stack(Mem.support m))).
+    rewrite Hstk. auto. rewrite H.
+    apply inline_sizes_downstar. auto.
 Qed.
 
 Lemma transf_initial_states:
-  forall st1, initial_state prog st1 -> exists st2, initial_state tprog st2 /\ match_states st1 st2.
+  forall st1, initial_state fn_stack_requirements prog st1 -> exists st2, initial_state fn_stack_requirements tprog st2 /\ match_states st1 st2.
 Proof.
   intros. inv H.
   exploit function_ptr_translated; eauto. intros (cu & tf & FIND & TR & LINK).
-  exists (Callstate nil tf nil m0); split.
+  exists (Callstate nil tf nil (Mem.push_stage m0)(fn_stack_requirements (prog_main tprog))); split.
   econstructor; eauto.
     eapply (Genv.init_mem_match TRANSF); eauto.
     rewrite symbols_preserved. replace (prog_main tprog) with (prog_main prog). auto.
     symmetry; eapply match_program_main; eauto.
     rewrite <- H3. eapply sig_function_translated; eauto.
+  destruct TRANSF as (_&MAIN&_). rewrite MAIN.
   econstructor; eauto.
-  instantiate (1 := Mem.flat_inj (Mem.support m0)).
+  instantiate (2 := Mem.flat_inj (Mem.support m0)).
   apply match_stacks_nil with (Mem.support m0).
   constructor; intros.
     unfold Mem.flat_inj. apply pred_dec_true; auto.
@@ -1840,8 +1969,12 @@ Proof.
     eapply Genv.find_symbol_not_fresh; eauto.
     eapply Genv.find_funct_ptr_not_fresh; eauto.
     eapply Genv.find_var_info_not_fresh; eauto.
-    apply Mem.sup_include_refl.
+    unfold Mem.sup_include. unfold sup_In. simpl. auto.
+  eapply Mem.push_stage_inject.
   eapply Genv.initmem_inject; eauto.
+  simpl. apply inline_sizes_up.
+  erewrite Genv.init_mem_stack; eauto.
+  constructor.
 Qed.
 
 Lemma transf_final_states:
@@ -1854,7 +1987,8 @@ Proof.
 Qed.
 
 Theorem transf_program_correct:
-  forward_simulation (semantics prog) (semantics tprog).
+  forward_simulation (semantics fn_stack_requirements prog)
+                     (semantics fn_stack_requirements tprog).
 Proof.
   eapply forward_simulation_star.
   apply senv_preserved.
