@@ -15,7 +15,7 @@
 Require Import Coqlib.
 Require Import Maps.
 Require Import Postorder.
-Require Import RTL.
+Require Import RTL RTLmach.
 
 (** CompCert's dataflow analyses (module [Kildall]) are more precise
   and run faster when the sequence [1, 2, 3, ...]  is a postorder

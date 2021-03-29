@@ -15,7 +15,7 @@
 Require Import FSets Coqlib Maps Ordered Iteration Errors.
 Require Import AST Linking.
 Require Import Integers Values Memory Globalenvs Events Smallstep.
-Require Import Op Registers RTL.
+Require Import Op Registers RTL RTLmach.
 Require Import Unusedglob.
 
 Module ISF := FSetFacts.Facts(IS).
@@ -440,6 +440,8 @@ Proof.
   apply filter_globdefs_unique_names.
 Qed.
 
+Section ORACLE.
+Variable fn_stack_requirements : ident -> Z.
 (** * Semantic preservation *)
 
 Section SOUNDNESS.
@@ -766,20 +768,23 @@ Inductive match_states: state -> state -> Prop :=
          (REGINJ: regset_inject j rs trs)
          (MEMINJ: Mem.inject j m tm)
          (SUPINC: Mem.sup_include sps (Mem.support m))
-         (TSUPINC: Mem.sup_include tsps (Mem.support tm)),
+         (TSUPINC: Mem.sup_include tsps (Mem.support tm))
+         (STK: Mem.stackeq m tm),
       match_states (State s f (Vptr sp Ptrofs.zero) pc rs m)
                    (State ts f (Vptr tsp Ptrofs.zero) pc trs tm)
-  | match_states_call: forall s fd args m ts targs tm j
+  | match_states_call: forall s fd args m ts targs tm j sz
          (STACKS: match_stacks j s ts (Mem.support m) (Mem.support tm))
          (KEPT: forall id, ref_fundef fd id -> kept id)
          (ARGINJ: Val.inject_list j args targs)
-         (MEMINJ: Mem.inject j m tm),
-      match_states (Callstate s fd args m)
-                   (Callstate ts fd targs tm)
+         (MEMINJ: Mem.inject j m tm)
+         (STK: Mem.stackeq m tm),
+      match_states (Callstate s fd args m sz)
+                   (Callstate ts fd targs tm sz)
   | match_states_return: forall s res m ts tres tm j
          (STACKS: match_stacks j s ts (Mem.support m) (Mem.support tm))
          (RESINJ: Val.inject j res tres)
-         (MEMINJ: Mem.inject j m tm),
+         (MEMINJ: Mem.inject j m tm)
+         (STK: Mem.stackeq m tm),
       match_states (Returnstate s res m)
                    (Returnstate ts tres tm).
 
@@ -886,11 +891,25 @@ Proof.
   destruct IHlist_forall2 as (vl' & C & D); eauto using in_or_app.
   exists (v1' :: vl'); split; constructor; auto.
 Qed.
-Locate step.
+
+Lemma ros_is_function_translated:
+  forall j ros rs trs i s cs b1 b2,
+    ros_is_function ge ros rs i ->
+    match_stacks j s cs b1 b2 ->
+    regset_inject j rs trs ->
+    ros_is_function tge ros trs i.
+Proof.
+  destruct ros; simpl; intros; auto.
+  destruct H as (b & o & PTR & FS).
+  exploit H1. rewrite PTR. intro A; inv A. eexists; eexists; split; eauto.
+  exploit symbols_inject_1.
+  eapply match_stacks_preserves_globals; eauto. eauto. eauto. intuition.
+Qed.
+
 Theorem step_simulation:
-  forall S1 t S2, step ge S1 t S2 ->
+  forall S1 t S2, step fn_stack_requirements ge S1 t S2 ->
   forall S1' (MS: match_states S1 S1'),
-  exists S2', step tge S1' t S2' /\ match_states S2 S2'.
+  exists S2', step fn_stack_requirements tge S1' t S2' /\ match_states S2 S2'.
 Proof.
   induction 1; intros; inv MS.
 
@@ -948,34 +967,44 @@ Proof.
   econstructor; eauto.
   erewrite <- Mem.support_storev. apply SUPINC. eauto.
   erewrite <- Mem.support_storev. apply TSUPINC. eauto.
+  unfold Mem.stackeq.
+  rewrite <- (Mem.support_storev _ _ _ _ _ H1).
+  rewrite <- (Mem.support_storev _ _ _ _ _ D).
+  congruence.
 - (* call *)
   exploit find_function_inject.
   eapply match_stacks_preserves_globals; eauto. eauto.
-  destruct ros as [r|id]. eauto. apply KEPT. red. econstructor; econstructor; split; eauto. simpl; auto.
+  destruct ros as [r|id']. eauto. apply KEPT. red. econstructor; econstructor; split; eauto. simpl; auto.
   intros (A & B).
   econstructor; split. eapply exec_Icall; eauto.
+  eapply ros_is_function_translated; eauto.
   econstructor; eauto.
   econstructor; eauto.
-  intro. intro. apply Mem.sup_add_in in H1. destruct H1.
+  intro. intro. apply Mem.sup_add_in in H2. destruct H2.
   change (Mem.valid_block m b). subst b. eapply Mem.valid_block_inject_1;eauto. apply SUPINC; auto.
-  intro. intro. apply Mem.sup_add_in in H1. destruct H1.
+  intro. intro. apply Mem.sup_add_in in H2. destruct H2.
   change (Mem.valid_block tm b). subst b. eapply Mem.valid_block_inject_2;eauto. apply TSUPINC; auto.
   apply regs_inject; auto.
-
+  eapply Mem.push_stage_inject; eauto.
+  unfold Mem.stackeq. simpl. congruence.
 - (* tailcall *)
   exploit find_function_inject.
   eapply match_stacks_preserves_globals; eauto. eauto.
-  destruct ros as [r|id]. eauto. apply KEPT. red. econstructor; econstructor; split; eauto. simpl; auto.
+  destruct ros as [r|id']. eauto. apply KEPT. red. econstructor; econstructor; split; eauto. simpl; auto.
   intros (A & B).
   exploit Mem.free_parallel_inject; eauto. rewrite ! Z.add_0_r. intros (tm' & C & D).
   econstructor; split.
   eapply exec_Itailcall; eauto.
+  eapply ros_is_function_translated; eauto.
   econstructor; eauto.
   apply match_stacks_bound with sps tsps; auto.
   erewrite Mem.support_free; eauto.
   erewrite Mem.support_free; eauto.
   apply regs_inject; auto.
-
+  unfold Mem.stackeq.
+  rewrite (Mem.support_free _ _ _ _ _ H3).
+  rewrite (Mem.support_free _ _ _ _ _ C).
+  congruence.
 - (* builtin *)
   exploit eval_builtin_args_inject; eauto.
   eapply match_stacks_preserves_globals; eauto.
@@ -983,18 +1012,48 @@ Proof.
   intros (vargs' & P & Q).
   exploit external_call_inject; eauto.
   eapply match_stacks_preserves_globals; eauto.
+  eapply Mem.push_stage_inject; eauto.
   intros (j' & tv & tm' & A & B & C & D & E & F & G).
+  apply external_call_mem_stackeq in A as A'.
+  assert ({tm'':mem|Mem.pop_stage tm' = Some tm''}).
+  apply Mem.nonempty_pop_stage. rewrite  <- A'. simpl. congruence.
+  destruct X as [tm'' POP].
+  exploit Mem.pop_stage_parallel_inject; eauto.
+  intro INJECT.
   econstructor; split.
   eapply exec_Ibuiltin; eauto.
   eapply match_states_regular with (j := j'); eauto.
   apply match_stacks_incr with j; auto.
   intros. exploit G; eauto. intros [U V].
   split.
-  intro. apply SUPINC in H4. apply U. auto.
-  intro. apply TSUPINC in H4. apply V. auto.
+  intro. apply SUPINC in H5. apply U. auto.
+  intro. apply TSUPINC in H5. apply V. auto.
   apply set_res_inject; auto. apply regset_inject_incr with j; auto.
-  eapply Mem.sup_include_trans. eauto. eapply Mem.unchanged_on_support;eauto.
-  eapply Mem.sup_include_trans. eauto. eapply Mem.unchanged_on_support;eauto.
+{
+  eapply Mem.sup_include_trans. eauto. eapply Mem.unchanged_on_support in D.
+  apply Mem.sup_include_trans with (Mem.support(Mem.push_stage m)).
+  unfold Mem.sup_include in *. unfold Mem.sup_In in *. auto.
+  eapply Mem.sup_include_trans. eauto.
+  unfold Mem.sup_include in *. unfold Mem.sup_In in *.
+  erewrite Mem.supp_pop_stage; eauto.
+}
+{
+ eapply Mem.sup_include_trans. eauto. eapply Mem.unchanged_on_support in E.
+  apply Mem.sup_include_trans with (Mem.support(Mem.push_stage tm)).
+  unfold Mem.sup_include in *. unfold Mem.sup_In in *. auto.
+  eapply Mem.sup_include_trans. eauto.
+  unfold Mem.sup_include in *. unfold Mem.sup_In in *.
+  erewrite Mem.supp_pop_stage; eauto.
+}
+  unfold Mem.stackeq.
+  apply Mem.stack_pop_stage in POP.
+  apply Mem.stack_pop_stage in H2.
+  destruct H2 as [hd H2].
+  destruct POP as [hd' POP].
+  apply external_call_mem_stackeq in H1.
+  apply external_call_mem_stackeq in A.
+  unfold Mem.stackeq in *. simpl in *.
+  congruence.
 - (* cond *)
   assert (C: eval_condition cond trs##args tm = Some b).
   { eapply eval_condition_inject; eauto. apply regs_inject; auto. }
@@ -1017,25 +1076,65 @@ Proof.
   erewrite Mem.support_free; eauto.
   erewrite Mem.support_free; eauto.
   destruct or; simpl; auto.
-
+  unfold Mem.stackeq.
+  rewrite (Mem.support_free _ _ _ _ _ H0).
+  rewrite (Mem.support_free _ _ _ _ _ C).
+  congruence.
 - (* internal function *)
   exploit Mem.alloc_parallel_inject. eauto. eauto. apply Z.le_refl. apply Z.le_refl.
   intros (j' & tm' & tstk & C & D & E & F & G).
-  assert (STK: stk = Mem.nextblock m) by (eapply Mem.alloc_result; eauto).
-  assert (TSTK: tstk = Mem.nextblock tm) by (eapply Mem.alloc_result; eauto).
+  assert (STK': stk = Mem.nextblock m) by (eapply Mem.alloc_result; eauto).
+  assert (TSTK': tstk = Mem.nextblock tm) by (eapply Mem.alloc_result; eauto).
   assert (STACKS': match_stacks j' s ts (Mem.support m) (Mem.support tm)).
   {
     apply match_stacks_incr with j; auto.
     intros. destruct (eq_block b1 stk).
-    subst b1. rewrite F in H1; inv H1. split; apply freshness.
-    rewrite G in H1 by auto. congruence. }
+    subst b1. rewrite F in H2; inv H2. split; apply freshness.
+    rewrite G in H2 by auto. congruence. }
+  apply Mem.record_frame_mach_result in H0 as RECORD.
+  apply Mem.record_frame_mach_size in H0 as SIZE.
+  apply Mem.support_alloc in H as H'.
+  apply Mem.support_alloc in C as C'.
+  assert ({tm'':mem|Mem.record_frame tm' (Mem.mk_frame sz)=Some tm''}).
+    apply Mem.nonempty_record_frame. rewrite C'.
+    simpl. rewrite <- STK.
+    apply Mem.record_frame_nonempty in RECORD.
+    rewrite H' in RECORD. simpl in RECORD. auto.
+  destruct X as (tm'' & RECORD').
   econstructor; split.
   eapply exec_function_internal; eauto.
+  unfold Mem.record_frame_mach. rewrite RECORD'.
+  apply zle_true.
+  eapply Mem.stack_record_frame in RECORD; eauto.
+  destruct RECORD as (hd & tl & A & B).
+  eapply Mem.stack_record_frame in RECORD'; eauto.
+  destruct RECORD' as (hd' & tl' & A' & B').
+  unfold Mem.stackeq in STK. rewrite B'.
+  rewrite B in SIZE.
+  rewrite H' in A.
+  rewrite C' in A'.
+  simpl in *. rewrite A in STK. rewrite A' in STK.
+  inv STK. lia.
   eapply match_states_regular with (j := j'); eauto.
   apply init_regs_inject; auto. apply val_inject_list_incr with j; auto.
-  rewrite Mem.support_alloc with m 0 (fn_stacksize f) m' stk. apply Mem.sup_add_in2. auto. auto.
-  rewrite Mem.support_alloc with tm 0 (fn_stacksize f) tm' tstk. apply Mem.sup_add_in2. auto.
-
+  eapply Mem.record_frame_parallel_inject; eauto.
+  apply Mem.sup_include_trans with (Mem.support m').
+  rewrite H'. apply Mem.sup_add_in2.
+  unfold Mem.sup_include. unfold Mem.sup_In. erewrite Mem.supp_record_frame; eauto.
+  apply Mem.sup_include_trans with (Mem.support tm').
+  rewrite C'. apply Mem.sup_add_in2. auto.
+  unfold Mem.sup_include. unfold Mem.sup_In. erewrite Mem.supp_record_frame; eauto.
+  unfold Mem.stackeq.
+  eapply Mem.stack_record_frame in RECORD; eauto.
+  destruct RECORD as (hd & tl & A & B).
+  eapply Mem.stack_record_frame in RECORD'; eauto.
+  destruct RECORD' as (hd' & tl' & A' & B').
+  unfold Mem.stackeq in STK. rewrite B'.
+  rewrite B.
+  rewrite H' in A.
+  rewrite C' in A'.
+  simpl in *. rewrite A in STK. rewrite A' in STK.
+  inv STK. auto.
 - (* external function *)
   exploit external_call_inject; eauto.
   eapply match_stacks_preserves_globals; eauto.
@@ -1047,13 +1146,26 @@ Proof.
   apply match_stacks_incr with j; auto.
   eapply external_call_support; eauto.
   eapply external_call_support; eauto.
-
+  apply external_call_mem_stackeq in H.
+  apply external_call_mem_stackeq in A.
+  congruence.
 - (* return *)
-  inv STACKS. econstructor; split.
-  eapply exec_return.
+  inv STACKS.
+  apply Mem.pop_stage_nonempty in H as H'.
+  rewrite STK in H'.
+  apply Mem.nonempty_pop_stage in H'. destruct H' as [tm' POP].
+  econstructor; split.
+  eapply exec_return. eauto.
   econstructor; eauto. apply set_reg_inject; auto.
-  intro. intro. apply BELOW. apply Mem.sup_add_in2. auto.
-  intro. intro. apply TBELOW. apply Mem.sup_add_in2. auto.
+  eapply Mem.pop_stage_parallel_inject; eauto.
+
+  intro. intro.  unfold Mem.sup_include in *. unfold Mem.sup_In in *.
+  erewrite <- Mem.supp_pop_stage; eauto. apply BELOW. apply Mem.sup_add_in2. auto.
+  intro. intro.  unfold Mem.sup_include in *. unfold Mem.sup_In in *.
+  erewrite <- Mem.supp_pop_stage; eauto. apply TBELOW. apply Mem.sup_add_in2. auto.
+  apply Mem.stack_pop_stage in H. destruct H.
+  apply Mem.stack_pop_stage in POP. destruct POP.
+  congruence.
 Qed.
 
 (** Relating initial memory states *)
@@ -1238,7 +1350,7 @@ Proof.
 Qed.
 
 Lemma transf_initial_states:
-  forall S1, initial_state p S1 -> exists S2, initial_state tp S2 /\ match_states S1 S2.
+  forall S1, initial_state fn_stack_requirements p S1 -> exists S2, initial_state fn_stack_requirements tp S2 /\ match_states S1 S2.
 Proof.
   intros. inv H. exploit init_mem_inject; eauto. intros (j & tm & A & B & C).
   exploit symbols_inject_2. eauto. eapply kept_main. eexact H1. intros (tb & P & Q).
@@ -1246,13 +1358,20 @@ Proof.
   exploit defs_inject. eauto. eexact Q. exact H2.
   intros (R & S & T).
   rewrite <- Genv.find_funct_ptr_iff in R.
-  exists (Callstate nil f nil tm); split.
+  exists (Callstate nil f nil (Mem.push_stage tm)(fn_stack_requirements (prog_main tp))); split.
   econstructor; eauto.
   fold tge. erewrite match_prog_main by eauto. auto.
+  destruct TRANSF. rewrite match_prog_main0.
   econstructor; eauto.
-  constructor. auto.
-  erewrite <- Genv.init_mem_genv_sup by eauto. apply Mem.sup_include_refl.
-  erewrite <- Genv.init_mem_genv_sup by eauto. apply Mem.sup_include_refl.
+  econstructor. eauto.
+  unfold Mem.push_stage. simpl. erewrite <- Genv.init_mem_genv_sup by eauto.
+  unfold Mem.sup_include. auto.
+  unfold Mem.push_stage. simpl. erewrite <- Genv.init_mem_genv_sup by eauto.
+  unfold Mem.sup_include. auto.
+  eapply Mem.push_stage_inject; eauto.
+  unfold Mem.stackeq. simpl.
+  erewrite Genv.init_mem_stack; eauto.
+  erewrite Genv.init_mem_stack; eauto.
 Qed.
 
 Lemma transf_final_states:
@@ -1263,7 +1382,8 @@ Proof.
 Qed.
 
 Lemma transf_program_correct_1:
-  forward_simulation (semantics p) (semantics tp).
+  forward_simulation (semantics fn_stack_requirements p)
+                     (semantics fn_stack_requirements tp).
 Proof.
   intros.
   eapply forward_simulation_step.
@@ -1276,11 +1396,14 @@ Qed.
 End SOUNDNESS.
 
 Theorem transf_program_correct:
-  forall p tp, match_prog p tp -> forward_simulation (semantics p) (semantics tp).
+  forall p tp, match_prog p tp -> forward_simulation
+                                    (semantics fn_stack_requirements p)
+                                    (semantics fn_stack_requirements tp).
 Proof.
   intros p tp (used & A & B).  apply transf_program_correct_1 with used; auto.
 Qed.
 
+End ORACLE.
 (** * Commutation with linking *)
 
 Remark link_def_either:

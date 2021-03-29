@@ -16,7 +16,7 @@ Require Import Coqlib Maps Integers Floats Lattice Kildall.
 Require Import AST Linking.
 Require Import Values Builtins Events Memory Globalenvs Smallstep.
 Require Compopts Machregs.
-Require Import Op Registers RTL.
+Require Import Op Registers RTL RTLmach.
 Require Import Liveness ValueDomain ValueAOp ValueAnalysis.
 Require Import ConstpropOp ConstpropOpproof Constprop.
 
@@ -31,6 +31,7 @@ Qed.
 
 Section PRESERVATION.
 
+Variable fn_stack_requirements: ident -> Z.
 Variable prog: program.
 Variable tprog: program.
 Hypothesis TRANSL: match_prog prog tprog.
@@ -119,6 +120,19 @@ Proof.
   rewrite symbols_preserved.
   destruct (Genv.find_symbol ge i) as [b|]; try discriminate.
   apply function_ptr_translated; auto.
+Qed.
+
+Lemma find_function_id_preserved:
+  forall ros rs id,
+  ros_is_function ge ros rs id ->
+  ros_is_function tge ros rs id.
+Proof.
+  unfold ros_is_function. intros.
+  destruct ros.
+  - destruct H as (b & o & RS & FS).
+  eexists; eexists; split; eauto.
+  rewrite symbols_preserved. auto.
+  - auto.
 Qed.
 
 Lemma const_for_result_correct:
@@ -301,13 +315,13 @@ Inductive match_states: nat -> state -> state -> Prop :=
       match_states n (State s f sp pc rs m)
                     (State s' (transf_function (romem_for cu) f) sp pc' rs' m')
   | match_states_call:
-      forall s f args m s' args' m' cu
+      forall s f args m s' args' m' cu sz
            (LINK: linkorder cu prog)
            (STACKS: list_forall2 match_stackframes s s')
            (ARGS: Val.lessdef_list args args')
            (MEM: Mem.extends m m'),
-      match_states O (Callstate s f args m)
-                     (Callstate s' (transf_fundef (romem_for cu) f) args' m')
+      match_states O (Callstate s f args m sz)
+                     (Callstate s' (transf_fundef (romem_for cu) f) args' m' sz)
   | match_states_return:
       forall s v m s' v' m'
            (STACKS: list_forall2 match_stackframes s s')
@@ -349,9 +363,9 @@ Ltac TransfInstr :=
 
 Lemma transf_step_correct:
   forall s1 t s2,
-  step ge s1 t s2 ->
+  step fn_stack_requirements ge s1 t s2 ->
   forall n1 s1' (SS: sound_state prog s1) (MS: match_states n1 s1 s1'),
-  (exists n2, exists s2', step tge s1' t s2' /\ match_states n2 s2 s2')
+  (exists n2, exists s2', step fn_stack_requirements tge s1' t s2' /\ match_states n2 s2 s2')
   \/ (exists n2, n2 < n1 /\ t = E0 /\ match_states n2 s2 s1')%nat.
 Proof.
   induction 1; intros; inv MS; try InvSoundState; try (inv PC; try congruence).
@@ -391,7 +405,7 @@ Proof.
   destruct (op_strength_reduction op args (aregs ae args)) as [op' args'].
   destruct OP as [v' [EV' LD']].
   assert (EV'': exists v'', eval_operation ge (Vptr (fresh_block sps) Ptrofs.zero) op' rs'##args' m' = Some v'' /\ Val.lessdef v' v'').
-  { eapply eval_operation_lessdef; eauto. eapply regs_lessdef_regs; eauto. }
+  { eapply eval_operation_lessdef; eauto. eapply regs_lessdef_regs; eauto. apply MEM. }
   destruct EV'' as [v'' [EV'' LD'']].
   left; econstructor; econstructor; split.
   eapply exec_Iop; eauto.
@@ -457,42 +471,89 @@ Proof.
   exploit transf_ros_correct; eauto. intros (cu' & FIND & LINK').
   TransfInstr; intro.
   left; econstructor; econstructor; split.
-  eapply exec_Icall; eauto. apply sig_function_translated; auto.
+  eapply exec_Icall; eauto.
+  {
+    destruct ros; simpl in H |- *; auto.
+    assert (ros_is_function tge (inl r) rs' id).
+    {
+      destruct H as (b & o & EQ & EQ1).
+      simpl. generalize (REGS r). rewrite EQ. inversion 1; subst.
+      rewrite symbols_preserved; eauto.
+    }
+    destruct (areg ae r)eqn:?; eauto.
+    destruct p; eauto.
+    destruct Ptrofs.eq; eauto.
+    simpl.
+    destruct H as (b & o & EQ & EQ1).
+    generalize (EM r). setoid_rewrite Heqa. rewrite EQ. inversion 1. subst.
+    inv H5.
+    apply GE in H6.
+    apply Genv.find_invert_symbol in H6.
+    apply Genv.find_invert_symbol in EQ1. unfold ge in EQ1. congruence.
+    auto.
+  }
+  eapply sig_function_translated. auto.
   constructor; auto. constructor; auto.
   econstructor; eauto.
   apply regs_lessdef_regs; auto.
-
+  eapply Mem.push_stage_extends; eauto.
 - (* Itailcall *)
   exploit Mem.free_parallel_extends; eauto. intros [m2' [A B]].
   exploit transf_ros_correct; eauto. intros (cu' & FIND & LINK').
   TransfInstr; intro.
   left; econstructor; econstructor; split.
-  eapply exec_Itailcall; eauto. apply sig_function_translated; auto.
+  eapply exec_Itailcall; eauto.
+{
+    destruct ros; simpl in H |- *; auto.
+    assert (ros_is_function tge (inl r) rs' id).
+    {
+      destruct H as (b & o & EQ & EQ1).
+      simpl. generalize (REGS r). rewrite EQ. inversion 1; subst.
+      rewrite symbols_preserved; eauto.
+    }
+    destruct (areg ae r)eqn:?; eauto.
+    destruct p; eauto.
+    destruct Ptrofs.eq; eauto.
+    simpl.
+    destruct H as (b & o & EQ & EQ1).
+    generalize (EM r). setoid_rewrite Heqa. rewrite EQ. inversion 1. subst.
+    inv H6.
+    apply GE in H7.
+    apply Genv.find_invert_symbol in H7.
+    apply Genv.find_invert_symbol in EQ1. unfold ge in EQ1. congruence.
+    auto.
+  }
+  apply sig_function_translated; auto.
   constructor; auto.
   apply regs_lessdef_regs; auto.
 
 - (* Ibuiltin *)
   rename pc'0 into pc. TransfInstr; intros.
 Opaque builtin_strength_reduction.
+  edestruct builtin_strength_reduction_correct with (m := Mem.push_stage m) as (vargs' & P & Q); eauto.
+  rewrite <- eval_builtin_args_push. eauto.
+  exploit (eval_builtin_args_lessdef (ge := ge) (e1 := fun r => rs#r) (fun r => rs'#r)).
+  apply REGS. apply Mem.push_stage_extends; eauto. eexact P.
+  intros (vargs'' & U & V).
+  exploit external_call_mem_extends; eauto.
+  apply Mem.push_stage_extends; eauto.
+  intros (v' & m2' & A & B & C & D).
+  edestruct Mem.pop_stage_extends as (m3' & USB & EXT'); eauto.
   set (dfl := Ibuiltin ef (builtin_strength_reduction ae ef args) res pc') in *.
   set (rm := romem_for cu) in *.
   assert (DFL: (fn_code (transf_function rm f))!pc = Some dfl ->
           exists (n2 : nat) (s2' : state),
-            step tge
+            step fn_stack_requirements tge
              (State s' (transf_function rm f) (Vptr (fresh_block sps) Ptrofs.zero) pc rs' m'0) t s2' /\
             match_states n2
-             (State s f (Vptr (fresh_block sps) Ptrofs.zero) pc' (regmap_setres res vres rs) m') s2').
+             (State s f (Vptr (fresh_block sps) Ptrofs.zero) pc' (regmap_setres res vres rs) m'') s2').
   {
-    exploit builtin_strength_reduction_correct; eauto. intros (vargs' & P & Q).
-    exploit (@eval_builtin_args_lessdef _ ge (fun r => rs#r) (fun r => rs'#r)).
-    apply REGS. eauto. eexact P.
-    intros (vargs'' & U & V).
-    exploit external_call_mem_extends; eauto.
-    intros (v' & m2' & A & B & C & D).
+    intro.
     econstructor; econstructor; split.
-    eapply exec_Ibuiltin; eauto.
-    eapply eval_builtin_args_preserved. eexact symbols_preserved. eauto.
-    eapply external_call_symbols_preserved; eauto. apply senv_preserved.
+    eapply exec_Ibuiltin. eauto.
+    eapply eval_builtin_args_preserved. eexact symbols_preserved.
+    apply eval_builtin_args_push. eauto.
+    eapply external_call_symbols_preserved; eauto. apply senv_preserved. eauto.
     eapply match_states_succ; eauto.
     apply set_res_lessdef; auto.
   }
@@ -502,13 +563,15 @@ Opaque builtin_strength_reduction.
   destruct (eval_static_builtin_function ae am rm bf args) as [a|] eqn:ES; auto.
   destruct (const_for_result a) as [cop|] eqn:CR; auto.
   clear DFL. simpl in H1; red in H1; rewrite LK in H1; inv H1.
-  exploit const_for_result_correct; eauto. 
+  exploit const_for_result_correct; eauto.
   eapply eval_static_builtin_function_sound; eauto.
-  intros (v' & A & B).
+  intros (v'' & A' & B').
   left; econstructor; econstructor; split.
   eapply exec_Iop; eauto.
   eapply match_states_succ; eauto.
   apply set_reg_lessdef; auto.
+  rewrite Mem.pop_push_stage in H2. inv H2. auto.
+
 - (* Icond, preserved *)
   rename pc'0 into pc. TransfInstr.
   set (ac := eval_static_condition cond (aregs ae args)).
@@ -523,7 +586,9 @@ Opaque builtin_strength_reduction.
   assert (b0 = b) by (eapply resolve_branch_sound; eauto). subst b0.
   destruct b; eapply exec_Inop; eauto.
   eapply exec_Icond; eauto.
-  eapply eval_condition_lessdef with (vl1 := rs##args'); eauto. eapply regs_lessdef_regs; eauto. congruence.
+  eapply eval_condition_lessdef with (vl1 := rs##args'); eauto. eapply regs_lessdef_regs; eauto.
+  apply MEM.
+  congruence.
   eapply match_states_succ; eauto.
 
 - (* Icond, skipped over *)
@@ -557,8 +622,17 @@ Opaque builtin_strength_reduction.
   exploit Mem.alloc_extends. eauto. eauto. apply Z.le_refl. apply Z.le_refl.
   intros [m2' [A B]].
   simpl. unfold transf_function.
+  apply Mem.record_frame_mach_result in H0 as H1.
+  apply Mem.record_frame_mach_size in H0 as H2.
+  inversion B.
+  exploit Mem.record_frame_extends; eauto. intro.
+  destruct H5 as [m3' [RECORD EXTENDS]].
   left; exists O; econstructor; split.
   eapply exec_function_internal; simpl; eauto.
+  unfold Mem.record_frame_mach. rewrite RECORD.
+  assert ((Mem.stack_size_mach (Mem.stack (Mem.support m3')))<= Mem.max_stacksize).
+  inversion EXTENDS.
+  rewrite <- H6. lia. apply zle_true. auto.
   simpl. econstructor; eauto.
   constructor.
   apply init_regs_lessdef; auto.
@@ -572,25 +646,28 @@ Opaque builtin_strength_reduction.
   constructor; auto.
 
 - (* return *)
-  inv H4. inv H1.
+  inv H5. inv H2.
+  exploit Mem.pop_stage_extends; eauto.
+  intros (m'1 & POP & EXTENDS).
   left; exists O; econstructor; split.
   eapply exec_return; eauto.
   econstructor; eauto. constructor. apply set_reg_lessdef; auto.
 Qed.
 
 Lemma transf_initial_states:
-  forall st1, initial_state prog st1 ->
-  exists n, exists st2, initial_state tprog st2 /\ match_states n st1 st2.
+  forall st1, initial_state fn_stack_requirements prog st1 ->
+  exists n, exists st2, initial_state fn_stack_requirements tprog st2 /\ match_states n st1 st2.
 Proof.
   intros. inversion H.
   exploit function_ptr_translated; eauto. intros (cu & FIND & LINK).
-  exists O; exists (Callstate nil (transf_fundef (romem_for cu) f) nil m0); split.
+  exists O; exists (Callstate nil (transf_fundef (romem_for cu) f) nil (Mem.push_stage m0) (fn_stack_requirements (prog_main tprog))); split.
   econstructor; eauto.
   apply (Genv.init_mem_match TRANSL); auto.
   replace (prog_main tprog) with (prog_main prog).
   rewrite symbols_preserved. eauto.
   symmetry; eapply match_program_main; eauto.
   rewrite <- H3. apply sig_function_translated.
+  destruct TRANSL as (_&MAIN&_). rewrite MAIN.
   constructor. auto. constructor. constructor. apply Mem.extends_refl.
 Qed.
 
@@ -605,7 +682,8 @@ Qed.
   follows. *)
 
 Theorem transf_program_correct:
-  forward_simulation (RTL.semantics prog) (RTL.semantics tprog).
+  forward_simulation (RTLmach.semantics fn_stack_requirements prog)
+                     (RTLmach.semantics fn_stack_requirements tprog).
 Proof.
   apply Forward_simulation with lt (fun n s1 s2 => sound_state prog s1 /\ match_states n s1 s2); constructor.
 - apply lt_wf.

@@ -1833,3 +1833,21 @@ Qed.
 
 End EVAL_BUILTIN_ARG_LESSDEF.
 
+Lemma eval_builtin_arg_push:
+  forall {A} ge (e: A -> val) sp m a v,
+    eval_builtin_arg ge e sp m a v <->
+    eval_builtin_arg ge e sp (Mem.push_stage m) a v.
+Proof.
+  intros A ge0 e sp m a v; split; induction 1; econstructor; eauto.
+Qed.
+
+Lemma eval_builtin_args_push:
+  forall {A} ge (e: A -> val) sp m al vl,
+    eval_builtin_args ge e sp m al vl <->
+    eval_builtin_args ge e sp (Mem.push_stage m) al vl.
+Proof.
+  unfold eval_builtin_args.
+  intros. split; intro.
+  induction H; constructor. rewrite <- eval_builtin_arg_push. auto. auto.
+  induction H; constructor. rewrite  eval_builtin_arg_push. auto. auto.
+Qed.

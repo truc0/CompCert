@@ -206,6 +206,14 @@ Record sup' : Type := mksup {
 
 Definition sup := sup'.
 
+Lemma mksup_ext:
+ forall supp1 supp2 stk1 stk2,
+  supp1 = supp2 -> stk1 = stk2 ->
+  mksup supp1 stk1 = mksup supp2 stk2.
+Proof.
+  intros. subst. f_equal.
+Qed.
+
 Definition sup_empty : sup := mksup nil nil.
 
 Definition sup_In(b:block)(s:sup) : Prop := In b (supp s).
@@ -1367,6 +1375,18 @@ Proof.
   contradiction.
 Defined.
 
+Theorem push_store_pop_stage:
+   forall m b o chunk v m1 m2,
+     store chunk m b o v = Some m1 ->
+     store chunk (push_stage m) b o v = Some m2 ->
+     pop_stage m2 = Some m1.
+Proof.
+  unfold store, pop_stage. simpl; intros.
+  repeat destr_in H0. simpl in *.
+  repeat destr_in H. f_equal.
+  apply mkmem_ext; auto.
+  destruct (support m). simpl. reflexivity.
+Qed.
 Local Hint Resolve valid_access_store: mem.
 
 Section STORE.
@@ -1843,6 +1863,31 @@ Proof.
   f_equal. apply mkmem_ext; auto.
   destruct v0.  elim n.
   rewrite encode_val_length. rewrite <- size_chunk_conv. auto.
+Qed.
+
+Lemma storebytes_push_stage:
+  forall m b ofs bytes m'
+    (SB: Mem.storebytes (Mem.push_stage m) b ofs bytes = Some m'),
+  exists m2,
+    Mem.storebytes m b ofs bytes = Some m2.
+Proof.
+  intros.
+  unfold storebytes in *.
+  destruct (range_perm_dec (push_stage m)). inv SB. 2:discriminate.
+  rewrite pred_dec_true. eauto. eauto.
+Qed.
+
+Lemma push_storebytes_pop_stage:
+  forall m b o bytes m1 m2,
+    storebytes m b o bytes = Some m1 ->
+    storebytes (push_stage m) b o bytes = Some m2 ->
+    pop_stage m2 = Some m1.
+Proof.
+  unfold storebytes, pop_stage. simpl; intros.
+  repeat destr_in H0. simpl in *.
+  repeat destr_in H. f_equal.
+  apply mkmem_ext; auto.
+  destruct (support m). simpl. reflexivity.
 Qed.
 
 Section STOREBYTES.
