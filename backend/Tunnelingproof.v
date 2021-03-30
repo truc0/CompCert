@@ -260,6 +260,7 @@ End BRANCH_MAP_CORRECT.
 
 Section PRESERVATION.
 
+Variables fn_stack_requirements : ident -> Z.
 Variables prog tprog: program.
 Hypothesis TRANSL: match_prog prog tprog.
 Let ge := Genv.globalenv prog.
@@ -363,12 +364,12 @@ Inductive match_states: state -> state -> Prop :=
       match_states (Block s f sp (Lcond cond args pc1 pc2 :: bb) ls m)
                    (State ts (tunnel_function f) sp (branch_target f pc1) tls tm)
   | match_states_call:
-      forall s f ls m ts tls tm
+      forall s f ls m ts tls tm sz
         (STK: list_forall2 match_stackframes s ts)
         (LS: locmap_lessdef ls tls)
         (MEM: Mem.extends m tm),
-      match_states (Callstate s f ls m)
-                   (Callstate ts (tunnel_fundef f) tls tm)
+      match_states (Callstate s f ls m sz)
+                   (Callstate ts (tunnel_fundef f) tls tm sz)
   | match_states_return:
       forall s ls m ts tls tm
         (STK: list_forall2 match_stackframes s ts)
@@ -516,7 +517,7 @@ Definition measure (st: state) : nat :=
   | Block s f sp (Lbranch pc :: _) ls m => (count_gotos f pc * 2 + 1)%nat
   | Block s f sp (Lcond _ _ pc1 pc2 :: _) ls m => (Nat.max (count_gotos f pc1) (count_gotos f pc2) * 2 + 1)%nat
   | Block s f sp bb ls m => 0%nat
-  | Callstate s f ls m => 0%nat
+  | Callstate s f ls m sz => 0%nat
   | Returnstate s ls m => 0%nat
   end.
 
@@ -530,10 +531,26 @@ Proof.
 - inv H; auto.
 Qed.
 
+Lemma ros_is_function_translated:
+  forall ros rs tls i,
+    ros_is_function ge ros rs i ->
+    locmap_lessdef rs tls ->
+    ros_is_function tge ros tls i.
+Proof.
+  destruct ros; simpl; intros.
+  rewrite symbols_preserved; eauto.
+  destruct H as (b & o & A & B).
+  exists b. exists o. split.
+  unfold locmap_lessdef in H0.
+  generalize (H0 (R m)). intro. inv H.
+  eauto. rewrite <- H2 in A. inv A. auto.
+  auto.
+Qed.
+
 Lemma tunnel_step_correct:
-  forall st1 t st2, step ge st1 t st2 ->
+  forall st1 t st2, step fn_stack_requirements ge st1 t st2 ->
   forall st1' (MS: match_states st1 st1'),
-  (exists st2', step tge st1' t st2' /\ match_states st2 st2')
+  (exists st2', step fn_stack_requirements tge st1' t st2' /\ match_states st2 st2')
   \/ (measure st2 < measure st1 /\ t = E0 /\ match_states st2 st1')%nat.
 Proof.
   induction 1; intros; try inv MS.
@@ -541,7 +558,7 @@ Proof.
 - (* entering a block *)
   assert (DEFAULT: branch_target f pc = pc ->
     (exists st2' : state,
-     step tge (State ts (tunnel_function f) sp (branch_target f pc) tls tm) E0 st2'
+     step fn_stack_requirements tge (State ts (tunnel_function f) sp (branch_target f pc) tls tm) E0 st2'
      /\ match_states (Block s f sp bb rs m) st2')).
   { intros. rewrite H0. econstructor; split.
     econstructor. simpl. rewrite PTree.gmap1. rewrite H. simpl. eauto.
@@ -561,7 +578,7 @@ Proof.
   rewrite B. econstructor; eauto. congruence.
 
 - (* Lop *)
-  exploit eval_operation_lessdef. apply reglist_lessdef; eauto. eauto. eauto. 
+  exploit eval_operation_lessdef. apply reglist_lessdef; eauto. apply MEM. eauto. eauto. 
   intros (tv & EV & LD).
   left; simpl; econstructor; split.
   eapply exec_Lop with (v := tv); eauto.
@@ -598,20 +615,23 @@ Proof.
 - (* Lcall *)
   left; simpl; econstructor; split.
   eapply exec_Lcall with (fd := tunnel_fundef fd); eauto.
+  eapply ros_is_function_translated; eauto.
   eapply find_function_translated; eauto.
   rewrite sig_preserved. auto.
   econstructor; eauto.
   constructor; auto.
   constructor; auto.
 - (* Ltailcall *)
-  exploit Mem.free_parallel_extends. eauto. eauto. intros (tm' & FREE & MEM'). 
+  exploit Mem.free_parallel_extends. eauto. eauto. intros (tm' & FREE & MEM').
+  exploit Mem.pop_stage_extends; eauto. intros (tm'' & POP & MEM'').
   left; simpl; econstructor; split.
   eapply exec_Ltailcall with (fd := tunnel_fundef fd); eauto.
+  eapply ros_is_function_translated; eauto.
   eapply find_function_translated; eauto using return_regs_lessdef, match_parent_locset.
   apply sig_preserved.
   econstructor; eauto using return_regs_lessdef, match_parent_locset.
 - (* Lbuiltin *)
-  exploit eval_builtin_args_lessdef. eexact LS. eauto. eauto. intros (tvargs & EVA & LDA).
+  exploit eval_builtin_args_lessdef. eexact LS. apply MEM. eauto. intros (tvargs & EVA & LDA).
   exploit external_call_mem_extends; eauto. intros (tvres & tm' & A & B & C & D).
   left; simpl; econstructor; split.
   eapply exec_Lbuiltin; eauto.
@@ -635,7 +655,7 @@ Proof.
   replace s1 with (branch_target f pc) by (unfold pc; destruct b; auto).
   constructor; eauto using locmap_undef_regs_lessdef_1.
 + left; econstructor; split.
-  eapply exec_Lcond; eauto. eapply eval_condition_lessdef; eauto using reglist_lessdef.
+  eapply exec_Lcond; eauto. eapply eval_condition_lessdef; eauto using reglist_lessdef. apply MEM.
   destruct b; econstructor; eauto using locmap_undef_regs_lessdef.
 - (* Lcond (eliminated) *)
   right; split. simpl. destruct b; lia.
@@ -652,15 +672,23 @@ Proof.
   eauto. rewrite list_nth_z_map. change U.elt with node. rewrite H0. reflexivity. eauto.
   econstructor; eauto using locmap_undef_regs_lessdef.
 - (* Lreturn *)
-  exploit Mem.free_parallel_extends. eauto. eauto. intros (tm' & FREE & MEM'). 
+  exploit Mem.free_parallel_extends. eauto. eauto. intros (tm' & FREE & MEM').
+  exploit Mem.pop_stage_extends; eauto. intros (tm'' & POP & MEM'').
   left; simpl; econstructor; split.
   eapply exec_Lreturn; eauto.
   constructor; eauto using return_regs_lessdef, match_parent_locset.
 - (* internal function *)
   exploit Mem.alloc_extends. eauto. eauto. apply Z.le_refl. apply Z.le_refl.
-  intros (tm' & ALLOC & MEM'). 
+  intros (tm' & ALLOC & MEM').
+  exploit Mem.push_stage_extends; eauto. intro.
+  eapply Mem.record_frame_mach_result in H0 as RECORD.
+  eapply Mem.record_frame_mach_size in H0 as SIZE.
+  exploit Mem.record_frame_extends; eauto.
+  intros (tm'' & RECORD' & MEM''). inversion MEM''.
   left; simpl; econstructor; split.
   eapply exec_function_internal; eauto.
+  unfold Mem.record_frame_mach. rewrite RECORD'.
+  apply zle_true. rewrite <- H3. lia.
   simpl. econstructor; eauto using locmap_undef_regs_lessdef, call_regs_lessdef.
 - (* external function *)
   exploit external_call_mem_extends; eauto using locmap_getpairs_lessdef.
@@ -677,17 +705,18 @@ Proof.
 Qed.
 
 Lemma transf_initial_states:
-  forall st1, initial_state prog st1 ->
-  exists st2, initial_state tprog st2 /\ match_states st1 st2.
+  forall st1, initial_state fn_stack_requirements prog st1 ->
+  exists st2, initial_state fn_stack_requirements tprog st2 /\ match_states st1 st2.
 Proof.
   intros. inversion H.
-  exists (Callstate nil (tunnel_fundef f) (Locmap.init Vundef) m0); split.
+  exists (Callstate nil (tunnel_fundef f) (Locmap.init Vundef) m0 (fn_stack_requirements (prog_main tprog))); split.
   econstructor; eauto.
   apply (Genv.init_mem_transf TRANSL); auto.
   rewrite (match_program_main TRANSL).
   rewrite symbols_preserved. eauto.
   apply function_ptr_translated; auto.
   rewrite <- H3. apply sig_preserved.
+  destruct TRANSL as (_&MAIN&_). rewrite MAIN.
   constructor. constructor. red; simpl; auto. apply Mem.extends_refl.
 Qed.
 
@@ -702,7 +731,8 @@ Proof.
 Qed.
 
 Theorem transf_program_correct:
-  forward_simulation (LTL.semantics prog) (LTL.semantics tprog).
+  forward_simulation (LTL.semantics fn_stack_requirements prog)
+                     (LTL.semantics fn_stack_requirements tprog).
 Proof.
   eapply forward_simulation_opt.
   apply senv_preserved.

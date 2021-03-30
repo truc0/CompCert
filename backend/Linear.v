@@ -88,6 +88,9 @@ Fixpoint find_label (lbl: label) (c: code) {struct c} : option code :=
   | nil => None
   | i1 :: il => if is_label lbl i1 then Some il else find_label lbl il
   end.
+Section ORACLE.
+
+Variable fn_stack_requirements : ident -> Z.
 
 Section RELSEM.
 
@@ -126,7 +129,7 @@ Inductive state: Type :=
       forall (stack: list stackframe) (**r call stack *)
              (f: fundef)              (**r function to call *)
              (rs: locset)             (**r location state at point of call *)
-             (m: mem),                (**r memory state *)
+             (m: mem)(sz:Z),                (**r memory state *)
       state
   | Returnstate:
       forall (stack: list stackframe) (**r call stack *)
@@ -140,6 +143,12 @@ Definition parent_locset (stack: list stackframe) : locset :=
   match stack with
   | nil => Locmap.init Vundef
   | Stackframe f sp ls c :: stack' => ls
+  end.
+
+Definition ros_is_function (ros: mreg + ident) (rs: locset) (i: ident) : Prop :=
+  match ros with
+  | inl r => exists b o, rs (R r) = Vptr b o /\ Genv.find_symbol ge i = Some b
+  | inr symb => i = symb
   end.
 
 Inductive step: state -> trace -> state -> Prop :=
@@ -174,19 +183,23 @@ Inductive step: state -> trace -> state -> Prop :=
       step (State s f sp (Lstore chunk addr args src :: b) rs m)
         E0 (State s f sp b rs' m')
   | exec_Lcall:
-      forall s f sp sig ros b rs m f',
+      forall s f sp sig ros b rs m f' id,
+      ros_is_function ros rs id ->
       find_function ros rs = Some f' ->
       sig = funsig f' ->
       step (State s f sp (Lcall sig ros :: b) rs m)
-        E0 (Callstate (Stackframe f sp rs b:: s) f' rs m)
+        E0 (Callstate (Stackframe f sp rs b:: s) f' rs m
+           (fn_stack_requirements id))
   | exec_Ltailcall:
-      forall s f stk sig ros b rs m rs' f' m',
+      forall s f stk sig ros b rs m rs' f' m' m'' id,
+      ros_is_function ros rs id ->
       rs' = return_regs (parent_locset s) rs ->
       find_function ros rs' = Some f' ->
       sig = funsig f' ->
       Mem.free m stk 0 f.(fn_stacksize) = Some m' ->
+      Mem.pop_stage m' = Some m'' ->
       step (State s f (Vptr stk Ptrofs.zero) (Ltailcall sig ros :: b) rs m)
-        E0 (Callstate s f' rs' m')
+        E0 (Callstate s f' rs' m'' (fn_stack_requirements id ))
   | exec_Lbuiltin:
       forall s f sp rs m ef args res b vargs t vres rs' m',
       eval_builtin_args ge rs sp m args vargs ->
@@ -225,22 +238,24 @@ Inductive step: state -> trace -> state -> Prop :=
       step (State s f sp (Ljumptable arg tbl :: b) rs m)
         E0 (State s f sp b' rs' m)
   | exec_Lreturn:
-      forall s f stk b rs m m',
+      forall s f stk b rs m m' m'',
       Mem.free m stk 0 f.(fn_stacksize) = Some m' ->
+      Mem.pop_stage m' = Some m'' ->
       step (State s f (Vptr stk Ptrofs.zero) (Lreturn :: b) rs m)
-        E0 (Returnstate s (return_regs (parent_locset s) rs) m')
+        E0 (Returnstate s (return_regs (parent_locset s) rs) m'')
   | exec_function_internal:
-      forall s f rs m rs' m' stk,
+      forall s f rs m rs' m' m'' stk sz,
       Mem.alloc m 0 f.(fn_stacksize) = (m', stk) ->
+      Mem.record_frame_mach (Mem.push_stage m') (Mem.mk_frame sz) = Some m'' ->
       rs' = undef_regs destroyed_at_function_entry (call_regs rs) ->
-      step (Callstate s (Internal f) rs m)
-        E0 (State s f (Vptr stk Ptrofs.zero) f.(fn_code) rs' m')
+      step (Callstate s (Internal f) rs m sz)
+        E0 (State s f (Vptr stk Ptrofs.zero) f.(fn_code) rs' m'')
   | exec_function_external:
-      forall s ef args res rs1 rs2 m t m',
+      forall s ef args res rs1 rs2 m t m' sz,
       args = map (fun p => Locmap.getpair p rs1) (loc_arguments (ef_sig ef)) ->
       external_call ef ge args m t res m' ->
       rs2 = Locmap.setpair (loc_result (ef_sig ef)) res (undef_caller_save_regs rs1) ->
-      step (Callstate s (External ef) rs1 m)
+      step (Callstate s (External ef) rs1 m sz)
          t (Returnstate s rs2 m')
   | exec_return:
       forall s f sp rs0 c rs m,
@@ -256,7 +271,8 @@ Inductive initial_state (p: program): state -> Prop :=
       Genv.find_symbol ge p.(prog_main) = Some b ->
       Genv.find_funct_ptr ge b = Some f ->
       funsig f = signature_main ->
-      initial_state p (Callstate nil f (Locmap.init Vundef) m0).
+      initial_state p (Callstate nil f (Locmap.init Vundef) m0
+                                 (fn_stack_requirements (prog_main p))).
 
 Inductive final_state: state -> int -> Prop :=
   | final_state_intro: forall rs m retcode,
@@ -265,3 +281,5 @@ Inductive final_state: state -> int -> Prop :=
 
 Definition semantics (p: program) :=
   Semantics step (initial_state p) final_state (Genv.globalenv p).
+
+End ORACLE.

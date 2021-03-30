@@ -14,7 +14,7 @@ Require Import FunInd.
 Require Import Zwf Coqlib Maps Zbits Integers Floats Lattice.
 Require Import Compopts AST.
 Require Import Values Memory Globalenvs Builtins Events.
-Require Import Registers RTL RTLmach.
+Require Import Registers RTL RTLmach1.
 
 (** The abstract domains for value analysis *)
 

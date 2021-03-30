@@ -15,7 +15,7 @@
 Require Import Coqlib Maps Errors Integers Floats Lattice Kildall.
 Require Import AST Linking.
 Require Import Values Memory Builtins Events Globalenvs Smallstep.
-Require Import Op Registers RTL RTLmach.
+Require Import Op Registers RTL RTLmach1.
 Require Import ValueDomain ValueAOp ValueAnalysis.
 Require Import CSEdomain CombineOp CombineOpproof CSE.
 
@@ -1182,10 +1182,10 @@ Proof.
   unfold transfer; rewrite H0.
   exists (fun _ => Vundef); apply empty_numbering_holds.
   apply regs_lessdef_regs; auto.
-  eapply Mem.push_stage_extends; eauto.
 - (* Itailcall *)
   exploit find_function_translated; eauto. intros (cu' & tf & FIND' & TRANSF' & LINK').
-  exploit Mem.free_parallel_extends; eauto. intros [m'' [A B]].
+  exploit Mem.free_parallel_extends; eauto. intros [m'1 [A B]].
+  exploit Mem.pop_stage_extends; eauto. intros [m'2 [A' B']].
   econstructor; split.
   eapply exec_Itailcall; eauto.
   destruct ros; simpl in *; eauto.
@@ -1198,9 +1198,8 @@ Proof.
 - (* Ibuiltin *)
   exploit (@eval_builtin_args_lessdef _ ge (fun r => rs#r) (fun r => rs'#r)); eauto. apply MEXT.
   intros (vargs' & A & B).
-  exploit external_call_mem_extends; eauto. eapply Mem.push_stage_extends; eauto.
+  exploit external_call_mem_extends; eauto.
   intros (v' & m1' & P & Q & R & S).
-  edestruct Mem.pop_stage_extends as (m3' & USB & EXT'); eauto.
   econstructor; split.
   eapply exec_Ibuiltin; eauto.
   eapply eval_builtin_args_preserved with (ge1 := ge); eauto. exact symbols_preserved.
@@ -1209,28 +1208,26 @@ Proof.
   eapply analysis_correct_1; eauto. simpl; auto.
 * unfold transfer; rewrite H.
   destruct SAT as [valu NH].
-  assert (CASE1: exists valu, numbering_holds valu ge sp (regmap_setres res vres rs) m'' empty_numbering).
+  assert (CASE1: exists valu, numbering_holds valu ge sp (regmap_setres res vres rs) m' empty_numbering).
   { exists valu; apply empty_numbering_holds. }
-  assert (CASE2: m'' = m -> exists valu, numbering_holds valu ge sp (regmap_setres res vres rs) m'' (set_res_unknown approx#pc res)).
-  { intros. subst m''. exists valu. apply set_res_unknown_holds; auto. }
-  assert (CASE3: exists valu, numbering_holds valu ge sp (regmap_setres res vres rs) m''
+  assert (CASE2: m' = m -> exists valu, numbering_holds valu ge sp (regmap_setres res vres rs) m' (set_res_unknown approx#pc res)).
+  { intros. subst m'. exists valu. apply set_res_unknown_holds; auto. }
+  assert (CASE3: exists valu, numbering_holds valu ge sp (regmap_setres res vres rs) m'
                          (set_res_unknown (kill_all_loads approx#pc) res)).
   { exists valu. apply set_res_unknown_holds. eapply kill_all_loads_hold; eauto. }
   destruct ef.
   + apply CASE1.
   + destruct (lookup_builtin_function name sg) as [bf|] eqn:LK.
-    ++ apply CASE2. simpl in H1; red in H1; rewrite LK in H1; inv H1.
-         rewrite Mem.pop_push_stage in H2. inv H2. auto.
+    ++ apply CASE2. simpl in H1; red in H1; rewrite LK in H1; inv H1. auto.
     ++ apply CASE3.
   + apply CASE1.
-  + apply CASE2; inv H1; auto. rewrite Mem.pop_push_stage in H2. inv H2. auto.
+  + apply CASE2; inv H1; auto.
   + apply CASE3.
   + apply CASE1.
   + apply CASE1.
-  + inv H0; auto. inv H4; auto. inv H5; auto.
+  + inv H0; auto. inv H3; auto. inv H4; auto.
     simpl in H1. inv H1.
     exists valu.
-    eapply num_holds_pop_stage; eauto.
     apply set_res_unknown_holds.
     InvSoundState. unfold vanalyze; rewrite AN.
     assert (pmatch bc bsrc osrc (aaddr_arg (VA.State ae am) a0))
@@ -1238,15 +1235,13 @@ Proof.
     assert (pmatch bc bdst odst (aaddr_arg (VA.State ae am) a1))
     by (eapply aaddr_arg_sound_1; eauto).
     eapply add_memcpy_holds; eauto.
-    eapply num_holds_push_stage; eauto.
     eapply kill_loads_after_storebytes_holds. 3: eauto. all:eauto.
-    eapply num_holds_push_stage; eauto.
     eapply Mem.loadbytes_length; eauto.
     simpl. apply Ple_refl.
-  + apply CASE2; inv H1; auto.  rewrite Mem.pop_push_stage in H2. inv H2. auto.
-  + apply CASE2; inv H1; auto.  rewrite Mem.pop_push_stage in H2. inv H2. auto.
+  + apply CASE2; inv H1; auto.
+  + apply CASE2; inv H1; auto.
   + apply CASE1.
-  + apply CASE2; inv H1; auto.  rewrite Mem.pop_push_stage in H2. inv H2. auto.
+  + apply CASE2; inv H1; auto.
 * apply set_res_lessdef; auto.
 
 - (* Icond *)
@@ -1273,7 +1268,8 @@ Proof.
   unfold transfer; rewrite H; auto.
 
 - (* Ireturn *)
-  exploit Mem.free_parallel_extends; eauto. intros [m'' [A B]].
+  exploit Mem.free_parallel_extends; eauto. intros [m'1 [A B]].
+  exploit Mem.pop_stage_extends; eauto. intros [m'2 [A' B']].
   econstructor; split.
   eapply exec_Ireturn; eauto.
   econstructor; eauto.
@@ -1286,12 +1282,13 @@ Proof.
   apply Mem.record_frame_mach_result in H0 as RECORD.
   apply Mem.record_frame_mach_size in H0 as SIZE.
   intros (m'1 & A & B). inversion B.
+  exploit Mem.push_stage_extends; eauto. intro.
   exploit Mem.record_frame_extends; eauto.
   intros (m'2 & A'& B'). inversion B'.
   econstructor; split.
   eapply exec_function_internal; simpl; eauto.
   unfold Mem.record_frame_mach. rewrite A'.
-  apply zle_true. rewrite <- H4. lia.
+  apply zle_true. rewrite <- H5. lia.
   simpl. econstructor; eauto.
   eapply analysis_correct_entry; eauto.
   apply init_regs_lessdef; auto.
@@ -1307,8 +1304,6 @@ Proof.
 
 - (* return *)
   inv STACK.
-  exploit Mem.pop_stage_extends; eauto.
-  intros [m2' [POP EXTENDS]].
   econstructor; split.
   eapply exec_return; eauto.
   econstructor; eauto.
@@ -1321,7 +1316,7 @@ Lemma transf_initial_states:
 Proof.
   intros. inversion H.
   exploit funct_ptr_translated; eauto. intros (cu & tf & A & B & C).
-  exists (Callstate nil tf nil (Mem.push_stage m0)(fn_stack_requirements (prog_main tprog))); split.
+  exists (Callstate nil tf nil m0(fn_stack_requirements (prog_main tprog))); split.
   econstructor; eauto.
   eapply (Genv.init_mem_match TRANSF); eauto.
   replace (prog_main tprog) with (prog_main prog).

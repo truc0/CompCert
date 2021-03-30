@@ -112,6 +112,27 @@ Proof.
   - auto.
   - simpl. rewrite H0. simpl. congruence.
 Qed.
+(* need a Mem_iff invariant 
+
+Inductive match_states: RTL.state -> RTL.state -> Prop :=
+  | match_regular_states: forall stk f sp pc rs m m',
+        Mem.extends' m' m ->
+        match_stackadt (Mem.stack(Mem.support m)) (Mem.stack(Mem.support m'))->
+      match_states (State stk f sp pc rs m)
+                   (State stk f sp pc rs m')
+  | match_callstates: forall stk f args m sz m' hd tl,
+        Mem.extends' m' m ->
+        Mem.stack(Mem.support m) = hd :: tl ->
+        match_stackadt tl (Mem.stack(Mem.support m')) ->
+      match_states (Callstate stk f args m sz)
+                   (Callstate stk f args m' sz)
+  | match_returnstates: forall stk v  m m' hd tl,
+        Mem.extends' m' m ->
+        Mem.stack(Mem.support m) = hd :: tl ->
+        match_stackadt tl (Mem.stack(Mem.support m')) ->
+      match_states (Returnstate stk v m)
+                   (Returnstate stk v m').
+*)
 Inductive match_stackframes: list stackframe -> list stackframe -> Prop :=
   | match_stackframes_nil:
       match_stackframes nil nil
@@ -323,11 +344,11 @@ Proof.
     econstructor. split. apply plus_one.
     eapply RTLmach.exec_return; eauto.
     econstructor; eauto. apply set_reg_lessdef; auto.
-    eapply pop_stage_right_extends'; eauto.
+    eapply Mem.pop_stage_right_extends'; eauto.
     destruct (Mem.stack_pop_stage   _ _ POP).
     rewrite H in H8. inv H8. auto.
 Qed.
-Locate initial_state.
+
 Definition initial_states_exist:
   forall s1, RTL.initial_state fn_stack_requirements prog s1 ->
              exists s2, initial_state fn_stack_requirements prog s2.
@@ -350,37 +371,28 @@ Proof.
   rewrite H3 in H6. inv H6.
   rewrite H1 in H. inv H.
   eapply match_callstates; eauto.
-  constructor; simpl; eauto. constructor.
-  - intros. unfold Mem.push_stage. unfold inject_id in *. inv H. 
-Theorem strategy_simulation:
-  forall p, backward_simulation (RTLmach.semantics fn_stack_requirements p)
-                                (semantics fn_stack_requirements p).
-Proof.
-  intros. apply backward_simulation_plus with match_states; eauto.
-  - intros.
+  eapply Mem.push_stage_right_extends'; eauto. apply Mem.extends'_refl.
+  constructor. simpl. reflexivity.
+  apply Genv.init_mem_stack in H1. rewrite H1.
+  constructor.
+Qed.
 
-
-
-
-
-
-Hypothesis match_final_states:
+Definition match_final_states:
   forall s1 s2 r,
-  match_states s1 s2 -> final_state L2 s2 r -> final_state L1 s1 r.
-
-Hypothesis progress:
-  forall s1 s2,
-  match_states s1 s2 -> safe L1 s1 ->
-  (exists r, final_state L2 s2 r) \/
-  (exists t, exists s2', Step L2 s2 t s2').
-
-Section BACKWARD_SIMULATION_PLUS.
-
-Hypothesis simulation:
-  forall s2 t s2', Step L2 s2 t s2' ->
-  forall s1, match_states s1 s2 -> safe L1 s1 ->
-  exists s1', Plus L1 s1 t s1' /\ match_states s1' s2'.
-
-Lemma backward_simulation_plus: backward_simulation L1 L2.
+  match_states s1 s2 -> final_state s2 r -> RTL.final_state s1 r.
 Proof.
+  intros. inv H0. inv H. inv H6. inv H3. inv H7.
+  constructor.
+Qed.
+Definition progress:
+  forall s1 s2,
+  match_states s1 s2 -> safe (RTLmach.semantics fn_stack_requirements prog) s1 ->
+  (exists r, RTLmach1.final_state s2 r) \/
+  (exists t, exists s2', (step fn_stack_requirements) tge s2 t s2').
+Proof.
+  Admitted.
+
+End PRESERVATION.
+
+
 
