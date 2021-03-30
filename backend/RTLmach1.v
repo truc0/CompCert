@@ -11,19 +11,21 @@
 (* *********************************************************************)
 
 (** The RTL intermediate language: abstract syntax and semantics.
+
   RTL stands for "Register Transfer Language". This is the first
   intermediate language after Cminor and CminorSel.
 *)
 
 Require Import Coqlib Maps.
 Require Import AST Integers Values Events Memory Globalenvs Smallstep.
-Require Import Op Registers RTL.
+Require Import Op Registers RTL RTLmach.
 
 (** * Abstract syntax *)
 
 (** RTLMach is almost same as RTL, the only difference here is we use
     the memory opration [record_frame_mach] to record new frame instead
     of [record_frame_vm] which is used in all semantics before.
+
     This new opration calculates only the first framesize of a tailcall
     stage to give the whole stack consumption after a record operation.
     Which is precisely the machine deals with tailcalls.
@@ -74,24 +76,24 @@ Inductive step: state -> trace -> state -> Prop :=
       find_function ge ros rs = Some fd ->
       funsig fd = sig ->
       step (State s f sp pc rs m)
-        E0 (Callstate (Stackframe res f sp pc' rs :: s) fd rs##args (Mem.push_stage m) (fn_stack_requirements id))
+        E0 (Callstate (Stackframe res f sp pc' rs :: s) fd rs##args m (fn_stack_requirements id))
   | exec_Itailcall:
-      forall s f stk pc rs m sig ros args fd m' id,
+      forall s f stk pc rs m sig ros args fd m' id m'',
       ros_is_function ge ros rs id ->
       (fn_code f)!pc = Some(Itailcall sig ros args) ->
       find_function ge ros rs = Some fd ->
       funsig fd = sig ->
       Mem.free m stk 0 f.(fn_stacksize) = Some m' ->
+      Mem.pop_stage m' = Some m'' ->
       step (State s f (Vptr stk Ptrofs.zero) pc rs m)
-        E0 (Callstate s fd rs##args m' (fn_stack_requirements id))
+        E0 (Callstate s fd rs##args m'' (fn_stack_requirements id))
   | exec_Ibuiltin:
-      forall s f sp pc rs m ef args res pc' vargs t vres m' m'',
+      forall s f sp pc rs m ef args res pc' vargs t vres m',
       (fn_code f)!pc = Some(Ibuiltin ef args res pc') ->
       eval_builtin_args ge (fun r => rs#r) sp m args vargs ->
-      external_call ef ge vargs (Mem.push_stage m) t vres m' ->
-      Mem.pop_stage m' = Some m'' ->
+      external_call ef ge vargs m t vres m' ->
       step (State s f sp pc rs m)
-         t (State s f sp pc' (regmap_setres res vres rs) m'')
+         t (State s f sp pc' (regmap_setres res vres rs) m')
   | exec_Icond:
       forall s f sp pc rs m cond args ifso ifnot b pc',
       (fn_code f)!pc = Some(Icond cond args ifso ifnot) ->
@@ -107,15 +109,16 @@ Inductive step: state -> trace -> state -> Prop :=
       step (State s f sp pc rs m)
         E0 (State s f sp pc' rs m)
   | exec_Ireturn:
-      forall s f stk pc rs m or m',
+      forall s f stk pc rs m or m' m'',
       (fn_code f)!pc = Some(Ireturn or) ->
       Mem.free m stk 0 f.(fn_stacksize) = Some m' ->
+      Mem.pop_stage m' = Some m'' ->
       step (State s f (Vptr stk Ptrofs.zero) pc rs m)
-        E0 (Returnstate s (regmap_optget or Vundef rs) m')
+        E0 (Returnstate s (regmap_optget or Vundef rs) m'')
   | exec_function_internal:
       forall s f args m m' m'' stk sz,
       Mem.alloc m 0 f.(fn_stacksize) = (m', stk) ->
-      Mem.record_frame_mach m' (Mem.mk_frame sz) = Some m'' ->
+      Mem.record_frame_mach (Mem.push_stage m')(Mem.mk_frame sz) = Some m'' ->
       step (Callstate s (Internal f) args m sz)
         E0 (State s
                   f
@@ -129,10 +132,9 @@ Inductive step: state -> trace -> state -> Prop :=
       step (Callstate s (External ef) args m sz)
          t (Returnstate s res m')
   | exec_return:
-      forall res f sp pc rs s vres m m',
-      Mem.pop_stage m = Some m' ->
+      forall res f sp pc rs s vres m,
       step (Returnstate (Stackframe res f sp pc rs :: s) vres m)
-        E0 (State s f sp pc (rs#res <- vres) m').
+        E0 (State s f sp pc (rs#res <- vres) m).
 
 Lemma exec_Iop':
   forall s f sp pc rs m op args res pc' rs' v,
@@ -163,7 +165,7 @@ End RELSEM.
   from an initial state to a final state.  An initial state is a [Callstate]
   corresponding to the invocation of the ``main'' function of the program
   without arguments and with an empty call stack. *)
-(*
+
 Inductive initial_state (p: program): state -> Prop :=
   | initial_state_intro: forall b f m0,
       let ge := Genv.globalenv p in
@@ -171,16 +173,18 @@ Inductive initial_state (p: program): state -> Prop :=
       Genv.find_symbol ge p.(prog_main) = Some b ->
       Genv.find_funct_ptr ge b = Some f ->
       funsig f = signature_main ->
-      initial_state p (Callstate nil f nil (Mem.push_stage m0) (fn_stack_requirements (prog_main p))).
+      initial_state p (Callstate nil f nil m0 (fn_stack_requirements (prog_main p))).
+
 (** A final state is a [Returnstate] with an empty call stack. *)
+
 Inductive final_state: state -> int -> Prop :=
   | final_state_intro: forall r m,
       final_state (Returnstate nil (Vint r) m) r.
-*)
+
 (** The small-step semantics for a program. *)
 
 Definition semantics (p: program) :=
-  Semantics step (initial_state fn_stack_requirements p) final_state (Genv.globalenv p).
+  Semantics step (initial_state  p) final_state (Genv.globalenv p).
 
 (** This semantics is receptive to changes in events. *)
 
@@ -193,15 +197,7 @@ Proof.
     intros. subst. inv H0. exists s1; auto.
   inversion H; subst; auto.
   exploit external_call_receptive; eauto. intros [vres2 [m2 EC2]].
-  assert ({m3:mem | Mem.pop_stage m2 = Some m3}).
-    apply Mem.nonempty_pop_stage.
-    eapply external_call_mem_stackeq in EC2.
-    eapply external_call_mem_stackeq in H4.
-    unfold Mem.stackeq in *.
-    rewrite <- EC2. rewrite H4. apply Mem.pop_stage_nonempty in H5.
-    auto.
-  destruct X as [m3 POP_STAGE].
-  exists (State s0 f sp pc' (regmap_setres res vres2 rs) m3). econstructor; eauto.
+  exists (State s0 f sp pc' (regmap_setres res vres2 rs) m2). econstructor; eauto.
   exploit external_call_receptive; eauto. intros [vres2 [m2 EC2]].
   exists (Returnstate s0 vres2 m2). econstructor; eauto.
 (* trace length *)
@@ -210,8 +206,10 @@ Proof.
   eapply external_call_trace_length; eauto.
 Qed.
 
+(** * Operations on RTL abstract syntax *)
 
+(** Transformation of a RTL function instruction by instruction.
+  This applies a given transformation function to all instructions
+  of a function and constructs a transformed function from that. *)
 End ORACLE.
-
-
 

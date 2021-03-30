@@ -94,6 +94,7 @@ BACKEND=\
   Tailcall.v Tailcallproof.v \
   Inlining.v Inliningspec.v Inliningproof.v \
   RTLmach.v RTLmachproof.v \
+  RTLmach1.v RTLmachproof1.v \
   Renumber.v Renumberproof.v \
   RTLtyping.v \
   Kildall.v Liveness.v \

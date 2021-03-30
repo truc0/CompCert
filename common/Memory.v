@@ -4023,6 +4023,18 @@ Proof.
     apply H0. auto.
 Qed.
 
+Theorem pop_stage_right_extends' : forall m1 m2 m2',
+    extends' m1 m2 ->
+    pop_stage m2 = Some m2' ->
+    extends' m1 m2'.
+Proof.
+  intros. inv H. constructor.
+  - rewrite <- (supp_pop_stage _ _ H0). auto.
+  - eapply pop_stage_right_inj; eauto.
+  - intros. eapply mext_perm_inv0.
+    rewrite perm_pop_stage; eauto.
+Qed.
+
 Theorem push_stage_left_extends' : forall m1 m1' m2,
     extends' m1 m2 ->
     push_stage m1 = m1' ->
@@ -4030,6 +4042,13 @@ Theorem push_stage_left_extends' : forall m1 m1' m2,
 Proof.
   intros. inv H. constructor; eauto.
   eapply push_stage_left_inj; eauto.
+Qed.
+
+Lemma push_stage_right_extends' : forall m1 m2,
+    Mem.extends' m1 m2 -> Mem.extends' m1 (Mem.push_stage m2).
+Proof.
+  intros. inv H. constructor; eauto.
+  eapply push_stage_right_inj; eauto.
 Qed.
 
 Theorem alloc_extends':

@@ -16,34 +16,8 @@ Require Import Coqlib Maps.
 Require Import AST Linking.
 Require Import Values Memory Globalenvs Events Smallstep.
 Require Import Op Registers RTL RTLmach.
-(*
-Definition transf_instr (pc:node)(i: RTL.instruction) : instruction :=
-  match i with
-  | RTL.Inop s => Inop s
-  | RTL.Iop op args res s => Iop op args res s
-  | RTL.Iload chunk addr args res s => Iload chunk addr args res s
-  | RTL.Istore chunk addr args src s => Istore chunk addr args src s
-  | RTL.Icall sg ros args res s => Icall sg ros args res s
-  | RTL.Itailcall sg ros args => Itailcall sg ros args
-  | RTL.Ibuiltin ef args res s => Ibuiltin ef args res s
-  | RTL.Icond cond args s1 s2 => Icond cond args s1 s2
-  | RTL.Ijumptable arg tbl => Ijumptable arg tbl
-  | RTL.Ireturn or => Ireturn or
-  end.
 
-Definition transf_function (f: function) : function :=
-  mkfunction
-    f.(RTL.fn_sig)
-    f.(RTL.fn_params)
-    f.(RTL.fn_stacksize)
-    (PTree.map transf_instr f.(RTL.fn_code))
-    f.(RTL.fn_entrypoint).
-
-Definition transf_fundef (fd: RTL.fundef) : fundef :=
-  AST.transf_fundef transf_function fd.
-*)
 Definition transf_program (p: program) : program := p.
-
 
 Definition match_prog (p :RTL.program) (tp:program):= p = tp.
 
@@ -70,45 +44,7 @@ Proof.
   unfold match_prog in TRANSL. unfold ge.
   unfold tge. congruence.
 Qed.
-(*
-Lemma functions_translated:
-  forall v f,
-  Genv.find_funct ge v = Some f ->
-  Genv.find_funct tge v = Some f.
-Proof. apply (Genv.find_funct_transf TRANSL). Qed.
 
-Lemma function_ptr_translated:
-  forall v f,
-  Genv.find_funct_ptr ge v = Some f ->
-  Genv.find_funct_ptr tge v = Some (transf_fundef f).
-Proof. apply (Genv.find_funct_ptr_transf TRANSL). Qed.
-
-Lemma symbols_preserved:
-  forall id,
-  Genv.find_symbol tge id = Genv.find_symbol ge id.
-Proof. apply (Genv.find_symbol_transf TRANSL). Qed.
-
-Lemma senv_preserved:
-  Senv.equiv ge tge.
-Proof. apply (Genv.senv_transf TRANSL). Qed.
-
-Lemma sig_preserved:
-  forall f, funsig (transf_fundef f) = RTL.funsig f.
-Proof.
-  destruct f; reflexivity.
-Qed.
-
-Lemma find_function_translated:
-  forall ros rs fd,
-  RTL.find_function ge ros rs = Some fd ->
-  find_function tge ros rs = Some (transf_fundef fd).
-Proof.
-  unfold find_function; unfold RTL.find_function; intros. destruct ros as [r|id].
-  eapply functions_translated; eauto.
-  rewrite symbols_preserved. destruct (Genv.find_symbol ge id); try congruence.
-  eapply function_ptr_translated; eauto.
-Qed.
-*)
 Lemma stage_size_head_le_all : forall s : Mem.stage,
     Mem.size_of_head_frame s <= Mem.size_of_all_frames s.
 Proof.
@@ -126,7 +62,37 @@ Proof.
     lia.
 Qed.
 
-Definition match_states (s1 s2:state):  Prop := s1 = s2.
+Lemma find_function_translated:
+  forall ros rs rs' f,
+  find_function ge ros rs = Some f ->
+  regs_lessdef rs rs' ->
+  find_function ge ros rs' = Some f.
+Proof.
+  intros until f; destruct ros; simpl.
+  intros.
+  assert (rs'#r = rs#r).
+    exploit Genv.find_funct_inv; eauto. intros [b EQ].
+    generalize (H0 r). rewrite EQ. intro LD. inv LD. auto.
+  rewrite H1. auto.
+  destruct (Genv.find_symbol ge i); intros. auto.
+  discriminate.
+Qed.
+
+Lemma find_function_id_preserved:
+  forall ros rs rs' id,
+  ros_is_function ge ros rs id ->
+  regs_lessdef rs rs' ->
+  ros_is_function ge ros rs' id.
+Proof.
+  unfold ros_is_function. intros.
+  destruct ros.
+  - destruct H as (b & o & RS & FS).
+  specialize (H0 r). rewrite RS in H0; inv H0.
+  eexists; eexists; split; eauto.
+  - auto.
+Qed.
+
+Definition match_states (s1 s2:state) := s1 = s2.
 
 Lemma step_simulation:
   forall S1 t S2, RTL.step fn_stack_requirements ge S1 t S2 ->
@@ -139,7 +105,7 @@ Proof.
   econstructor; eauto. reflexivity.
   eapply exec_Iload; eauto.  reflexivity.
   eapply exec_Istore; eauto. reflexivity.
-  econstructor; eauto. reflexivity.
+  eapply exec_Icall; eauto. reflexivity.
   econstructor; eauto. reflexivity.
   econstructor; eauto. reflexivity.
   eapply exec_Icond; eauto. reflexivity.
