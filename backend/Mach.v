@@ -337,20 +337,23 @@ Inductive step: state -> trace -> state -> Prop :=
   | exec_Mcall:
       forall s fb sp sig ros c rs m f f' ra,
       find_function_ptr ge ros rs = Some f' ->
+      (exists fd, Genv.find_funct_ptr ge f' = Some fd) ->
       Genv.find_funct_ptr ge fb = Some (Internal f) ->
       return_address_offset f c ra ->
       step (State s fb sp (Mcall sig ros :: c) rs m)
         E0 (Callstate (Stackframe fb sp (Vptr fb ra) c :: s)
                        f' rs m)
   | exec_Mtailcall:
-      forall s fb stk soff sig ros c rs m f f' m',
+      forall s fb stk soff sig ros c rs m f f' m' m'',
       find_function_ptr ge ros rs = Some f' ->
+      (exists fd, Genv.find_funct_ptr ge f' = Some fd) ->
       Genv.find_funct_ptr ge fb = Some (Internal f) ->
       load_stack m (Vptr stk soff) Tptr f.(fn_link_ofs) = Some (parent_sp s) ->
       load_stack m (Vptr stk soff) Tptr f.(fn_retaddr_ofs) = Some (parent_ra s) ->
       Mem.free m stk 0 f.(fn_stacksize) = Some m' ->
+      Mem.pop_stage m' = Some m'' ->
       step (State s fb (Vptr stk soff) (Mtailcall sig ros :: c) rs m)
-        E0 (Callstate s f' rs m')
+        E0 (Callstate s f' rs m'')
   | exec_Mbuiltin:
       forall s f sp rs m ef args res b vargs t vres rs' m',
       eval_builtin_args ge rs sp m args vargs ->
@@ -388,23 +391,25 @@ Inductive step: state -> trace -> state -> Prop :=
       step (State s fb sp (Mjumptable arg tbl :: c) rs m)
         E0 (State s fb sp c' rs' m)
   | exec_Mreturn:
-      forall s fb stk soff c rs m f m',
+      forall s fb stk soff c rs m f m' m'',
       Genv.find_funct_ptr ge fb = Some (Internal f) ->
       load_stack m (Vptr stk soff) Tptr f.(fn_link_ofs) = Some (parent_sp s) ->
       load_stack m (Vptr stk soff) Tptr f.(fn_retaddr_ofs) = Some (parent_ra s) ->
       Mem.free m stk 0 f.(fn_stacksize) = Some m' ->
+      Mem.pop_stage m' = Some m'' ->
       step (State s fb (Vptr stk soff) (Mreturn :: c) rs m)
-        E0 (Returnstate s rs m')
+        E0 (Returnstate s rs m'')
   | exec_function_internal:
-      forall s fb rs m f m1 m2 m3 stk rs',
+      forall s fb rs m f m1 m2 m3 m4 stk rs',
       Genv.find_funct_ptr ge fb = Some (Internal f) ->
       Mem.alloc m 0 f.(fn_stacksize) = (m1, stk) ->
+      Mem.record_frame_mach (Mem.push_stage m1) (Mem.mk_frame (fn_stacksize f)) = Some m2 ->
       let sp := Vptr stk Ptrofs.zero in
-      store_stack m1 sp Tptr f.(fn_link_ofs) (parent_sp s) = Some m2 ->
-      store_stack m2 sp Tptr f.(fn_retaddr_ofs) (parent_ra s) = Some m3 ->
+      store_stack m2 sp Tptr f.(fn_link_ofs) (parent_sp s) = Some m3 ->
+      store_stack m3 sp Tptr f.(fn_retaddr_ofs) (parent_ra s) = Some m4 ->
       rs' = undef_regs destroyed_at_function_entry rs ->
       step (Callstate s fb rs m)
-        E0 (State s fb sp f.(fn_code) rs' m3)
+        E0 (State s fb sp f.(fn_code) rs' m4)
   | exec_function_external:
       forall s fb rs m t rs' ef args res m',
       Genv.find_funct_ptr ge fb = Some (External ef) ->

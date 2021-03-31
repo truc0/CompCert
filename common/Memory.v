@@ -4199,6 +4199,105 @@ Qed.
 
 (* extends: with same supp and same stack, for every pass except tailcall and inline*)
 Definition stackeq (m1 m2:mem) : Prop := stack(support m1) = stack (support m2).
+
+Lemma free_parallel_stackeq : forall m1 m1' m2 m2' b1 b2 lo1 lo2 hi1 hi2,
+    stackeq m1 m2 ->
+    free m1 b1 lo1 hi1 = Some m1' ->
+    free m2 b2 lo2 hi2 = Some m2' ->
+    stackeq m1' m2'.
+Proof.
+  intros.
+  unfold stackeq in *.
+  rewrite (support_free _ _ _ _ _  H0).
+  rewrite (support_free _ _ _ _ _  H1).
+  congruence.
+Qed.
+
+Lemma alloc_parallel_stackeq : forall m1 m2 m1' m2' lo1 hi1 lo2 hi2 b1 b2,
+    stackeq m1 m2 ->
+    alloc m1 lo1 hi1 = (m1',b1) ->
+    alloc m2 lo2 hi2 = (m2',b2) ->
+    stackeq m1' m2'.
+Proof.
+  intros.
+  unfold stackeq in *.
+  rewrite (support_alloc _ _ _ _ _  H0).
+  rewrite (support_alloc _ _ _ _ _  H1).
+  simpl.
+  congruence.
+Qed.
+
+Lemma store_parallel_stackeq : forall m1 m2 m1' m2' chunk1 chunk2 b1 b2 ofs1 ofs2 v1 v2,
+    stackeq m1 m2 ->
+    store chunk1 m1 b1 ofs1 v1 = Some m1' ->
+    store chunk2 m2 b2 ofs2 v2 = Some m2' ->
+    stackeq m1' m2'.
+Proof.
+  intros.
+  unfold stackeq in *.
+  rewrite (support_store _ _ _ _ _ _  H0).
+  rewrite (support_store _ _ _ _ _ _  H1).
+  congruence.
+Qed.
+
+Lemma storev_parallel_stackeq : forall m1 m2 m1' m2' chunk1 chunk2 addr1 addr2 v1 v2,
+    stackeq m1 m2 ->
+    storev chunk1 m1 addr1 v1 = Some m1' ->
+    storev chunk2 m2 addr2 v2 = Some m2' ->
+    stackeq m1' m2'.
+Proof.
+  intros.
+  unfold stackeq in *.
+  rewrite <- (support_storev _ _ _ _ _  H0).
+  rewrite <- (support_storev _ _ _ _ _  H1).
+  congruence.
+Qed.
+
+Lemma storebytes_parallel_stackeq : forall m1 m2 m1' m2' b1 b2 ofs1 ofs2 bytes1 bytes2,
+    stackeq m1 m2 ->
+    storebytes m1 b1 ofs1 bytes1 = Some m1' ->
+    storebytes m2 b2 ofs2 bytes2 = Some m2' ->
+    stackeq m1' m2'.
+Proof.
+  intros.
+  unfold stackeq in *.
+  rewrite (support_storebytes _ _ _ _ _  H0).
+  rewrite (support_storebytes _ _ _ _ _  H1).
+  congruence.
+Qed.
+
+Lemma pop_stage_stackeq : forall m1 m2 m1',
+    stackeq m1 m2 ->
+    Mem.pop_stage m1 = Some m1' ->
+    exists m2',
+      Mem.pop_stage m2 = Some m2' /\
+      stackeq m1' m2'.
+Proof.
+  intros. apply pop_stage_nonempty in H0 as H1.
+  rewrite H in H1. apply Mem.nonempty_pop_stage in H1 as H2.
+  destruct H2. exists x. split. auto.
+  unfold Mem.pop_stage in *. unfold stackeq in H.
+  destruct (stack (support m2)). discriminate. inv e.
+  destruct (stack (support m1)). discriminate. inv H0. inv H.
+  reflexivity.
+Qed.
+
+Lemma record_frame_stackeq : forall m1 m2 m1' fr,
+    stackeq m1 m2 ->
+    Mem.record_frame m1 fr= Some m1' ->
+    exists m2',
+      Mem.record_frame m2 fr = Some m2' /\
+      stackeq m1' m2'.
+Proof.
+  intros. apply record_frame_nonempty in H0 as H1.
+  rewrite H in H1. eapply Mem.nonempty_record_frame in H1 as H2.
+  destruct H2. exists x. split. eauto.
+  unfold Mem.record_frame in *. unfold stackeq in H.
+  destruct (stack (support m2)). discriminate. inv e.
+  destruct (stack (support m1)). discriminate. inv H0. inv H.
+  reflexivity.
+Qed.
+
 Definition extends(m1 m2:mem) := extends' m1 m2 /\ stackeq m1 m2.
 
 Theorem extends_refl:

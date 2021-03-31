@@ -1764,6 +1764,16 @@ End BUILTIN_ARGUMENTS.
 - Well-typedness of [f].
 *)
 
+Definition fn_stack_requirements (i: ident) : Z :=
+  match Genv.find_symbol tge i with
+    Some b =>
+    match Genv.find_funct_ptr tge b with
+    | Some (Internal f) => fn_stacksize f
+    | _ => 0
+    end
+  | None => 0
+  end.
+
 Inductive match_states: Linear.state -> Mach.state -> Prop :=
   | match_states_intro:
       forall cs f sp c ls m cs' fb sp' rs m' j tf
@@ -1777,19 +1787,22 @@ Inductive match_states: Linear.state -> Mach.state -> Prop :=
         (SEP: m' |= frame_contents f j sp' ls (parent_locset cs) (parent_sp cs') (parent_ra cs')
                  ** stack_contents j cs cs'
                  ** minjection j m
-                 ** globalenv_inject ge j),
+                 ** globalenv_inject ge j)
+        (STK: Mem.stackeq m m'),
       match_states (Linear.State cs f (Vptr sp Ptrofs.zero) c ls m)
                    (Mach.State cs' fb (Vptr sp' Ptrofs.zero) (transl_code (make_env (function_bounds f)) c) rs m')
   | match_states_call:
-      forall cs f ls m cs' fb rs m' j tf
+      forall cs f ls m cs' fb rs m' j tf sz
         (STACKS: match_stacks j cs cs' (Linear.funsig f))
         (TRANSL: transf_fundef f = OK tf)
         (FIND: Genv.find_funct_ptr tge fb = Some tf)
+        (SZEQ: exists i, Genv.invert_symbol tge fb = Some i /\ sz = fn_stack_requirements i)
         (AGREGS: agree_regs j ls rs)
         (SEP: m' |= stack_contents j cs cs'
                  ** minjection j m
-                 ** globalenv_inject ge j),
-      match_states (Linear.Callstate cs f ls m)
+                 ** globalenv_inject ge j)
+        (STK: Mem.stackeq m m'),
+      match_states (Linear.Callstate cs f ls m sz)
                    (Mach.Callstate cs' fb rs m')
   | match_states_return:
       forall cs ls m cs' rs m' j sg
@@ -1797,12 +1810,13 @@ Inductive match_states: Linear.state -> Mach.state -> Prop :=
         (AGREGS: agree_regs j ls rs)
         (SEP: m' |= stack_contents j cs cs'
                  ** minjection j m
-                 ** globalenv_inject ge j),
+                 ** globalenv_inject ge j)
+                (STK: Mem.stackeq m m'),
       match_states (Linear.Returnstate cs ls m)
                   (Mach.Returnstate cs' rs m').
 
 Theorem transf_step_correct:
-  forall s1 t s2, Linear.step ge s1 t s2 ->
+  forall s1 t s2, Linear.step fn_stack_requirements ge s1 t s2 ->
   forall (WTS: wt_state s1) s1' (MS: match_states s1 s1'),
   exists s2', plus step tge s1' t s2' /\ match_states s2 s2'.
 Proof.
@@ -1877,7 +1891,9 @@ Proof.
   apply agree_regs_set_slot. apply agree_regs_undef_regs. auto.
   apply agree_locs_set_slot. apply agree_locs_undef_locs. auto. apply destroyed_by_setstack_caller_save. auto.
   eauto. eauto with coqlib. eauto.
-
+  unfold store_stack in *. unfold Mem.stackeq.
+  rewrite <- (Mem.support_storev _ _ _ _ _ STORE).
+  congruence.
 - (* Lop *)
   assert (exists v',
           eval_operation ge (Vptr sp' Ptrofs.zero) (transl_op (make_env (function_bounds f)) op) rs0##args m' = Some v'
@@ -1938,7 +1954,10 @@ Proof.
   apply agree_locs_undef_locs. auto. apply destroyed_by_store_caller_save.
   auto. eauto with coqlib.
   eapply frame_undef_regs; eauto.
-
+  unfold Mem.stackeq.
+  rewrite <- (Mem.support_storev _ _ _ _ _ C).
+  rewrite <- (Mem.support_storev _ _ _ _ _ H0).
+  congruence.
 - (* Lcall *)
   exploit find_function_translated; eauto.
     eapply sep_proj2. eapply sep_proj2. eapply sep_proj2. eexact SEP.
@@ -1952,24 +1971,62 @@ Proof.
   econstructor; eauto with coqlib.
   apply Val.Vptr_has_type.
   intros; red.
-    apply Z.le_trans with (size_arguments (Linear.funsig f')); auto. 
+    apply Z.le_trans with (size_arguments (Linear.funsig f')); auto.
     apply loc_arguments_bounded; auto.
-  simpl. rewrite sep_assoc. exact SEP.
+    exists id; split; auto.
+      destruct ros; simpl in *; eauto.
+      + repeat destr_in A.
+      destruct H as (bb & oo & IFI & IFI').
+      exploit globalenv_inject_preserves_globals. apply SEP. intros (MPG1 & MPG2 & MPG3).
+      generalize (AGREGS m0).
+      rewrite IFI, Heqv. inversion 1; subst.
+      erewrite MPG1 in H4; eauto. inv H4.
+      eapply Genv.find_invert_symbol; eauto.
+      rewrite symbols_preserved; eauto.
+      + subst.
+      eapply Genv.find_invert_symbol; eauto.
+  + simpl. rewrite sep_assoc. exact SEP.
 
 - (* Ltailcall *)
   rewrite (sep_swap (stack_contents j s cs')) in SEP.
   exploit function_epilogue_correct; eauto.
   clear SEP. intros (rs1 & m1' & P & Q & R & S & T & U & SEP).
+  exploit Mem.free_parallel_stackeq; eauto. intro.
+  exploit Mem.pop_stage_stackeq; eauto.
+  intros (m2' & POP & STK').
+  exploit pop_stage_parallel_rule; eauto. clear SEP.
+  intros SEP.
   rewrite sep_swap in SEP.
   exploit find_function_translated; eauto.
     eapply sep_proj2. eapply sep_proj2. eexact SEP.
   intros [bf [tf' [A [B C]]]].
   econstructor; split.
   eapply plus_right. eexact S. econstructor; eauto. traceEq.
+    assert (TAILCALL: tailcall_possible (Linear.funsig f')).
+    {
+      apply zero_size_arguments_tailcall_possible. eapply wt_state_tailcall; eauto.
+    }
   econstructor; eauto.
   apply match_stacks_change_sig with (Linear.fn_sig f); auto.
-  apply zero_size_arguments_tailcall_possible. eapply wt_state_tailcall; eauto.
-
+  exists id; split; auto.
+        eapply Genv.find_invert_symbol; eauto.
+        rewrite symbols_preserved; eauto.
+        destruct ros; simpl in *.
+        destruct H as (bb & oo & IFI & IFI').
+       repeat destr_in A.
+        generalize (AGREGS m0), (T m0). intros.
+        simpl in *. inv AGLOCS.
+        generalize (agree_unused_reg0 m0). intros.
+        unfold mreg_within_bounds in H5. simpl in H5.
+        destruct (is_callee_save m0). simpl in *.
+        unfold tailcall_possible in TAILCALL.
+        simpl. rewrite IFI, Heqv. inversion 3; subst.
+        erewrite MPG1 in H8; eauto. inv H8.
+      + 
+      eapply Genv.find_invert_symbol; eauto.
+      rewrite symbols_preserved; eauto.
+      subst.
+     
 - (* Lbuiltin *)
   destruct BOUND as [BND1 BND2].
   exploit transl_builtin_args_correct.
@@ -2120,7 +2177,7 @@ Proof.
   simpl. exists (Mem.support m0); split. apply Mem.sup_include_refl.
   unfold j, Mem.flat_inj; constructor; intros.
     apply pred_dec_true; auto.
-    destruct (Mem.dec_sup (Mem.support m0) b1); congruence.
+    destruct (Mem.sup_dec b1 (Mem.support m0)); congruence.
     change (Mem.valid_block m0 b0). eapply Genv.find_symbol_not_fresh; eauto.
     change (Mem.valid_block m0 b0). eapply Genv.find_funct_ptr_not_fresh; eauto.
     change (Mem.valid_block m0 b0). eapply Genv.find_var_info_not_fresh; eauto.
