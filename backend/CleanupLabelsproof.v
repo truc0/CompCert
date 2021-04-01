@@ -280,10 +280,14 @@ Proof.
   econstructor; eauto. constructor; auto. constructor; eauto with coqlib.
 (* Ltailcall *)
   left; econstructor; split.
-  econstructor.  eapply ros_is_function_translated; eauto.
-  erewrite match_parent_locset; eauto. eapply find_function_translated; eauto.
+  econstructor. eauto.
+  eapply ros_is_function_translated; eauto.
+  erewrite match_parent_locset; eauto.
+  erewrite match_parent_locset; eauto.
+  eapply find_function_translated ;eauto.
   symmetry; apply sig_function_translated.
-  simpl. eauto. eauto.
+  eauto. eauto.
+  erewrite <- match_parent_locset; eauto.
   econstructor; eauto.
 (* Lbuiltin *)
   left; econstructor; split.

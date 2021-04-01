@@ -245,7 +245,7 @@ Inductive step: state -> trace -> state -> Prop :=
         E0 (Callstate (Stackframe f sp rs bb :: s) fd rs m
                       (fn_stack_requirements id))
   | exec_Ltailcall: forall s f sp sig ros bb rs m fd rs' m' m'' id,
-      ros_is_function ros rs id ->
+      ros_is_function ros rs' id ->
       rs' = return_regs (parent_locset s) rs ->
       find_function ros rs' = Some fd ->
       funsig fd = sig ->

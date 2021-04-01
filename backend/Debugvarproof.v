@@ -480,10 +480,13 @@ Proof.
   exploit parent_locset_match; eauto. intros PLS.
   econstructor; split.
   apply plus_one.
-  econstructor. eauto.  eapply ros_is_function_translated; eauto.
-  rewrite PLS. eauto. eexact A.
+  econstructor. eauto.
+  rewrite PLS.
+  eapply ros_is_function_translated; eauto.
+  rewrite PLS. eexact A.
   symmetry; apply sig_preserved; auto.
-  inv TRF; eauto. eauto. traceEq.
+  inv TRF; eauto. eauto.
+  rewrite PLS.
    constructor; auto.
 - (* builtin *)
   econstructor; split.

@@ -643,6 +643,7 @@ Proof.
   apply plus_one. econstructor; eauto.
   eapply ros_is_function_translated; eauto.
   rewrite (match_parent_locset _ _ STACKS). eauto.
+  rewrite (match_parent_locset _ _ STACKS). eauto.
   symmetry; eapply sig_preserved; eauto.
   rewrite (stacksize_preserved _ _ TRF); eauto.
   rewrite (match_parent_locset _ _ STACKS).

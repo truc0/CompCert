@@ -627,6 +627,8 @@ Proof.
   left; simpl; econstructor; split.
   eapply exec_Ltailcall with (fd := tunnel_fundef fd); eauto.
   eapply ros_is_function_translated; eauto.
+  eapply return_regs_lessdef; eauto.
+  eapply match_parent_locset; eauto.
   eapply find_function_translated; eauto using return_regs_lessdef, match_parent_locset.
   apply sig_preserved.
   econstructor; eauto using return_regs_lessdef, match_parent_locset.

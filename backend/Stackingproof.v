@@ -1764,6 +1764,7 @@ End BUILTIN_ARGUMENTS.
 - Well-typedness of [f].
 *)
 
+
 Definition fn_stack_requirements (i: ident) : Z :=
   match Genv.find_symbol tge i with
     Some b =>
@@ -1982,18 +1983,20 @@ Proof.
       rewrite IFI, Heqv. inversion 1; subst.
       erewrite MPG1 in H4; eauto. inv H4.
       eapply Genv.find_invert_symbol; eauto.
-      rewrite symbols_preserved; eauto.
-      subst.
+      rewrite symbols_preserved.  eauto.
+      + subst.
       eapply Genv.find_invert_symbol; eauto.
-  simpl. rewrite sep_assoc. exact SEP.
+  + simpl. rewrite sep_assoc. exact SEP.
 
 - (* Ltailcall *)
   rewrite (sep_swap (stack_contents j s cs')) in SEP.
   exploit function_epilogue_correct; eauto.
   clear SEP. intros (rs1 & m1' & P & Q & R & S & T & U & SEP).
   exploit Mem.free_parallel_stackeq; eauto. intro.
-  exploit Mem.pop_stage_stackeq; eauto. intro.
-  exploit pop_stage_parallel_rule; eauto. intro.
+  exploit Mem.pop_stage_stackeq; eauto.
+  intros (m2' & POP & STK').
+  exploit pop_stage_parallel_rule; eauto. clear SEP.
+  intros SEP.
   rewrite sep_swap in SEP.
   exploit find_function_translated; eauto.
     eapply sep_proj2. eapply sep_proj2. eexact SEP.
@@ -2006,19 +2009,20 @@ Proof.
   exists id; split; auto.
       destruct ros; simpl in *; eauto.
       repeat destr_in A.
-      destruct H as (bb & oo & IFI & IFI').
+      destruct H0 as (bb & oo & IFI & IFI').
       exploit globalenv_inject_preserves_globals. apply SEP. intros (MPG1 & MPG2 & MPG3).
-      generalize (U (Locations.R m0)), (AGREGS m0), (T m0).
-      simpl. rewrite IFI, Heqv. rewrite Heqb0. inversion 3; subst.
-      erewrite MPG1 in H8; eauto. inv H8.
-      eapply Genv.find_invert_symbol; eauto.
-      rewrite symbols_preserved; eauto.
-      simpl. rewrite IFI, Heqv. rewrite Heqb0. inversion 3; subst.
-      erewrite MPG1 in H8; eauto. inv H8.
-      eapply Genv.find_invert_symbol; eauto.
-      rewrite symbols_preserved; eauto.
-      subst.
-     
+      generalize (T m0), (U (Locations.R m0)),(AGREGS m0).
+      simpl. intros. destruct (is_callee_save m0).
+      + rewrite IFI in H0. rewrite Heqv in H0. inv H0.
+        erewrite MPG1 in H9; eauto. inv H9.
+        eapply Genv.find_invert_symbol; eauto.
+        rewrite symbols_preserved.  eauto.
+      + rewrite IFI in H0. rewrite Heqv in H0. inv H0.
+        erewrite MPG1 in H9; eauto. inv H9.
+        eapply Genv.find_invert_symbol; eauto.
+        rewrite symbols_preserved. auto.
+      + subst.
+        eapply Genv.find_invert_symbol; eauto.
 - (* Lbuiltin *)
   destruct BOUND as [BND1 BND2].
   exploit transl_builtin_args_correct.
@@ -2041,7 +2045,9 @@ Proof.
   apply frame_set_res. apply frame_undef_regs. apply frame_contents_incr with j; auto.
   rewrite sep_swap2. apply stack_contents_change_meminj with j; auto. rewrite sep_swap2.
   exact SEP.
-
+  apply external_call_mem_stackeq in H0.
+  apply external_call_mem_stackeq in EC.
+  congruence.
 - (* Llabel *)
   econstructor; split.
   apply plus_one; apply exec_Mlabel.
@@ -2065,7 +2071,7 @@ Proof.
   auto.
   eapply find_label_tail; eauto.
   apply frame_undef_regs; auto.
-
+  eauto.
 - (* Lcond, false *)
   econstructor; split.
   apply plus_one. eapply exec_Mcond_false; eauto.
@@ -2075,7 +2081,7 @@ Proof.
   apply agree_locs_undef_locs. auto. apply destroyed_by_cond_caller_save.
   auto. eauto with coqlib.
   apply frame_undef_regs; auto.
-
+  eauto.
 - (* Ljumptable *)
   assert (rs0 arg = Vint n).
   { generalize (AGREGS arg). rewrite H. intro IJ; inv IJ; auto. }
@@ -2087,15 +2093,20 @@ Proof.
   apply agree_locs_undef_locs. auto. apply destroyed_by_jumptable_caller_save.
   auto. eapply find_label_tail; eauto.
   apply frame_undef_regs; auto.
-
+  eauto.
 - (* Lreturn *)
   rewrite (sep_swap (stack_contents j s cs')) in SEP.
   exploit function_epilogue_correct; eauto.
   intros (rs' & m1' & A & B & C & D & E & F & G).
+  exploit Mem.free_parallel_stackeq; eauto. intro.
+  exploit Mem.pop_stage_stackeq; eauto.
+  intros (m2' & POP & STK').
+  exploit pop_stage_parallel_rule; eauto. clear SEP.
+  intros SEP.
   econstructor; split.
   eapply plus_right. eexact D. econstructor; eauto. traceEq.
   econstructor; eauto.
-  rewrite sep_swap; exact G.
+  rewrite sep_swap. exact SEP.
 
 - (* internal function *)
   revert TRANSL. unfold transf_fundef, transf_partial_fundef.
@@ -2111,6 +2122,16 @@ Proof.
   intros (j' & rs' & m2' & sp' & m3' & m4' & m5' & A & B & C & D & E & F & SEP & J & K).
   rewrite (sep_comm (globalenv_inject ge j')) in SEP.
   rewrite (sep_swap (minjection j' m')) in SEP.
+  exploit Mem.alloc_parallel_stackeq; eauto. intro.
+  apply Mem.record_frame_mach_result in H0 as RECORD.
+  apply Mem.record_frame_mach_size in H0 as SIZE.
+  exploit Mem.record_frame_stackeq. 2:eauto.
+  instantiate (1 := Mem.push_stage m5').
+  unfold store_stack in *.
+  intros (m2' & POP & STK').
+  exploit pop_stage_parallel_rule; eauto. clear SEP.
+  intros SEP.
+  pop_stage_parallel_rule.
   econstructor; split.
   eapply plus_left. econstructor; eauto.
   rewrite (unfold_transf_function _ _ TRANSL). unfold fn_code. unfold transl_body.

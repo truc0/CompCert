@@ -2314,7 +2314,7 @@ Proof.
       eapply add_equations_args_satisf in B1; eauto.
       red in B1.
       generalize (B1 (Eq Full r (R m0))).
-      inv Heqo1. simpl. 
+      inv Heqo1. simpl.
       rewrite ESF.add_iff. simpl.
       intros A. rewrite EQ0 in A.  specialize (A (or_introl eq_refl)). inversion A.
       rewrite symbols_preserved; eauto.
@@ -2364,6 +2364,8 @@ Proof.
       rewrite ESF.add_iff. simpl.
       intros A. rewrite EQ0 in A.  specialize (A (or_introl eq_refl)). inversion A.
       subst. rewrite symbols_preserved; eauto.
+      destruct (is_callee_save m0). discriminate.
+      eauto.
     - congruence.
     - congruence.
     - destruct ident_eq; try congruence.
