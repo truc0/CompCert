@@ -132,18 +132,18 @@ Definition size_of_head_frame (t:stage) : Z :=
   end.
 
 Definition stackadt := list stage.
-(* At the virtual machine level, each frame in the tailcall occupies stackspze*)
-Fixpoint stack_size_vm (s:stackadt): Z :=
+
+Fixpoint stack_size (s:stackadt): Z :=
   match s with
     |nil => 0
-    |hd::tl => size_of_all_frames hd + stack_size_vm tl
+    |hd::tl => size_of_all_frames hd + stack_size tl
   end.
-(*After the tailcall and inline pass, only head frame occupies stackspace *)
-Fixpoint stack_size_mach (s:stackadt): Z :=
-  match s with
-    |nil => 0
-    |hd::tl => (size_of_head_frame hd) + stack_size_mach tl
-  end.
+
+Lemma stack_size_app : forall s1 s2,
+    stack_size (s1++s2) = stack_size s1 + stack_size s2.
+Proof.
+  intros. induction s1. auto. simpl. lia.
+Qed.
 
 Lemma size_of_all_frames_pos:
   forall t,
@@ -155,46 +155,20 @@ Proof.
   lia.
 Qed.
 
-Lemma size_of_head_frame_pos:
-  forall t,
-    (0 <= size_of_head_frame t)%Z.
-Proof.
-  intros. destruct t.
-  simpl. lia.
-  simpl.
-  apply frame_size_pos.
-Qed.
-
-Lemma stack_size_vm_pos:
+Lemma stack_size_pos:
   forall s,
-    (0 <= stack_size_vm s)%Z.
+    (0 <= stack_size s)%Z.
 Proof.
   induction s; simpl; intros; eauto. lia.
   generalize (size_of_all_frames_pos a); lia.
 Qed.
 
-Lemma stack_size_mach_pos:
-  forall s,
-    (0 <= stack_size_mach s)%Z.
-Proof.
-  induction s; simpl; intros; eauto. lia.
-  generalize (size_of_head_frame_pos a); lia.
-Qed.
-
-Lemma stack_size_vm_tl:
+Lemma stack_size_tl:
   forall l,
-    (stack_size_vm (tl l) <= stack_size_vm l)%Z.
+    (stack_size (tl l) <= stack_size l)%Z.
 Proof.
   induction l; simpl; intros. lia.
   generalize (size_of_all_frames_pos a); lia.
-Qed.
-
-Lemma stack_size_mach_tl:
-  forall l,
-    (stack_size_mach (tl l) <= stack_size_mach l)%Z.
-Proof.
-  induction l; simpl; intros. lia.
-  generalize (size_of_head_frame_pos a); lia.
 Qed.
 
 Definition max_stacksize : Z := 4096.
@@ -755,6 +729,7 @@ Proof.
 Qed.
 
 Program Definition record_frame (m:mem)(fr:frame) :=
+  if (zle (frame_size fr + (stack_size (stack (support m)))) max_stacksize) then
   match stack (support m) with
     |hd::tl =>
        Some (mkmem m.(mem_contents)
@@ -765,61 +740,15 @@ Program Definition record_frame (m:mem)(fr:frame) :=
          m.(contents_default)
   )
     |nil => None
-  end.
-
-Definition record_frame_mach (m:mem)(fr:frame) :=
-  match record_frame m fr with
-    |Some m' => if (zle (stack_size_mach (stack(support m')))  max_stacksize)
+  end else None.
+(*
+Definition record_frame (m:mem)(fr:frame) :=
+  match unbound_record_frame m fr with
+    |Some m' => if (zle (stack_size (stack(support m')))  max_stacksize)
                      then Some m' else None
     |None => None
   end.
-
-Definition record_frame_vm (m:mem)(fr:frame) :=
-  match record_frame m fr with
-    |Some m' => if (zle (stack_size_vm (stack(support m')))  max_stacksize)
-                     then Some m' else None
-    |None => None
-  end.
-
-Lemma record_frame_mach_result : forall m m' sz,
-    record_frame_mach m sz = Some m' ->
-    record_frame m sz = Some m'.
-Proof.
-  intros. unfold record_frame_mach in H.
-  destruct (record_frame m sz) eqn:R.
-  destruct (zle (stack_size_mach (stack (support m0))) max_stacksize).
-  auto. discriminate. discriminate.
-Qed.
-
-Lemma record_frame_mach_size : forall m m' sz,
-    record_frame_mach m sz = Some m' ->
-    (stack_size_mach (stack(support m'))) <= max_stacksize.
-Proof.
-  intros. unfold record_frame_mach in H.
-  destruct (record_frame m sz) eqn:R.
-  destruct (zle (stack_size_mach (stack (support m0))) max_stacksize).
-  inv H. auto. discriminate. discriminate.
-Qed.
-
-Lemma record_frame_vm_result : forall m m' sz,
-    record_frame_vm m sz = Some m' ->
-    record_frame m sz = Some m'.
-Proof.
-  intros. unfold record_frame_vm in H.
-  destruct (record_frame m sz) eqn:R.
-  destruct (zle (stack_size_vm (stack (support m0))) max_stacksize).
-  auto. discriminate. discriminate.
-Qed.
-
-Lemma record_frame_vm_size : forall m m' sz,
-    record_frame_vm m sz = Some m' ->
-    (stack_size_vm (stack(support m'))) <= max_stacksize.
-Proof.
-  intros. unfold record_frame_vm in H.
-  destruct (record_frame m sz) eqn:R.
-  destruct (zle (stack_size_vm (stack (support m0))) max_stacksize).
-  inv H. auto. discriminate. discriminate.
-Qed.
+*)
 
 (** Memory reads. *)
 
@@ -2624,6 +2553,12 @@ Proof.
   discriminate. inv POP_STAGE. auto.
 Qed.
 
+Lemma sup_include_pop_stage :
+  sup_include (support m1) (support m2).
+Proof.
+  unfold sup_include, sup_In. rewrite supp_pop_stage. auto.
+Qed.
+
 Theorem nextblock_pop_stage:
   nextblock m2 = nextblock m1.
 Proof.
@@ -2790,12 +2725,14 @@ Local Hint Resolve valid_block_push_stage_1 valid_block_push_stage_2
              valid_access_push_stage: mem.
 *)
 
-
-Lemma nonempty_record_frame : forall m1 sz,
-   stack (support m1) <> nil -> {m2:mem| record_frame m1 sz = Some m2}.
+Lemma request_record_frame : forall m1 fr,
+   stack (support m1) <> nil  ->
+    frame_size fr  + stack_size (stack(support m1)) <= max_stacksize
+   -> {m2:mem| record_frame m1 fr = Some m2}.
 Proof.
-  intros; unfold record_frame. destruct (stack (support m1)); auto.
-  congruence. econstructor; eauto.
+  intros; unfold record_frame. rewrite zle_true.
+  destruct (stack (support m1)); simpl.
+  congruence. simpl in *. eauto. lia.
 Qed.
 
 Section RECORD_FRAME.
@@ -2806,34 +2743,65 @@ Variable fr: frame.
 
 Hypothesis RECORD_FRAME: record_frame m1 fr = Some m2.
 
+Lemma record_frame_size :
+    (stack_size (stack(support m2))) <= max_stacksize.
+Proof.
+  intros. unfold record_frame in RECORD_FRAME.
+  destruct (zle (frame_size fr + stack_size (stack (support m1))) max_stacksize).
+  destruct (stack(support m1)). discriminate.
+  inv RECORD_FRAME. simpl in *. lia.  discriminate.
+Qed.
+
+Lemma record_frame_size1:
+  (frame_size fr + stack_size (stack (support m1))) <= max_stacksize.
+Proof.
+  intros. unfold record_frame in RECORD_FRAME.
+  destruct (zle (frame_size fr + stack_size (stack (support m1))) max_stacksize).
+  auto. discriminate.
+Qed.
+
 Lemma record_frame_nonempty :
    stack (support m1) <> nil.
 Proof.
-  intros. unfold record_frame in RECORD_FRAME. destruct (stack (support m1)); auto.
-  discriminate. congruence.
+  intros. unfold record_frame in RECORD_FRAME.
+  destruct (zle (frame_size fr + stack_size (stack (support m1))) max_stacksize).
+  destruct (stack (support m1)); auto.
+  discriminate. congruence. discriminate.
 Qed.
 
 Lemma support_record_frame :
     sup_record_frame fr (support m1) = Some (support m2).
 Proof.
-  intros. unfold record_frame in RECORD_FRAME. destruct (stack (support m1))eqn: H0; auto.
-  discriminate. inv RECORD_FRAME. unfold sup_record_frame. rewrite H0. simpl. reflexivity.
+  intros. unfold record_frame in RECORD_FRAME.
+ destruct (zle (frame_size fr +(stack_size (stack (support m1)))) max_stacksize).
+  destruct (stack (support m1))eqn: H0.
+  - discriminate.
+  - inv RECORD_FRAME. simpl. unfold sup_record_frame. rewrite H0. auto.
+  - discriminate.
 Qed.
 
 Lemma stack_record_frame : exists hd tl,
   stack (support m1) = hd::tl /\
   stack (support m2) = (fr::hd)::tl.
 Proof.
-  intros. unfold record_frame in RECORD_FRAME. destruct (stack(support m1)).
-  discriminate. inv RECORD_FRAME.
+  intros. generalize support_record_frame. unfold sup_record_frame. intro.
+  generalize record_frame_nonempty.
+  destruct (stack (support m1)). intro.
+  discriminate. inv RECORD_FRAME. intro. inv H.
   exists s. exists s0. auto.
 Qed.
 
 Lemma supp_record_frame :
   supp (support m1) = supp (support m2).
 Proof.
-  intros. unfold record_frame in RECORD_FRAME. destruct (stack (support m1)).
-  discriminate. inv RECORD_FRAME. auto.
+  intros. generalize support_record_frame. unfold sup_record_frame. destruct (stack (support m1)).
+  discriminate. inversion 1. auto.
+Qed.
+
+Lemma sup_include_record_frame :
+  sup_include (support m1) (support m2).
+Proof.
+  unfold sup_include. unfold sup_In. rewrite supp_record_frame. auto.
 Qed.
 
 Theorem nextblock_record_frame:
@@ -2865,10 +2833,15 @@ Theorem perm_record_frame:
   perm m2 b ofs k p.
 Proof.
   split.
-  intros. unfold record_frame in RECORD_FRAME. destruct (stack(support m1)); auto.
-  discriminate. inv RECORD_FRAME. auto.
-  intros. unfold record_frame in RECORD_FRAME. destruct (stack(support m1)); auto.
-  discriminate. inv RECORD_FRAME. auto.
+  intros. unfold record_frame in RECORD_FRAME.
+  destruct (zle (frame_size fr + stack_size (stack(support m1))) max_stacksize).
+  destruct (stack(support m1)).
+  discriminate. inv RECORD_FRAME. auto. discriminate.
+
+  intros. unfold record_frame in RECORD_FRAME.
+  destruct (zle (frame_size fr + stack_size (stack(support m1))) max_stacksize).
+  destruct (stack(support m1)).
+  discriminate. inv RECORD_FRAME. auto. discriminate.
 Qed.
 
 
@@ -2888,16 +2861,18 @@ Theorem load_record_frame:
   forall chunk b ofs,
   load chunk m2 b ofs = load chunk m1 b ofs.
 Proof.
-  intros. unfold record_frame in RECORD_FRAME. destruct (stack(support m1)); auto.
-  discriminate. inv RECORD_FRAME. reflexivity.
+  intros. unfold record_frame in RECORD_FRAME.
+  destruct (zle (frame_size fr + stack_size(stack(support m1))) max_stacksize). 2:discriminate.
+  destruct (stack(support m1)); auto. discriminate. inv RECORD_FRAME. auto.
 Qed.
 
 Theorem loadbytes_record_frame:
   forall b ofs n,
   loadbytes m2 b ofs n = loadbytes m1 b ofs n.
 Proof.
-  intros. unfold record_frame in RECORD_FRAME. destruct (stack(support m1)); auto.
-  discriminate. inv RECORD_FRAME. reflexivity.
+  intros. unfold record_frame in RECORD_FRAME.
+  destruct (zle (frame_size fr + stack_size(stack(support m1))) max_stacksize). 2:discriminate.
+  destruct (stack(support m1)); auto. discriminate. inv RECORD_FRAME. auto.
 Qed.
 
 End RECORD_FRAME.
@@ -3648,8 +3623,11 @@ Lemma record_frame_left_inj:
   record_frame m1 fr = Some m1' ->
   mem_inj f m1' m2.
 Proof.
-  intros. unfold record_frame in H0. destruct (stack(support m1)).
-  discriminate. inv H0. inversion H.
+  intros. unfold record_frame in H0.
+  destruct (zle (frame_size fr + stack_size(stack(support m1))) max_stacksize). 2:discriminate.
+  destruct (stack(support m1)).
+  discriminate. inv H0.
+  inversion H.
   constructor.
 (* perm *)
   intros. simpl. eapply mi_perm0; eauto.
@@ -3665,8 +3643,11 @@ Lemma record_frame_right_inj:
   record_frame m2 fr = Some m2' ->
   mem_inj f m1 m2'.
 Proof.
-  intros. unfold record_frame in H0. destruct (stack(support m2)).
-  discriminate. inv H0. inversion H.
+  intros. unfold record_frame in H0.
+  destruct (zle (frame_size fr + stack_size(stack(support m2))) max_stacksize). 2:discriminate.
+  destruct (stack(support m2)).
+  discriminate. inv H0.
+  inversion H.
   constructor.
 (* perm *)
   intros. simpl. eapply mi_perm0; eauto.
@@ -3946,32 +3927,41 @@ Proof.
 Qed.
 
 Theorem pop_stage_extends':
-  forall m1 m1' m2 m2',
+  forall m1 m1' m2,
   extends' m1 m2 ->
-  pop_stage m1 = Some m1' -> pop_stage m2 = Some m2' ->
-  extends' m1' m2'.
+  pop_stage m1 = Some m1' ->
+  stack(support m2) <> nil ->
+  exists m2', pop_stage m2 = Some m2' /\
+         extends' m1' m2'.
 Proof.
-  intros. inv H. constructor.
+  intros. inv H.
+  apply nonempty_pop_stage in  H1.
+  destruct H1 as [m2' POP]. exists m2'.
+  split. auto.
+  constructor; eauto.
   - apply supp_pop_stage in H0.
-    apply supp_pop_stage in H1.
+    apply supp_pop_stage in POP.
     congruence.
   - eapply pop_stage_right_inj with (m1 := m1'); eauto.
     eapply pop_stage_left_inj; eauto.
   - intros. exploit mext_perm_inv0.
-    eapply perm_pop_stage in H1; eauto. apply H1 in H. apply H.
+    eapply perm_pop_stage in POP; eauto. apply POP in H. apply H.
     intros [A|A].
     eapply perm_pop_stage in H0; eauto. left. apply H0. auto.
     right; intuition eauto.
     apply A. eapply perm_pop_stage in H0; eauto. apply H0. auto.
 Qed.
 
-Theorem record_frame_extends':
+Theorem record_frame_safe_extends':
   forall m1 m1' m2 m2' fr,
   extends' m1 m2 ->
-  record_frame m1 fr= Some m1' -> record_frame m2 fr = Some m2' ->
-  extends' m1' m2'.
+  record_frame m1 fr= Some m1' ->
+
+  record_frame m2 fr = Some m2' ->
+    extends' m1' m2'.
 Proof.
-  intros. inv H. constructor.
+  intros. inv H.
+  constructor.
   - apply supp_record_frame in H0.
     apply supp_record_frame in H1.
     congruence.
@@ -3985,28 +3975,33 @@ Proof.
     apply A. eapply perm_record_frame in H0; eauto. apply H0. auto.
 Qed.
 
-Theorem record_frame_mach_extends':
-  forall m1 m1' m2 m2' fr,
+Theorem record_frame_extends':
+  forall m1 m1' m2 fr,
   extends' m1 m2 ->
-  record_frame_mach m1 fr= Some m1' -> record_frame_mach m2 fr = Some m2' ->
-  extends' m1' m2'.
+  record_frame m1 fr= Some m1' ->
+  stack (support m2) <> nil ->
+  stack_size (stack (support m2)) <= stack_size (stack (support m1)) ->
+  exists m2', record_frame m2 fr = Some m2' /\
+    extends' m1' m2'.
 Proof.
-  intros.
-  eapply record_frame_extends'; eauto.
-  eapply record_frame_mach_result; eauto.
-  eapply record_frame_mach_result; eauto.
-Qed.
-
-Theorem record_frame_vm_extends':
-  forall m1 m1' m2 m2' fr,
-  extends' m1 m2 ->
-  record_frame_vm m1 fr= Some m1' -> record_frame_vm m2 fr = Some m2' ->
-  extends' m1' m2'.
-Proof.
-  intros.
-  eapply record_frame_extends'; eauto.
-  eapply record_frame_vm_result; eauto.
-  eapply record_frame_vm_result; eauto.
+  intros. inv H.
+  apply record_frame_size1 in H0 as SIZE.
+  assert ({m2':mem|record_frame m2 fr = Some m2'}).
+  apply request_record_frame. auto.
+  lia.
+  destruct X as [m2' RECORD]. exists m2'. split. auto.
+  constructor.
+  - apply supp_record_frame in H0.
+    apply supp_record_frame in RECORD.
+    congruence.
+  - eapply record_frame_right_inj with (m1 := m1'); eauto.
+    eapply record_frame_left_inj; eauto.
+  - intros. exploit mext_perm_inv0.
+    eapply perm_record_frame in RECORD; eauto. apply RECORD in H. apply H.
+    intros [A|A].
+    eapply perm_record_frame in H0; eauto. left. apply H0. auto.
+    right; intuition eauto.
+    apply A. eapply perm_record_frame in H0; eauto. apply H0. auto.
 Qed.
 
 Theorem pop_stage_left_extends' : forall m1 m1' m2,
@@ -4282,6 +4277,19 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma pop_stage_safe_stackeq: forall m1 m2 m1' m2',
+    stackeq m1 m2 ->
+    Mem.pop_stage m1 = Some m1' ->
+    Mem.pop_stage m2 = Some m2' ->
+    stackeq m1' m2'.
+Proof.
+  intros.
+  unfold Mem.pop_stage in *. unfold stackeq in H.
+  destruct (stack (support m2)). discriminate. inv H1.
+  destruct (stack (support m1)). discriminate. inv H0. inv H.
+  reflexivity.
+Qed.
+
 Lemma record_frame_stackeq : forall m1 m2 m1' fr,
     stackeq m1 m2 ->
     Mem.record_frame m1 fr= Some m1' ->
@@ -4290,12 +4298,16 @@ Lemma record_frame_stackeq : forall m1 m2 m1' fr,
       stackeq m1' m2'.
 Proof.
   intros. apply record_frame_nonempty in H0 as H1.
-  rewrite H in H1. eapply Mem.nonempty_record_frame in H1 as H2.
-  destruct H2. exists x. split. eauto.
-  unfold Mem.record_frame in *. unfold stackeq in H.
-  destruct (stack (support m2)). discriminate. inv e.
-  destruct (stack (support m1)). discriminate. inv H0. inv H.
-  reflexivity.
+  rewrite H in H1. eapply Mem.request_record_frame in H1 as H2.
+  destruct H2 as [m2' RECORD]. exists m2'. split. eauto.
+  apply stack_record_frame in H0.
+  apply stack_record_frame in RECORD.
+  unfold stackeq in H.
+  destruct H0 as (hd &tl& A & B).
+  destruct RECORD as (hd' &tl'& A' & B').
+  rewrite A,A' in H. inv H. congruence.
+  apply record_frame_size1 in H0. rewrite <- H.
+  lia.
 Qed.
 
 Definition extends(m1 m2:mem) := extends' m1 m2 /\ stackeq m1 m2.
@@ -4507,59 +4519,14 @@ Theorem record_frame_extends:
     /\ extends m1' m2'.
 Proof.
   intros. inversion H.
-  assert ({m2':mem|record_frame m2 fr = Some m2'}).
-    apply nonempty_record_frame.
-    rewrite <- H2.
-    eapply record_frame_nonempty; eauto.
-  destruct X as [m2' RECORD_FRAME]. exists m2'; split; auto. inv H1. split.
-  constructor.
-  - apply supp_record_frame in H0. apply supp_record_frame in RECORD_FRAME.
-    congruence.
-  - eapply record_frame_right_inj with (m1 := m1'); eauto.
-    eapply record_frame_left_inj; eauto.
-  - intros. exploit mext_perm_inv0. eapply perm_record_frame in RECORD_FRAME; eauto. apply RECORD_FRAME in H1.
-    apply H1. intros [A|A].
-    eapply perm_record_frame in H0; eauto. left. apply H0. auto.
-    right; intuition eauto.
-    apply A. eapply perm_record_frame in H0; eauto. apply H0. auto.
-  - unfold stackeq in *.
-    destruct (stack_record_frame _ _ _ H0) as (hd & tl & A & B).
-    destruct (stack_record_frame _ _ _ RECORD_FRAME) as (hd' & tl' & A' & B').
-    congruence.
-Qed.
-
-Theorem record_frame_vm_extends:
-  forall (m1 m2 m1':mem) fr,
-  extends m1 m2 ->
-  record_frame_vm m1 fr = Some m1' ->
-  exists m2',
-    record_frame_vm m2 fr = Some m2'
-    /\ extends m1' m2'.
-Proof.
-  intros. unfold record_frame_vm in *.
-  destruct (record_frame m1 fr) eqn:RECORD.
-  destruct (zle (stack_size_vm(stack (support m))) (max_stacksize)).
-  exploit record_frame_extends; eauto. intros (m2'& A & B & C).
-  exists m2'. inv H0. rewrite A. rewrite <- C.
-  rewrite zle_true; auto. split; auto. split; auto.
-  discriminate. discriminate.
-Qed.
-
-Theorem record_frame_mach_extends:
-  forall (m1 m2 m1':mem) fr,
-  extends m1 m2 ->
-  record_frame_mach m1 fr = Some m1' ->
-  exists m2',
-    record_frame_mach m2 fr = Some m2'
-    /\ extends m1' m2'.
-Proof.
-  intros. unfold record_frame_mach in *.
-  destruct (record_frame m1 fr) eqn:RECORD.
-  destruct (zle (stack_size_mach(stack (support m))) (max_stacksize)).
-  exploit record_frame_extends; eauto. intros (m2'& A & B & C).
-  exists m2'. inv H0. rewrite A. rewrite <- C.
-  rewrite zle_true; auto. split; auto. split; auto.
-  discriminate. discriminate.
+  exploit record_frame_extends'; eauto.
+  apply record_frame_nonempty in H0. rewrite <- H2. auto.
+  rewrite <- H2. lia.
+  intros [m2' [RECORD EXT']]. exists m2'; split; auto.
+  split; eauto.
+  destruct (stack_record_frame _ _ _ H0) as (hd & tl & A & B).
+  destruct (stack_record_frame _ _ _ RECORD) as (hd' & tl' & A' & B').
+  congruence.
 Qed.
 
 Theorem valid_block_extends:
@@ -5412,13 +5379,17 @@ Proof.
 Qed.
 
 Theorem pop_stage_parallel_inject:
-  forall f m1 m2 m1' m2',
+  forall f m1 m2 m1',
   inject f m1 m2 ->
   pop_stage m1 = Some m1' ->
-  pop_stage m2 = Some m2' ->
+  stack(support m2) <> nil ->
+  exists m2', pop_stage m2 = Some m2' /\
   inject f m1' m2'.
 Proof.
-  intros. inversion H. constructor; auto.
+  intros. inversion H.
+  destruct (nonempty_pop_stage _ H1) as [m2' POP].
+  exists m2'. split. auto.
+  constructor; auto.
   - eapply pop_stage_right_inj with (m1 := m1'); eauto.
     eapply pop_stage_left_inj; eauto.
   - eauto with mem.
@@ -5469,13 +5440,19 @@ Proof.
 Qed.
 
 Theorem record_frame_parallel_inject:
-  forall f m1 m2 m1' m2' fr,
+  forall f m1 m2 m1' fr ,
   inject f m1 m2 ->
   record_frame m1 fr = Some m1' ->
-  record_frame m2 fr = Some m2' ->
+  stack(support m2) <> nil ->
+  stack_size (stack(support m2)) <= stack_size(stack(support m1)) ->
+  exists m2', record_frame m2 fr = Some m2' /\
   inject f m1' m2'.
 Proof.
-  intros. inversion H. constructor; auto.
+  intros. inversion H.
+  eapply request_record_frame in H1; eauto.
+  destruct H1 as [m2' RECORD].
+  exists m2'. split. eauto.
+  constructor; auto.
   - eapply record_frame_right_inj with (m1 := m1'); eauto.
     eapply record_frame_left_inj; eauto.
   - eauto with mem.
@@ -5490,9 +5467,11 @@ Proof.
     rewrite <- perm_record_frame in H3; eauto. intros [A|A].
     left. rewrite <- perm_record_frame; eauto.
     right. rewrite <- perm_record_frame; eauto.
+  - apply record_frame_size1 in H0. lia.
 Qed.
 
 (** Preservation of [free] operations *)
+
 
 Lemma free_left_inject:
   forall f m1 m2 b lo hi m1',
@@ -5910,7 +5889,67 @@ Proof.
 Qed.
 
 (** * Invariance properties between two memory states *)
+(*
+Section MEMIFF.
 
+Record iff (m1 m2: mem) : Prop := mk_iff {
+  supp_iff:
+    Mem.supp (Mem.support m1) = Mem.supp(Mem.support m2);
+  access_iff:
+    m1.(Mem.mem_access) = m2.(Mem.mem_access);
+  contents_iff:
+    m1.(Mem.mem_contents) = m2.(Mem.mem_contents)
+}.
+
+Lemma iff_refl:
+  forall m, iff m m.
+Proof.
+  intros. constructor; auto. Qed.
+
+Lemma iff_comm:
+  forall m1 m2, iff m1 m2 -> iff m2 m1.
+Proof.
+  intros. inv H. constructor; auto.
+Qed.
+
+Lemma iff_trans:
+  forall m1 m2 m3, iff m1 m2 -> iff m2 m3 -> iff m1 m3.
+Proof.
+  intros. inv H. inv H0.
+  constructor; congruence.
+Qed.
+
+Lemma valid_block_iff:
+  forall m m' b,
+  iff m m' -> valid_block m b -> valid_block m' b.
+Proof.
+  unfold valid_block; intros. apply supp_iff in H. unfold sup_In in *. rewrite <- H. auto.
+Qed.
+
+Lemma perm_iff:
+  forall m m' b ofs k p,
+  iff m m' ->
+  perm m b ofs k p <-> perm m' b ofs k p.
+Proof.
+  intros. destruct H. unfold perm. rewrite access_iff0.
+  reflexivity.
+Qed.
+Print load.
+Print valid_access.
+Lemma valid_access_iff:
+  forall m1 m2 chunk b ofs p,
+    iff m1 m2 ->
+    valid_access 
+Lemma load_iff:
+  forall m1 m2 chunk b ofs v,
+    iff m1 m2 ->
+    load chunk m1 b ofs = Some v ->
+    load chunk m2 b ofs = Some v.
+Proof.
+  intros m1 m2 chunk b ofs v IFF LOAD.
+Search load.
+  unfold load. rewrite pred_dec_true.
+  *)
 Section UNCHANGED_ON.
 
 Variable P: block -> Z -> Prop.

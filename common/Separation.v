@@ -936,7 +936,7 @@ Lemma pop_stage_unchanged_on:
 Proof.
   intros.
   constructor; simpl.
-  - unfold Mem.sup_include. unfold Mem.sup_In. erewrite Mem.supp_pop_stage; eauto.
+  - apply Mem.sup_include_pop_stage; eauto.
   - intros. erewrite Mem.perm_pop_stage; eauto. reflexivity.
   - intros. unfold Mem.pop_stage in H. destruct (Mem.stack(Mem.support m)). discriminate.
     inv H. auto.
@@ -949,9 +949,11 @@ Lemma record_frame_unchanged_on:
 Proof.
   intros.
   constructor; simpl.
-  - unfold Mem.sup_include. unfold Mem.sup_In. erewrite Mem.supp_record_frame; eauto.
+  - eapply Mem.sup_include_record_frame; eauto.
   - intros. eapply Mem.perm_record_frame. eauto.
-  - intros. unfold Mem.record_frame in H. destruct (Mem.stack(Mem.support m)). discriminate.
+  - intros. unfold Mem.record_frame in H.
+    destruct (zle (Mem.frame_size fr + Mem.stack_size (Mem.stack(Mem.support m)))). 2:discriminate.
+    destruct (Mem.stack(Mem.support m)). discriminate.
     inv H. auto.
 Qed.
 
@@ -989,22 +991,25 @@ Proof.
 Qed.
 
 Lemma pop_stage_parallel_rule:
-  forall m1 m1' m2 m2' j P,
+  forall m1 m1' m2 j P,
     m2 |= minjection j m1 ** P ->
     Mem.pop_stage m1 = Some m1' ->
-    Mem.pop_stage m2 = Some m2' ->
+    Mem.stack(Mem.support m2) <> nil ->
+    exists m2', Mem.pop_stage m2 = Some m2' /\
     m2' |= minjection j m1' ** P.
 Proof.
-  intros m1 m1' m2 m2' j P MINJ POP1 POP2.
+  intros m1 m1' m2  j P MINJ POP1 POP2.
   exploit Mem.pop_stage_parallel_inject. apply MINJ. eauto. eauto.
+  intros (m2' & POP & INJ). exists m2'.
   destruct MINJ as (MINJ & PM & DISJ).
+  split. auto.
   split; [|split].
   - simpl in *. auto.
   - eapply m_invar. eauto.
     exploit pop_stage_unchanged_on. eauto.
-    intros. apply H0.
-  - red; intros. eapply DISJ. 2: eauto. simpl in H0 |- *.
-    decompose [ex and] H0.
+    intros. apply H.
+  - red; intros. eapply DISJ. 2: eauto. simpl in H |- *.
+    decompose [ex and] H.
     repeat eexists; eauto.
     eapply Mem.perm_pop_stage; eauto.
 Qed.
@@ -1033,22 +1038,27 @@ Qed.
 *)
 
 Lemma record_frame_mach_parallel_rule:
-  forall m1 m1' m2 m2' j P fa,
+  forall m1 m1' m2  j P fr ,
     m2 |= minjection j  m1 ** P ->
-    Mem.record_frame m1 fa = Some m1' ->
-    Mem.record_frame m2 fa = Some m2' ->
+    Mem.record_frame m1 fr = Some m1' ->
+    Mem.stack_size (Mem.stack(Mem.support m2)) <=
+    Mem.stack_size (Mem.stack(Mem.support m1)) ->
+    Mem.stack (Mem.support m2) <> nil ->
+    exists m2', Mem.record_frame m2 fr = Some m2' /\
     m2' |= minjection j  m1' ** P.
 Proof.
-  intros m1 m1' m2 m2' j P fa MINJ RECORD1 RECORD2.
-  exploit Mem.record_frame_parallel_inject. apply MINJ. eauto. eauto.
+  intros m1 m1' m2  j P fa MINJ RECORD1 SIZE NE.
+  exploit Mem.record_frame_parallel_inject; eauto. apply MINJ. eauto.
+  intros (m2' & RECORD & INJ).
   destruct MINJ as (MINJ & PM & DISJ).
+  exists m2'. split. auto.
   split; [|split].
   - simpl in *. auto.
   - eapply m_invar. eauto.
     exploit record_frame_unchanged_on. eauto.
-    intros. apply H0.
-  - red; intros. eapply DISJ. 2: eauto. simpl in H0 |- *.
-    decompose [ex and] H0.
+    intros. apply H.
+  - red; intros. eapply DISJ. 2: eauto. simpl in H |- *.
+    decompose [ex and] H.
     repeat eexists; eauto.
     eapply Mem.perm_record_frame; eauto.
 Qed.

@@ -985,26 +985,35 @@ Proof.
   intro. intro. apply Mem.sup_add_in in H2. destruct H2.
   change (Mem.valid_block tm b). subst b. eapply Mem.valid_block_inject_2;eauto. apply TSUPINC; auto.
   apply regs_inject; auto.
-  eapply Mem.push_stage_inject; eauto.
-  unfold Mem.stackeq. simpl. congruence.
+
 - (* tailcall *)
   exploit find_function_inject.
   eapply match_stacks_preserves_globals; eauto. eauto.
   destruct ros as [r|id']. eauto. apply KEPT. red. econstructor; econstructor; split; eauto. simpl; auto.
   intros (A & B).
   exploit Mem.free_parallel_inject; eauto. rewrite ! Z.add_0_r. intros (tm' & C & D).
+  exploit Mem.free_parallel_stackeq; eauto. intro.
+  exploit Mem.pop_stage_parallel_inject; eauto.
+  rewrite <- H2. eapply Mem.pop_stage_nonempty; eauto.
+  intros (m2' & POP & INJ).
   econstructor; split.
   eapply exec_Itailcall; eauto.
-  eapply ros_is_function_translated; eauto.
+  eapply ros_is_function_translated; eauto. eauto.
   econstructor; eauto.
   apply match_stacks_bound with sps tsps; auto.
-  erewrite Mem.support_free; eauto.
-  erewrite Mem.support_free; eauto.
+  eapply Mem.sup_include_trans; eauto.
+  erewrite <- Mem.support_free; eauto.
+  eapply Mem.sup_include_pop_stage; eauto.
+  eapply Mem.sup_include_trans; eauto.
+  erewrite <- Mem.support_free; eauto.
+  eapply Mem.sup_include_pop_stage; eauto.
   apply regs_inject; auto.
-  unfold Mem.stackeq.
-  rewrite (Mem.support_free _ _ _ _ _ H3).
-  rewrite (Mem.support_free _ _ _ _ _ C).
-  congruence.
+  eapply Mem.stack_pop_stage in POP.
+  eapply Mem.stack_pop_stage in H4.
+  destruct H4 as [hd Sm''].
+  destruct POP as [hd' Sm2']. unfold Mem.stackeq in H2.
+  rewrite Sm'',Sm2' in H2. inv H2. auto.
+
 - (* builtin *)
   exploit eval_builtin_args_inject; eauto.
   eapply match_stacks_preserves_globals; eauto.
@@ -1012,44 +1021,19 @@ Proof.
   intros (vargs' & P & Q).
   exploit external_call_inject; eauto.
   eapply match_stacks_preserves_globals; eauto.
-  eapply Mem.push_stage_inject; eauto.
   intros (j' & tv & tm' & A & B & C & D & E & F & G).
   apply external_call_mem_stackeq in A as A'.
-  assert ({tm'':mem|Mem.pop_stage tm' = Some tm''}).
-  apply Mem.nonempty_pop_stage. rewrite  <- A'. simpl. congruence.
-  destruct X as [tm'' POP].
-  exploit Mem.pop_stage_parallel_inject; eauto.
-  intro INJECT.
   econstructor; split.
   eapply exec_Ibuiltin; eauto.
   eapply match_states_regular with (j := j'); eauto.
   apply match_stacks_incr with j; auto.
   intros. exploit G; eauto. intros [U V].
   split.
-  intro. apply SUPINC in H5. apply U. auto.
-  intro. apply TSUPINC in H5. apply V. auto.
+  intro. apply SUPINC in H4. apply U. auto.
+  intro. apply TSUPINC in H4. apply V. auto.
   apply set_res_inject; auto. apply regset_inject_incr with j; auto.
-{
-  eapply Mem.sup_include_trans. eauto. eapply Mem.unchanged_on_support in D.
-  apply Mem.sup_include_trans with (Mem.support(Mem.push_stage m)).
-  unfold Mem.sup_include in *. unfold Mem.sup_In in *. auto.
-  eapply Mem.sup_include_trans. eauto.
-  unfold Mem.sup_include in *. unfold Mem.sup_In in *.
-  erewrite Mem.supp_pop_stage; eauto.
-}
-{
- eapply Mem.sup_include_trans. eauto. eapply Mem.unchanged_on_support in E.
-  apply Mem.sup_include_trans with (Mem.support(Mem.push_stage tm)).
-  unfold Mem.sup_include in *. unfold Mem.sup_In in *. auto.
-  eapply Mem.sup_include_trans. eauto.
-  unfold Mem.sup_include in *. unfold Mem.sup_In in *.
-  erewrite Mem.supp_pop_stage; eauto.
-}
-  unfold Mem.stackeq.
-  apply Mem.stack_pop_stage in POP.
-  apply Mem.stack_pop_stage in H2.
-  destruct H2 as [hd H2].
-  destruct POP as [hd' POP].
+  eapply Mem.sup_include_trans. eauto. eapply Mem.unchanged_on_support in D; eauto.
+  eapply Mem.sup_include_trans. eauto. eapply Mem.unchanged_on_support in E; eauto.
   apply external_call_mem_stackeq in H1.
   apply external_call_mem_stackeq in A.
   unfold Mem.stackeq in *. simpl in *.
@@ -1069,17 +1053,22 @@ Proof.
 
 - (* return *)
   exploit Mem.free_parallel_inject; eauto. rewrite ! Z.add_0_r. intros (tm' & C & D).
+  exploit Mem.free_parallel_stackeq; eauto. intro.
+  exploit Mem.pop_stage_parallel_inject; eauto.
+  rewrite <- H2. eapply Mem.pop_stage_nonempty; eauto.
+  intros (m2' & POP & INJ).
   econstructor; split.
   eapply exec_Ireturn; eauto.
   econstructor; eauto.
   apply match_stacks_bound with sps tsps; auto.
-  erewrite Mem.support_free; eauto.
-  erewrite Mem.support_free; eauto.
+  eapply Mem.sup_include_trans; eauto.
+  erewrite <- Mem.support_free; eauto.
+  eapply Mem.sup_include_pop_stage; eauto.
+  eapply Mem.sup_include_trans; eauto.
+  erewrite <- Mem.support_free; eauto.
+  eapply Mem.sup_include_pop_stage; eauto.
   destruct or; simpl; auto.
-  unfold Mem.stackeq.
-  rewrite (Mem.support_free _ _ _ _ _ H0).
-  rewrite (Mem.support_free _ _ _ _ _ C).
-  congruence.
+  exploit Mem.pop_stage_safe_stackeq; eauto.
 - (* internal function *)
   exploit Mem.alloc_parallel_inject. eauto. eauto. apply Z.le_refl. apply Z.le_refl.
   intros (j' & tm' & tstk & C & D & E & F & G).
@@ -1091,50 +1080,34 @@ Proof.
     intros. destruct (eq_block b1 stk).
     subst b1. rewrite F in H2; inv H2. split; apply freshness.
     rewrite G in H2 by auto. congruence. }
-  apply Mem.record_frame_mach_result in H0 as RECORD.
-  apply Mem.record_frame_mach_size in H0 as SIZE.
+  exploit Mem.push_stage_inject; eauto. intros.
   apply Mem.support_alloc in H as H'.
   apply Mem.support_alloc in C as C'.
-  assert ({tm'':mem|Mem.record_frame tm' (Mem.mk_frame sz)=Some tm''}).
-    apply Mem.nonempty_record_frame. rewrite C'.
-    simpl. rewrite <- STK.
-    apply Mem.record_frame_nonempty in RECORD.
-    rewrite H' in RECORD. simpl in RECORD. auto.
-  destruct X as (tm'' & RECORD').
+  exploit Mem.record_frame_parallel_inject; eauto.
+  simpl. rewrite C'. congruence.
+  simpl. rewrite H'. rewrite C'. simpl. rewrite STK. lia.
+  intros (tm'' & RECORD' & INJ).
   econstructor; split.
   eapply exec_function_internal; eauto.
-  unfold Mem.record_frame_mach. rewrite RECORD'.
-  apply zle_true.
-  eapply Mem.stack_record_frame in RECORD; eauto.
-  destruct RECORD as (hd & tl & A & B).
-  eapply Mem.stack_record_frame in RECORD'; eauto.
-  destruct RECORD' as (hd' & tl' & A' & B').
-  unfold Mem.stackeq in STK. rewrite B'.
-  rewrite B in SIZE.
-  rewrite H' in A.
-  rewrite C' in A'.
-  simpl in *. rewrite A in STK. rewrite A' in STK.
-  inv STK. lia.
   eapply match_states_regular with (j := j'); eauto.
   apply init_regs_inject; auto. apply val_inject_list_incr with j; auto.
-  eapply Mem.record_frame_parallel_inject; eauto.
   apply Mem.sup_include_trans with (Mem.support m').
   rewrite H'. apply Mem.sup_add_in2.
-  unfold Mem.sup_include. unfold Mem.sup_In. erewrite Mem.supp_record_frame; eauto.
+  eapply Mem.sup_include_trans. 2: eapply Mem.sup_include_record_frame; eauto.
+  unfold Mem.sup_include. unfold Mem.sup_In. eauto.
   apply Mem.sup_include_trans with (Mem.support tm').
-  rewrite C'. apply Mem.sup_add_in2. auto.
-  unfold Mem.sup_include. unfold Mem.sup_In. erewrite Mem.supp_record_frame; eauto.
+  rewrite C'. apply Mem.sup_add_in2.
+  eapply Mem.sup_include_trans. 2: eapply Mem.sup_include_record_frame; eauto.
+  unfold Mem.sup_include. unfold Mem.sup_In. eauto.
   unfold Mem.stackeq.
-  eapply Mem.stack_record_frame in RECORD; eauto.
+  eapply Mem.stack_record_frame in H0 as RECORD; eauto.
   destruct RECORD as (hd & tl & A & B).
   eapply Mem.stack_record_frame in RECORD'; eauto.
   destruct RECORD' as (hd' & tl' & A' & B').
   unfold Mem.stackeq in STK. rewrite B'.
-  rewrite B.
-  rewrite H' in A.
-  rewrite C' in A'.
-  simpl in *. rewrite A in STK. rewrite A' in STK.
-  inv STK. auto.
+  exploit Mem.alloc_parallel_stackeq; eauto. intros. simpl in *.
+  inv A'. inv A. rewrite B.
+  rewrite H2. auto.
 - (* external function *)
   exploit external_call_inject; eauto.
   eapply match_stacks_preserves_globals; eauto.
@@ -1151,21 +1124,12 @@ Proof.
   congruence.
 - (* return *)
   inv STACKS.
-  apply Mem.pop_stage_nonempty in H as H'.
-  rewrite STK in H'.
-  apply Mem.nonempty_pop_stage in H'. destruct H' as [tm' POP].
   econstructor; split.
   eapply exec_return. eauto.
   econstructor; eauto. apply set_reg_inject; auto.
-  eapply Mem.pop_stage_parallel_inject; eauto.
 
-  intro. intro.  unfold Mem.sup_include in *. unfold Mem.sup_In in *.
-  erewrite <- Mem.supp_pop_stage; eauto. apply BELOW. apply Mem.sup_add_in2. auto.
-  intro. intro.  unfold Mem.sup_include in *. unfold Mem.sup_In in *.
-  erewrite <- Mem.supp_pop_stage; eauto. apply TBELOW. apply Mem.sup_add_in2. auto.
-  apply Mem.stack_pop_stage in H. destruct H.
-  apply Mem.stack_pop_stage in POP. destruct POP.
-  congruence.
+  intro. intro. apply BELOW. apply Mem.sup_add_in2. auto.
+  intro. intro. apply TBELOW. apply Mem.sup_add_in2. auto.
 Qed.
 
 (** Relating initial memory states *)
@@ -1319,6 +1283,7 @@ Qed.
 
 End INIT_MEM.
 
+
 Lemma init_mem_exists:
   forall m, Genv.init_mem p = Some m ->
   exists tm, Genv.init_mem tp = Some tm.
@@ -1358,7 +1323,7 @@ Proof.
   exploit defs_inject. eauto. eexact Q. exact H2.
   intros (R & S & T).
   rewrite <- Genv.find_funct_ptr_iff in R.
-  exists (Callstate nil f nil (Mem.push_stage tm)(fn_stack_requirements (prog_main tp))); split.
+  exists (Callstate nil f nil tm(fn_stack_requirements (prog_main tp))); split.
   econstructor; eauto.
   fold tge. erewrite match_prog_main by eauto. auto.
   destruct TRANSF. rewrite match_prog_main0.
@@ -1368,7 +1333,6 @@ Proof.
   unfold Mem.sup_include. auto.
   unfold Mem.push_stage. simpl. erewrite <- Genv.init_mem_genv_sup by eauto.
   unfold Mem.sup_include. auto.
-  eapply Mem.push_stage_inject; eauto.
   unfold Mem.stackeq. simpl.
   erewrite Genv.init_mem_stack; eauto.
   erewrite Genv.init_mem_stack; eauto.

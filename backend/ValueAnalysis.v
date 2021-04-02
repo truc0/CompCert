@@ -14,7 +14,7 @@ Require Import FunInd.
 Require Import Coqlib Maps Integers Floats Lattice Kildall.
 Require Import Compopts AST Linking.
 Require Import Values Memory Globalenvs Builtins Events.
-Require Import Registers Op RTL RTLmach1.
+Require Import Registers Op RTL RTLmach.
 Require Import ValueDomain ValueAOp Liveness.
 
 (** * The dataflow analysis *)
@@ -1599,7 +1599,6 @@ Proof.
 
 - (* internal function *)
   exploit allocate_stack; eauto.
-  apply Mem.record_frame_mach_result in H0 as RECORD.
   intros (bc' & A & B & C & D & E & F & G).
   exploit (analyze_entrypoint rm f args m' bc'); eauto.
   intros (ae & am & AN & EM & MM').
@@ -1610,8 +1609,7 @@ Proof.
   eapply Mem.sup_include_refl. auto.
   apply Mem.sup_include_trans with (Mem.support (Mem.push_stage m')).
   unfold Mem.sup_include. unfold Mem.sup_In. eauto.
-  unfold Mem.sup_include. unfold Mem.sup_In. erewrite Mem.supp_record_frame; eauto.
-  (* erewrite Mem.alloc_result by eauto. *)
+  eapply Mem.sup_include_record_frame; eauto.
   eapply sound_stack_record_frame; eauto.
   eapply sound_stack_push_stage; eauto.
   apply sound_stack_exten with bc; auto.
@@ -1619,7 +1617,6 @@ Proof.
   intros. eapply Mem.loadbytes_alloc_unchanged; eauto.
   eapply romatch_record_frame; eauto.
   eapply mmatch_record_frame; eauto.
-  (*intros. apply F. erewrite Mem.alloc_result by eauto. auto. *)
 
 - (* external function *)
   exploit external_call_match; eauto with va.

@@ -15,7 +15,7 @@
 Require Import Coqlib Maps Errors Integers Floats Lattice Kildall.
 Require Import AST Linking.
 Require Import Values Memory Builtins Events Globalenvs Smallstep.
-Require Import Op Registers RTL RTLmach1.
+Require Import Op Registers RTL RTLmach.
 Require Import ValueDomain ValueAOp ValueAnalysis.
 Require Import CSEdomain CombineOp CombineOpproof CSE.
 
@@ -1279,16 +1279,12 @@ Proof.
   monadInv TFD. unfold transf_function in EQ. fold (analyze cu f) in EQ.
   destruct (analyze cu f) as [approx|] eqn:?; inv EQ.
   exploit Mem.alloc_extends; eauto. apply Z.le_refl. apply Z.le_refl.
-  apply Mem.record_frame_mach_result in H0 as RECORD.
-  apply Mem.record_frame_mach_size in H0 as SIZE.
   intros (m'1 & A & B). inversion B.
   exploit Mem.push_stage_extends; eauto. intro.
   exploit Mem.record_frame_extends; eauto.
   intros (m'2 & A'& B'). inversion B'.
   econstructor; split.
   eapply exec_function_internal; simpl; eauto.
-  unfold Mem.record_frame_mach. rewrite A'.
-  apply zle_true. rewrite <- H5. lia.
   simpl. econstructor; eauto.
   eapply analysis_correct_entry; eauto.
   apply init_regs_lessdef; auto.

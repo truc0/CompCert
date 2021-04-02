@@ -435,7 +435,7 @@ Inductive tc_sizes : list nat -> Mem.stackadt -> Mem.stackadt -> Prop :=
 | sizes_cons l s1 s2 t1 n t2:
     tc_sizes l (drop (S n) s1) s2 ->
     take (S n) s1 = Some t1 ->
-    Mem.stack_size_vm t1 = Mem.size_of_all_frames t2 ->
+    Mem.stack_size t1 = Mem.size_of_all_frames t2 ->
     tc_sizes (S n::l) s1 (t2 :: s2).
 
 Lemma tc_sizes_upstar:
@@ -478,19 +478,13 @@ Proof.
   econstructor; simpl; auto. rewrite Heqo. eauto.
   simpl in *. lia.
 Qed.
-(* to mem*)
-Lemma stack_size_vm_app : forall s1 s2,
-    Mem.stack_size_vm (s1++s2) = Mem.stack_size_vm s1 + Mem.stack_size_vm s2.
-Proof.
-  intros. induction s1. auto. simpl. lia.
-Qed.
 
 Theorem stack_tc_size_vm: forall l stk stk',
-    tc_sizes l stk stk' -> Mem.stack_size_vm stk = Mem.stack_size_vm stk'.
+    tc_sizes l stk stk' -> Mem.stack_size stk = Mem.stack_size stk'.
 Proof.
   intros. induction H. auto.
   simpl. apply take_drop in H0. rewrite H0.
-  rewrite stack_size_vm_app. lia.
+  rewrite Mem.stack_size_app. lia.
 Qed.
 
 (** Here is the invariant relating two states.  The first three
@@ -676,17 +670,15 @@ Proof.
   exploit external_call_mem_extends'; eauto.
   eapply Mem.push_stage_extends'; eauto.
   intros [v' [m'1 [A [B [C D]]]]].
-    assert ({m'2:mem|Mem.pop_stage m'1 = Some m'2}).
-    apply Mem.nonempty_pop_stage.
-    erewrite <- external_call_mem_stackeq; eauto.
-    simpl. congruence.
-  destruct X as [m'2 Y].
+  exploit Mem.pop_stage_extends'; eauto.
+  erewrite <- external_call_mem_stackeq; eauto.
+  simpl. congruence.
+  intros (m'2 & Y & EXT').
   left. exists (State s' (transf_function f) (Vptr sp0 Ptrofs.zero) pc' (regmap_setres res v' rs') m'2); split.
   eapply exec_Ibuiltin; eauto.
   eapply eval_builtin_args_preserved with (ge1 := ge); eauto. exact symbols_preserved.
   eapply external_call_symbols_preserved; eauto. apply senv_preserved.
   econstructor; eauto. apply set_res_lessdef; auto.
-  eapply Mem.pop_stage_extends'; eauto.
   {
     apply Mem.stack_pop_stage in H2. destruct H2 as [hd STK1].
     eapply external_call_mem_stackeq in H1. rewrite <- H1 in STK1.
@@ -747,41 +739,30 @@ Proof.
           fn_params (transf_function f) = fn_params f).
     unfold transf_function. destruct (zeq (fn_stacksize f) 0); auto.
   destruct H1 as [EQ1 [EQ2 EQ3]].
-  apply Mem.record_frame_vm_size in H0 as H1.
+  apply Mem.record_frame_size in H0 as H1.
   inversion H10. subst.
-    (*we need stacksize here*)
-  assert ({m'2:mem|Mem.record_frame_vm m'1 (Mem.mk_frame sz) = Some m'2}).
-    assert ({m'2:mem|Mem.record_frame m'1 (Mem.mk_frame sz) = Some m'2}).
-    apply Mem.nonempty_record_frame.
+  exploit Mem.record_frame_extends'; eauto.
     apply Mem.support_alloc in ALLOC. rewrite ALLOC. simpl.
     congruence.
-    destruct X as [m'2 Y]. unfold Mem.record_frame_vm. rewrite Y. simpl.
-    assert ((Mem.stack_size_vm (Mem.stack (Mem.support m'2)))<= Mem.max_stacksize).
     apply Mem.stack_alloc in H. apply Mem.stack_alloc in ALLOC.
-    apply Mem.record_frame_vm_result in H0. apply Mem.stack_record_frame in H0.
-    apply Mem.stack_record_frame in Y.
-    destruct H0 as (hd & tl & A & B).
-    destruct Y as (hd' & tl' & A' & B').
+    apply Mem.stack_record_frame in H0.
     apply stack_tc_size_vm in H10.
-    rewrite <- H in H10. rewrite A in H10. rewrite <- ALLOC in H10.
-    rewrite A' in H10.
-    rewrite B'. rewrite B in H1. simpl. simpl in H1.
-    simpl in H10. lia. rewrite zle_true; eauto.
-  destruct X as [m'2 Y].
+    rewrite H,ALLOC. lia.
+  intros [m'2 [Y EXT']].
   left. econstructor; split.
   simpl. eapply exec_function_internal. rewrite EQ1; eauto. eauto.
   rewrite EQ2. rewrite EQ3. econstructor; eauto.
   apply regs_lessdef_init_regs. auto.
-  eapply Mem.record_frame_vm_extends'; eauto.
   apply Mem.stack_alloc in H. apply Mem.stack_alloc in ALLOC.
-  apply Mem.record_frame_vm_result in H0. apply Mem.stack_record_frame in H0.
-  apply Mem.record_frame_vm_result in Y. apply Mem.stack_record_frame in Y.
-    destruct H0 as (hd & tl & A & B).
-    destruct Y as (hd' & tl' & A' & B').
-    rewrite B'. rewrite B.
-    rewrite <- H in H10. rewrite A in H10.
-    rewrite <- ALLOC in H10. rewrite A' in H10.
-    apply tc_sizes_record. auto.
+  apply Mem.stack_record_frame in H0.
+  apply Mem.stack_record_frame in Y.
+  destruct H0 as (hd & tl & A & B).
+  destruct Y as (hd' & tl' & A' & B').
+  rewrite B'. rewrite B.
+  rewrite <- H in H10. rewrite A in H10.
+  rewrite <- ALLOC in H10. rewrite A' in H10.
+  apply tc_sizes_record.
+  auto.
 - (* external call *)
   exploit external_call_mem_extends'; eauto.
   intros [res' [m2' [A [B [C D]]]]].
@@ -797,14 +778,12 @@ Proof.
   inv H3.
 + (* synchronous return in both programs *)
   inversion H7. subst.
-  assert ({m'1:mem|Mem.pop_stage m'0 = Some m'1}).
-  apply Mem.nonempty_pop_stage.
+  exploit Mem.pop_stage_extends'; eauto.
   destruct (Mem.stack(Mem.support m'0)). inv H2. congruence.
-  destruct X as [m'1 POP].
+  intros [m'1 [POP EXT']].
   left. econstructor; split.
   apply exec_return. eauto.
   econstructor; eauto. apply set_reg_lessdef; auto.
-  eapply Mem.pop_stage_extends'; eauto.
   eapply Mem.stack_pop_stage in H.
   eapply Mem.stack_pop_stage in POP.
   destruct H as [hd H].

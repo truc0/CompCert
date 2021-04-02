@@ -683,14 +683,10 @@ Proof.
   exploit Mem.alloc_extends. eauto. eauto. apply Z.le_refl. apply Z.le_refl.
   intros (tm' & ALLOC & MEM').
   exploit Mem.push_stage_extends; eauto. intro.
-  eapply Mem.record_frame_mach_result in H0 as RECORD.
-  eapply Mem.record_frame_mach_size in H0 as SIZE.
   exploit Mem.record_frame_extends; eauto.
   intros (tm'' & RECORD' & MEM''). inversion MEM''.
   left; simpl; econstructor; split.
   eapply exec_function_internal; eauto.
-  unfold Mem.record_frame_mach. rewrite RECORD'.
-  apply zle_true. rewrite <- H3. lia.
   simpl. econstructor; eauto using locmap_undef_regs_lessdef, call_regs_lessdef.
 - (* external function *)
   exploit external_call_mem_extends; eauto using locmap_getpairs_lessdef.

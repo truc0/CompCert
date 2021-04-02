@@ -441,7 +441,7 @@ Inductive step: state -> trace -> state -> Prop :=
   | step_internal_function: forall f vargs k m m' m'' sp e sz,
       Mem.alloc m 0 f.(fn_stackspace) = (m', sp) ->
       set_locals f.(fn_vars) (set_params vargs f.(fn_params)) = e ->
-      Mem.record_frame_vm m' (Mem.mk_frame sz) = Some m'' ->
+      Mem.record_frame m' (Mem.mk_frame sz) = Some m'' ->
       step (Callstate (Internal f) vargs k m sz)
         E0 (State f f.(fn_body) k (Vptr sp Ptrofs.zero) e m'')
   | step_external_function: forall ef vargs k m t vres m' id,

@@ -19,7 +19,7 @@ Require Import Coqlib Ordered Maps Errors Integers Floats.
 Require Import AST Linking Lattice Kildall.
 Require Import Values Memory Globalenvs Events Smallstep.
 Require Archi.
-Require Import Op Registers RTL RTLmach1 Locations Conventions RTLtyping LTL.
+Require Import Op Registers RTL RTLmach Locations Conventions RTLtyping LTL.
 Require Import Allocation.
 
 Definition match_prog (p: RTL.program) (tp: LTL.program) :=
@@ -1990,7 +1990,7 @@ Qed.
     "plus" kind. *)
 
 Lemma step_simulation:
-  forall S1 t S2, RTLmach1.step fn_stack_requirements ge S1 t S2 -> wt_state S1 ->
+  forall S1 t S2, RTLmach.step fn_stack_requirements ge S1 t S2 -> wt_state S1 ->
   forall S1', match_states S1 S1' ->
   exists S2', plus (LTL.step fn_stack_requirements) tge S1' t S2' /\ match_states S2 S2'.
 Proof.
@@ -2472,8 +2472,6 @@ Proof.
   destruct (transf_function_inv _ _ EQ).
   exploit Mem.alloc_extends; eauto. apply Z.le_refl. rewrite H9; apply Z.le_refl.
   intros [tm' [U V]].
-  apply Mem.record_frame_mach_result in H0 as RECORD.
-  apply Mem.record_frame_mach_size in H0 as SIZE.
   exploit Mem.push_stage_extends; eauto. intro.
   exploit Mem.record_frame_extends; eauto.
   intros (tm'' & W & X).
@@ -2486,8 +2484,6 @@ Proof.
   intros [ls1 [A B]].
   econstructor; split.
   eapply plus_left. econstructor; eauto.
-  unfold Mem.record_frame_mach. rewrite W.
-  apply zle_true. inversion X. rewrite <- H13. lia.
   eapply star_left. econstructor; eauto.
   eapply star_right. eexact A.
   econstructor; eauto.
@@ -2525,7 +2521,7 @@ Proof.
 Qed.
 
 Lemma initial_states_simulation:
-  forall st1, RTLmach1.initial_state fn_stack_requirements prog st1 ->
+  forall st1, RTLmach.initial_state fn_stack_requirements prog st1 ->
   exists st2, LTL.initial_state fn_stack_requirements tprog st2 /\ match_states st1 st2.
 Proof.
   intros. inv H.
@@ -2549,7 +2545,7 @@ Qed.
 
 Lemma final_states_simulation:
   forall st1 st2 r,
-  match_states st1 st2 -> RTLmach1.final_state st1 r -> LTL.final_state st2 r.
+  match_states st1 st2 -> RTLmach.final_state st1 r -> LTL.final_state st2 r.
 Proof.
   intros. inv H0. inv H. inv STACKS.
   econstructor. rewrite <- (loc_result_exten sg). inv RES; auto.
@@ -2570,7 +2566,7 @@ Proof.
 Qed.
 
 Theorem transf_program_correct:
-  forward_simulation (RTLmach1.semantics fn_stack_requirements prog)
+  forward_simulation (RTLmach.semantics fn_stack_requirements prog)
                      (LTL.semantics fn_stack_requirements tprog).
 Proof.
   set (ms := fun s s' => wt_state s /\ match_states s s').

@@ -1349,7 +1349,6 @@ Proof.
 + (* turned into Sbuiltin *)
   intros EQ. subst fd.
   right; left; split. simpl; lia. split; auto. econstructor; eauto.
-  
 - (* Stailcall *)
   exploit Mem.free_parallel_extends; eauto. intros [m2' [P Q]].
   erewrite <- stackspace_function_translated in P by eauto.
@@ -1455,7 +1454,7 @@ Proof.
   monadInv TF. generalize EQ; intros TF; monadInv TF.
   exploit Mem.alloc_extends. eauto. eauto. apply Z.le_refl. apply Z.le_refl.
   intros [m2' [A B]].
-  exploit Mem.record_frame_vm_extends; eauto. intros [m2''[A' B']].
+  exploit Mem.record_frame_extends; eauto. intros [m2''[A' B']].
   left; econstructor; split.
   apply plus_one; econstructor; simpl; eauto.
   econstructor; simpl; eauto.

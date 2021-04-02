@@ -16,7 +16,7 @@ Require Import Coqlib Maps Integers Floats Lattice Kildall.
 Require Import AST Linking.
 Require Import Values Builtins Events Memory Globalenvs Smallstep.
 Require Compopts Machregs.
-Require Import Op Registers RTL RTLmach1.
+Require Import Op Registers RTL RTLmach.
 Require Import Liveness ValueDomain ValueAOp ValueAnalysis.
 Require Import ConstpropOp ConstpropOpproof Constprop.
 
@@ -617,18 +617,12 @@ Opaque builtin_strength_reduction.
   exploit Mem.alloc_extends. eauto. eauto. apply Z.le_refl. apply Z.le_refl.
   intros [m2' [A B]].
   simpl. unfold transf_function.
-  apply Mem.record_frame_mach_result in H0 as H1.
-  apply Mem.record_frame_mach_size in H0 as H2.
   inversion B.
   exploit Mem.push_stage_extends; eauto. intro.
   exploit Mem.record_frame_extends; eauto. intro.
-  destruct H6 as [m3' [RECORD EXTENDS]].
+  destruct H4 as [m3' [RECORD EXTENDS]].
   left; exists O; econstructor; split.
   eapply exec_function_internal; simpl; eauto.
-  unfold Mem.record_frame_mach. rewrite RECORD.
-  assert ((Mem.stack_size_mach (Mem.stack (Mem.support m3')))<= Mem.max_stacksize).
-  inversion EXTENDS.
-  rewrite <- H7. lia. apply zle_true. auto.
   simpl. econstructor; eauto.
   constructor.
   apply init_regs_lessdef; auto.
@@ -676,8 +670,8 @@ Qed.
   follows. *)
 
 Theorem transf_program_correct:
-  forward_simulation (RTLmach1.semantics fn_stack_requirements prog)
-                     (RTLmach1.semantics fn_stack_requirements tprog).
+  forward_simulation (RTLmach.semantics fn_stack_requirements prog)
+                     (RTLmach.semantics fn_stack_requirements tprog).
 Proof.
   apply Forward_simulation with lt (fun n s1 s2 => sound_state prog s1 /\ match_states n s1 s2); constructor.
 - apply lt_wf.

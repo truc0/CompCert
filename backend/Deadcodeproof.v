@@ -16,7 +16,7 @@ Require Import FunInd.
 Require Import Coqlib Maps Errors Integers Floats Lattice Kildall.
 Require Import AST Linking.
 Require Import Values Memory Globalenvs Events Smallstep.
-Require Import Registers Op RTL RTLmach1.
+Require Import Registers Op RTL RTLmach.
 Require Import ValueDomain ValueAnalysis NeedDomain NeedOp Deadcode.
 
 Definition match_prog (prog tprog: RTL.program) :=
@@ -1150,16 +1150,11 @@ Ltac UseTransfer :=
   destruct (analyze (vanalyze cu f) f) as [an|] eqn:AN; inv EQ'.
   exploit Mem.alloc_extends; eauto. apply Z.le_refl. apply Z.le_refl.
   intros (tm' & A & B).
-  apply Mem.record_frame_mach_result in H0 as RECORD.
-  apply Mem.record_frame_mach_size in H0 as SIZE.
   exploit Mem.push_stage_extends; eauto. intro.
   exploit Mem.record_frame_extends; eauto.
   intros (m2' & RECORD' & MEXT').
   econstructor; split.
   econstructor; simpl; eauto.
-  unfold Mem.record_frame_mach. rewrite RECORD'.
-  apply zle_true; eauto. inversion MEXT'.
-  rewrite <- H3. auto.
   simpl. econstructor; eauto.
   apply eagree_init_regs; auto.
   apply mextends_agree; auto.
@@ -1207,8 +1202,8 @@ Qed.
 (** * Semantic preservation *)
 
 Theorem transf_program_correct:
-  forward_simulation (RTLmach1.semantics fn_stack_requirements prog)
-                     (RTLmach1.semantics fn_stack_requirements tprog).
+  forward_simulation (RTLmach.semantics fn_stack_requirements prog)
+                     (RTLmach.semantics fn_stack_requirements tprog).
 Proof.
   intros.
   apply forward_simulation_step with

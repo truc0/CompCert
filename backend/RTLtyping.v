@@ -24,7 +24,7 @@ Require Import Values.
 Require Import Integers.
 Require Import Memory.
 Require Import Events.
-Require Import RTL RTLmach1.
+Require Import RTL RTLmach.
 Require Import Conventions.
 
 (** * The type system *)

@@ -19,7 +19,7 @@ Require Import Lattice.
 Require Import AST.
 Require Import Op.
 Require Import Registers.
-Require Import RTL RTLmach1.
+Require Import RTL RTLmach.
 Require Import Kildall.
 
 (** A register [r] is live at a point [p] if there exists a path

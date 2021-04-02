@@ -15,7 +15,7 @@
 Require Import Coqlib Maps Postorder.
 Require Import AST Linking.
 Require Import Values Memory Globalenvs Events Smallstep.
-Require Import Op Registers RTL RTLmach1 Renumber.
+Require Import Op Registers RTL RTLmach Renumber.
 
 Definition match_prog (p tp: RTL.program) :=
   match_program (fun ctx f tf => tf = transf_fundef f) eq p tp.
