@@ -23,6 +23,7 @@ Require Csharpminor.
 Require Cminor.
 Require CminorSel.
 Require RTL.
+Require RTLmach.
 Require LTL.
 Require Linear.
 Require Mach.
@@ -58,6 +59,7 @@ Require Selectionproof.
 Require RTLgenproof.
 Require Tailcallproof.
 Require Inliningproof.
+Require RTLmachproof.
 Require Renumberproof.
 Require Constpropproof.
 Require CSEproof.
@@ -349,6 +351,16 @@ Lemma match_if_simulation:
 Proof.
   intros. unfold match_if in *. destruct (flag tt). eauto. subst. apply forward_simulation_identity.
 Qed.
+
+Definition fn_stack_requirements (tp: Asm.program) (id: ident) : Z :=
+  match Globalenvs.Genv.find_symbol (Globalenvs.Genv.globalenv tp) id with
+  | Some b =>
+    match Globalenvs.Genv.find_funct_ptr (Globalenvs.Genv.globalenv tp) b with
+    | Some (Internal f) => Asm.fn_stackspace f
+    | _ => 0
+    end
+  | None => 0
+  end.
 
 Theorem cstrategy_semantic_preservation:
   forall p tp,

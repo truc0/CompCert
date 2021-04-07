@@ -40,6 +40,9 @@ Definition env := PTree.t (block * type). (* map variable -> location & type *)
 
 Definition empty_env: env := (PTree.empty (block * type)).
 
+Section ORACLE.
+
+Variable fn_stack_requirements : ident -> Z.
 
 Section SEMANTICS.
 
@@ -306,14 +309,15 @@ Inductive rred: expr -> mem -> trace -> expr -> mem -> Prop :=
 (** Head reduction for function calls.
     (More exactly, identification of function calls that can reduce.) *)
 
-Inductive callred: expr -> mem -> fundef -> list val -> type -> Prop :=
-  | red_call: forall vf tyf m tyargs tyres cconv el ty fd vargs,
+Inductive callred: expr -> mem -> fundef -> list val -> type -> ident -> Prop :=
+  | red_call: forall vf tyf m tyargs tyres cconv el ty fd vargs id,
+      is_function_ident ge vf id ->
       Genv.find_funct ge vf = Some fd ->
       cast_arguments m el tyargs vargs ->
       type_of_fundef fd = Tfunction tyargs tyres cconv ->
       classify_fun tyf = fun_case_f tyargs tyres cconv ->
       callred (Ecall (Eval vf tyf) el ty) m
-              fd vargs ty.
+              fd vargs ty id.
 
 (** Reduction contexts.  In accordance with C's nondeterministic semantics,
   we allow reduction both to the left and to the right of a binary operator.
@@ -418,8 +422,8 @@ Inductive imm_safe: kind -> expr -> mem -> Prop :=
       rred e m t e' m' ->
       context RV to C ->
       imm_safe to (C e) m
-  | imm_safe_callred: forall to C e m fd args ty,
-      callred e m fd args ty ->
+  | imm_safe_callred: forall to C e m fd args ty id ,
+      callred e m fd args ty id ->
       context RV to C ->
       imm_safe to (C e) m.
 
@@ -561,7 +565,7 @@ Inductive state: Type :=
       (fd: fundef)
       (args: list val)
       (k: cont)
-      (m: mem) : state
+      (m: mem)(sz:Z) : state
   | Returnstate                         (**r returning from a function *)
       (res: val)
       (k: cont)
@@ -636,11 +640,11 @@ Inductive estep: state -> trace -> state -> Prop :=
       estep (ExprState f (C a) k e m)
           t (ExprState f (C a') k e m')
 
-  | step_call: forall C f a k e m fd vargs ty,
-      callred a m fd vargs ty ->
+  | step_call: forall C f a k e m fd vargs ty id,
+      callred a m fd vargs ty id ->
       context RV RV C ->
       estep (ExprState f (C a) k e m)
-         E0 (Callstate fd vargs (Kcall f e C ty k) m)
+         E0 (Callstate fd vargs (Kcall f e C ty k) m (fn_stack_requirements id))
 
   | step_stuck: forall C f a k e m K,
       context K RV C -> ~(imm_safe e K a m) ->
@@ -741,23 +745,26 @@ Inductive sstep: state -> trace -> state -> Prop :=
       sstep (State f Sskip (Kfor4 a2 a3 s k) e m)
          E0 (State f (Sfor Sskip a2 a3 s) k e m)
 
-  | step_return_0: forall f k e m m',
+  | step_return_0: forall f k e m m' m'',
       Mem.free_list m (blocks_of_env e) = Some m' ->
+      Mem.pop_stage m' = Some m'' ->
       sstep (State f (Sreturn None) k e m)
-         E0 (Returnstate Vundef (call_cont k) m')
+         E0 (Returnstate Vundef (call_cont k) m'')
   | step_return_1: forall f x k e m,
       sstep (State f (Sreturn (Some x)) k e m)
          E0 (ExprState f x (Kreturn k) e  m)
-  | step_return_2:  forall f v1 ty k e m v2 m',
+  | step_return_2:  forall f v1 ty k e m v2 m' m'',
       sem_cast v1 ty f.(fn_return) m = Some v2 ->
       Mem.free_list m (blocks_of_env e) = Some m' ->
+      Mem.pop_stage m' = Some m'' ->
       sstep (ExprState f (Eval v1 ty) (Kreturn k) e m)
-         E0 (Returnstate v2 (call_cont k) m')
-  | step_skip_call: forall f k e m m',
+         E0 (Returnstate v2 (call_cont k) m'')
+  | step_skip_call: forall f k e m m' m'',
       is_call_cont k ->
       Mem.free_list m (blocks_of_env e) = Some m' ->
+      Mem.pop_stage m' = Some m'' ->
       sstep (State f Sskip k e m)
-         E0 (Returnstate Vundef k m')
+         E0 (Returnstate Vundef k m'')
 
   | step_switch: forall f x sl k e m,
       sstep (State f (Sswitch x sl) k e m)
@@ -783,16 +790,17 @@ Inductive sstep: state -> trace -> state -> Prop :=
       sstep (State f (Sgoto lbl) k e m)
          E0 (State f s' k' e m)
 
-  | step_internal_function: forall f vargs k m e m1 m2,
+  | step_internal_function: forall f vargs k m e m1 m2 m3 sz,
       list_norepet (var_names (fn_params f) ++ var_names (fn_vars f)) ->
       alloc_variables empty_env m (f.(fn_params) ++ f.(fn_vars)) e m1 ->
-      bind_parameters e m1 f.(fn_params) vargs m2 ->
-      sstep (Callstate (Internal f) vargs k m)
-         E0 (State f f.(fn_body) k e m2)
+      Mem.record_frame (Mem.push_stage m1) (Mem.mk_frame sz) = Some m2 ->
+      bind_parameters e m2 f.(fn_params) vargs m3 ->
+      sstep (Callstate (Internal f) vargs k m sz)
+         E0 (State f f.(fn_body) k e m3)
 
-  | step_external_function: forall ef targs tres cc vargs k m vres t m',
+  | step_external_function: forall ef targs tres cc vargs k m vres t m' sz,
       external_call ef  ge vargs m t vres m' ->
-      sstep (Callstate (External ef targs tres cc) vargs k m)
+      sstep (Callstate (External ef targs tres cc) vargs k m sz)
           t (Returnstate vres k m')
 
   | step_returnstate: forall v f e C ty k m,
@@ -818,7 +826,7 @@ Inductive initial_state (p: program): state -> Prop :=
       Genv.find_symbol ge p.(prog_main) = Some b ->
       Genv.find_funct_ptr ge b = Some f ->
       type_of_fundef f = Tfunction Tnil type_int32s cc_default ->
-      initial_state p (Callstate f nil Kstop m0).
+      initial_state p (Callstate f nil Kstop m0 (fn_stack_requirements (prog_main p))).
 
 (** A final state is a [Returnstate] with an empty continuation. *)
 
@@ -830,7 +838,6 @@ Inductive final_state: state -> int -> Prop :=
 
 Definition semantics (p: program) :=
   Semantics_gen step (initial_state p) final_state (globalenv p) (globalenv p).
-
 (** This semantics has the single-event property. *)
 
 Lemma semantics_single_events:
@@ -847,3 +854,4 @@ Proof.
   eapply external_call_trace_length; eauto.
   inv H; simpl; try lia. eapply external_call_trace_length; eauto.
 Qed.
+End ORACLE.

@@ -4263,15 +4263,15 @@ Qed.
 
 Lemma pop_stage_stackeq : forall m1 m2 m1',
     stackeq m1 m2 ->
-    Mem.pop_stage m1 = Some m1' ->
+    pop_stage m1 = Some m1' ->
     exists m2',
-      Mem.pop_stage m2 = Some m2' /\
+      pop_stage m2 = Some m2' /\
       stackeq m1' m2'.
 Proof.
   intros. apply pop_stage_nonempty in H0 as H1.
-  rewrite H in H1. apply Mem.nonempty_pop_stage in H1 as H2.
+  rewrite H in H1. apply nonempty_pop_stage in H1 as H2.
   destruct H2. exists x. split. auto.
-  unfold Mem.pop_stage in *. unfold stackeq in H.
+  unfold pop_stage in *. unfold stackeq in H.
   destruct (stack (support m2)). discriminate. inv e.
   destruct (stack (support m1)). discriminate. inv H0. inv H.
   reflexivity.
@@ -4279,12 +4279,12 @@ Qed.
 
 Lemma pop_stage_safe_stackeq: forall m1 m2 m1' m2',
     stackeq m1 m2 ->
-    Mem.pop_stage m1 = Some m1' ->
-    Mem.pop_stage m2 = Some m2' ->
+    pop_stage m1 = Some m1' ->
+    pop_stage m2 = Some m2' ->
     stackeq m1' m2'.
 Proof.
   intros.
-  unfold Mem.pop_stage in *. unfold stackeq in H.
+  unfold pop_stage in *. unfold stackeq in H.
   destruct (stack (support m2)). discriminate. inv H1.
   destruct (stack (support m1)). discriminate. inv H0. inv H.
   reflexivity.
@@ -4292,13 +4292,13 @@ Qed.
 
 Lemma record_frame_stackeq : forall m1 m2 m1' fr,
     stackeq m1 m2 ->
-    Mem.record_frame m1 fr= Some m1' ->
+    record_frame m1 fr= Some m1' ->
     exists m2',
-      Mem.record_frame m2 fr = Some m2' /\
+      record_frame m2 fr = Some m2' /\
       stackeq m1' m2'.
 Proof.
   intros. apply record_frame_nonempty in H0 as H1.
-  rewrite H in H1. eapply Mem.request_record_frame in H1 as H2.
+  rewrite H in H1. eapply request_record_frame in H1 as H2.
   destruct H2 as [m2' RECORD]. exists m2'. split. eauto.
   apply stack_record_frame in H0.
   apply stack_record_frame in RECORD.
@@ -4308,6 +4308,20 @@ Proof.
   rewrite A,A' in H. inv H. congruence.
   apply record_frame_size1 in H0. rewrite <- H.
   lia.
+Qed.
+
+Lemma record_frame_safe_stackeq: forall m1 m2 m1' m2' fr,
+    stackeq m1 m2 ->
+    record_frame m1 fr = Some m1' ->
+    record_frame m2 fr = Some m2' ->
+    stackeq m1' m2'.
+Proof.
+  intros.
+  apply stack_record_frame in H0. destruct H0 as (hd & tl & Hm1 & Hm1').
+  apply stack_record_frame in H1. destruct H1 as (hd' & tl' & Hm2 & Hm2').
+  unfold stackeq in *.
+  rewrite Hm1,Hm2 in H. inv H.
+  congruence.
 Qed.
 
 Definition extends(m1 m2:mem) := extends' m1 m2 /\ stackeq m1 m2.

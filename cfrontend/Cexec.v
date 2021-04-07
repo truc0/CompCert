@@ -87,6 +87,9 @@ Proof.
 Defined.
 
 (** * Events, volatile memory accesses, and external functions. *)
+Section ORACLE.
+
+Variable fn_stack_requirements: ident -> Z.
 
 Section EXEC.
 
@@ -673,7 +676,7 @@ Qed.
 Inductive reduction: Type :=
   | Lred (rule: string) (l': expr) (m': mem)
   | Rred (rule: string) (r': expr) (m': mem) (t: trace)
-  | Callred (rule: string) (fd: fundef) (args: list val) (tyres: type) (m': mem)
+  | Callred (rule: string) (fd: fundef) (args: list val) (tyres: type) (m': mem)(id:ident)
   | Stuckred.
 
 Section EXPRS.
@@ -729,6 +732,12 @@ Notation " 'check' A ; B" := (if A then B else stuck)
   : reducts_monad_scope.
 
 Local Open Scope reducts_monad_scope.
+
+Definition invert_pointer vf :=
+  match vf with
+    Vptr b _ => Genv.invert_symbol ge b
+  | _ => None
+  end.
 
 Fixpoint step_expr (k: kind) (a: expr) (m: mem): reducts expr :=
   match k, a with
@@ -902,10 +911,11 @@ Fixpoint step_expr (k: kind) (a: expr) (m: mem): reducts expr :=
       | Some(vf, tyf), Some vtl =>
           match classify_fun tyf with
           | fun_case_f tyargs tyres cconv =>
+              do id <- invert_pointer vf;
               do fd <- Genv.find_funct ge vf;
               do vargs <- sem_cast_arguments vtl tyargs m;
               check type_eq (type_of_fundef fd) (Tfunction tyargs tyres cconv);
-              topred (Callred "red_call" fd vargs ty m)
+              topred (Callred "red_call" fd vargs ty m id)
           | _ => stuck
           end
       | _, _ =>
@@ -950,8 +960,8 @@ Inductive imm_safe_t: kind -> expr -> mem -> Prop :=
       rred ge r m t r' m' -> possible_trace w t w' ->
       context RV to C ->
       imm_safe_t to (C r) m
-  | imm_safe_t_callred: forall to C r m fd args ty,
-      callred ge r m fd args ty ->
+  | imm_safe_t_callred: forall to C r m fd args ty id,
+      callred ge r m fd args ty id ->
       context RV to C ->
       imm_safe_t to (C r) m.
 
@@ -1019,8 +1029,9 @@ Definition invert_expr_prop (a: expr) (m: mem) : Prop :=
       exists v, sem_cast v1 ty1 tycast m = Some v
   | Ecall (Eval vf tyf) rargs ty =>
       exprlist_all_values rargs ->
-      exists tyargs tyres cconv fd vl,
-         classify_fun tyf = fun_case_f tyargs tyres cconv
+      exists tyargs tyres cconv fd vl id,
+         is_function_ident ge vf id
+      /\ classify_fun tyf = fun_case_f tyargs tyres cconv
       /\ Genv.find_funct ge vf = Some fd
       /\ cast_arguments m rargs tyargs vl
       /\ type_of_fundef fd = Tfunction tyargs tyres cconv
@@ -1063,12 +1074,12 @@ Proof.
 Qed.
 
 Lemma callred_invert:
-  forall r fd args ty m,
-  callred ge r m fd args ty ->
+  forall r fd args ty m id,
+  callred ge r m fd args ty id->
   invert_expr_prop r m.
 Proof.
   intros. inv H. simpl.
-  intros. exists tyargs, tyres, cconv, fd, args; auto.
+  intros. exists tyargs, tyres, cconv, fd, args, id; auto.
 Qed.
 
 Scheme context_ind2 := Minimality for context Sort Prop
@@ -1160,7 +1171,7 @@ Definition reduction_ok (k: kind) (a: expr) (m: mem) (rd: reduction) : Prop :=
   match k, rd with
   | LV, Lred _ l' m' => lred ge e a m l' m'
   | RV, Rred _ r' m' t => rred ge a m t r' m' /\ exists w', possible_trace w t w'
-  | RV, Callred _ fd args tyres m' => callred ge a m fd args tyres /\ m' = m
+  | RV, Callred _ fd args tyres m' id => callred ge a m fd args tyres id /\ m' = m
   | LV, Stuckred => ~imm_safe_t k a m
   | RV, Stuckred => ~imm_safe_t k a m
   | _, _ => False
@@ -1513,15 +1524,22 @@ Proof with (try (apply not_invert_ok; simpl; intro; myinv; intuition congruence;
   rewrite (is_val_inv _ _ _ Heqo). exploit is_val_list_all_values; eauto. intros ALLVAL.
   (* top *)
   destruct (classify_fun tyf) as [tyargs tyres cconv|] eqn:?...
+  destruct (invert_pointer vf) as [ifi|] eqn:?...
   destruct (Genv.find_funct ge vf) as [fd|] eqn:?...
   destruct (sem_cast_arguments vtl tyargs m) as [vargs|] eqn:?...
   destruct (type_eq (type_of_fundef fd) (Tfunction tyargs tyres cconv))...
   apply topred_ok; auto. red. split; auto. eapply red_call; eauto.
+  destruct vf; simpl in *; try congruence.
+  eexists. eexists. split. eauto. eapply Genv.invert_find_symbol. eauto.
   eapply sem_cast_arguments_sound; eauto.
   apply not_invert_ok; simpl; intros; myinv. specialize (H ALLVAL). myinv. congruence.
   apply not_invert_ok; simpl; intros; myinv. specialize (H ALLVAL). myinv.
   exploit sem_cast_arguments_complete; eauto. intros [vtl' [P Q]]. congruence.
   apply not_invert_ok; simpl; intros; myinv. specialize (H ALLVAL). myinv. congruence.
+  apply not_invert_ok; simpl; intros; myinv. specialize (H ALLVAL). myinv.
+  destruct vf eqn: Hvf; simpl in *; try congruence.
+  destruct H as (bb&oo&A&B). inv A.
+  apply Genv.find_invert_symbol in B. congruence.
   apply not_invert_ok; simpl; intros; myinv. specialize (H ALLVAL). myinv. congruence.
   (* depth *)
   eapply incontext2_list_ok; eauto.
@@ -1642,13 +1660,15 @@ Proof.
 Qed.
 
 Lemma callred_topred:
-  forall a fd args ty m,
-  callred ge a m fd args ty ->
-  exists rule, step_expr RV a m = topred (Callred rule fd args ty m).
+  forall a fd args ty m id,
+  callred ge a m fd args ty id->
+  exists rule, step_expr RV a m = topred (Callred rule fd args ty m id).
 Proof.
   induction 1; simpl.
-  rewrite H2. exploit sem_cast_arguments_complete; eauto. intros [vtl [A B]].
-  rewrite A; rewrite H; rewrite B; rewrite H1; rewrite dec_eq_true. econstructor; eauto.
+  rewrite H3. exploit sem_cast_arguments_complete; eauto. intros [vtl [A B]].
+  assert (C:invert_pointer vf = Some id).
+   destruct H as (bb&oo&AA&BB). rewrite AA. simpl. eapply Genv.find_invert_symbol. eauto.
+  rewrite A; rewrite C; rewrite H0; rewrite B; rewrite H2; rewrite dec_eq_true. econstructor; eauto.
 Qed.
 
 Definition reducts_incl {A B: Type} (C: A -> B) (res1: reducts A) (res2: reducts B) : Prop :=
@@ -1875,13 +1895,13 @@ Qed.
   whose trace is not accepted by the external world. *)
 
 Definition can_crash_world (w: world) (S: state) : Prop :=
-  exists t, exists S', Csem.step ge S t S' /\ forall w', ~possible_trace w t w'.
+  exists t, exists S', Csem.step fn_stack_requirements  ge S t S' /\ forall w', ~possible_trace w t w'.
 
 Theorem not_imm_safe_t:
   forall K C a m f k,
   context K RV C ->
   ~imm_safe_t K a m ->
-  Csem.step ge (ExprState f (C a) k e m) E0 Stuckstate \/ can_crash_world w (ExprState f (C a) k e m).
+  Csem.step fn_stack_requirements ge (ExprState f (C a) k e m) E0 Stuckstate \/ can_crash_world w (ExprState f (C a) k e m).
 Proof.
   intros. destruct (classic (imm_safe ge e K a m)).
   exploit imm_safe_imm_safe_t; eauto.
@@ -1962,7 +1982,7 @@ Definition expr_final_state (f: function) (k: cont) (e: env) (C_rd: (expr -> exp
   match snd C_rd with
   | Lred rule a m => TR rule E0 (ExprState f (fst C_rd a) k e m)
   | Rred rule a m t => TR rule t (ExprState f (fst C_rd a) k e m)
-  | Callred rule fd vargs ty m => TR rule E0 (Callstate fd vargs (Kcall f e (fst C_rd) ty k) m)
+  | Callred rule fd vargs ty m id => TR rule E0 (Callstate fd vargs (Kcall f e (fst C_rd) ty k) m (fn_stack_requirements id))
   | Stuckred => TR "step_stuck" E0 Stuckstate
   end.
 
@@ -2000,7 +2020,11 @@ Definition do_step (w: world) (s: state) : list transition :=
         | Kreturn k =>
             do v' <- sem_cast v ty f.(fn_return) m;
             do m' <- Mem.free_list m (blocks_of_env ge e);
-            ret "step_return_2" (Returnstate v' (call_cont k) m')
+            match Mem.pop_stage m' with
+              | Some m'' =>
+                ret "step_return_2" (Returnstate v' (call_cont k) m'')
+              |None => nil
+            end
         | Kswitch1 sl k =>
             do n <- sem_switch_arg v ty;
             ret "step_expr_switch" (State f (seq_of_labeled_statement (select_switch n sl)) (Kswitch2 k) e m)
@@ -2052,13 +2076,18 @@ Definition do_step (w: world) (s: state) : list transition :=
 
   | State f (Sreturn None) k e m =>
       do m' <- Mem.free_list m (blocks_of_env ge e);
-      ret "step_return_0" (Returnstate Vundef (call_cont k) m')
+      match (Mem.pop_stage m') with
+        |Some m'' =>  ret "step_return_0" (Returnstate Vundef (call_cont k) m'')
+        |None => nil
+      end
   | State f (Sreturn (Some x)) k e m =>
       ret "step_return_1" (ExprState f x (Kreturn k) e m)
   | State f Sskip ((Kstop | Kcall _ _ _ _ _) as k) e m =>
       do m' <- Mem.free_list m (blocks_of_env ge e);
-      ret "step_skip_call" (Returnstate Vundef k m')
-
+      match (Mem.pop_stage m') with
+        |Some m'' =>      ret "step_skip_call" (Returnstate Vundef k m'')
+        |None => nil
+      end
   | State f (Sswitch x sl) k e m =>
       ret "step_switch" (ExprState f x (Kswitch1 sl k) e m)
   | State f (Sskip|Sbreak) (Kswitch2 k) e m =>
@@ -2074,12 +2103,16 @@ Definition do_step (w: world) (s: state) : list transition :=
       | None => nil
       end
 
-  | Callstate (Internal f) vargs k m =>
+  | Callstate (Internal f) vargs k m sz=>
       check (list_norepet_dec ident_eq (var_names (fn_params f) ++ var_names (fn_vars f)));
       let (e,m1) := do_alloc_variables empty_env m (f.(fn_params) ++ f.(fn_vars)) in
-      do m2 <- sem_bind_parameters w e m1 f.(fn_params) vargs;
-      ret "step_internal_function" (State f f.(fn_body) k e m2)
-  | Callstate (External ef _ _ _) vargs k m =>
+      match Mem.record_frame (Mem.push_stage m1) (Mem.mk_frame sz) with
+        |Some m2 =>
+         do m3 <- sem_bind_parameters w e m2 f.(fn_params) vargs;
+         ret "step_internal_function" (State f f.(fn_body) k e m3)
+        |None => nil
+      end
+  | Callstate (External ef _ _ _) vargs k m sz =>
       match do_external ef w vargs m with
       | None => nil
       | Some(w',t,v,m') => TR "step_external_function" t (Returnstate v k m') :: nil
@@ -2112,7 +2145,7 @@ Local Hint Extern 3 => exact I : core.
 Theorem do_step_sound:
   forall w S rule t S',
   In (TR rule t S') (do_step w S) ->
-  Csem.step ge S t S' \/ (t = E0 /\ S' = Stuckstate /\ can_crash_world w S).
+  Csem.step fn_stack_requirements ge S t S' \/ (t = E0 /\ S' = Stuckstate /\ can_crash_world  w S).
 Proof with try (left; right; econstructor; eauto; fail).
   intros until S'. destruct S; simpl.
 (* State *)
@@ -2150,9 +2183,10 @@ Proof with try (left; right; econstructor; eauto; fail).
   destruct fd; myinv.
   (* internal *)
   destruct (do_alloc_variables empty_env m (fn_params f ++ fn_vars f)) as [e m1] eqn:?.
-  myinv. left; right; apply step_internal_function with m1. auto.
+  myinv. left; right. eapply step_internal_function. eauto. eauto.
   change e with (fst (e,m1)). change m1 with (snd (e,m1)) at 2. rewrite <- Heqp.
-  apply do_alloc_variables_sound. eapply sem_bind_parameters_sound; eauto.
+  apply do_alloc_variables_sound. rewrite Heqp. simpl. apply Heqo.
+  eapply sem_bind_parameters_sound; eauto.
   (* external *)
   destruct p as [[[w' tr] v] m']. myinv. left; right; constructor.
   eapply do_ef_external_sound; eauto.
@@ -2163,7 +2197,7 @@ Proof with try (left; right; econstructor; eauto; fail).
 Qed.
 
 Remark estep_not_val:
-  forall f a k e m t S, estep ge (ExprState f a k e m) t S -> is_val a = None.
+  forall f a k e m t S, estep fn_stack_requirements ge (ExprState f a k e m) t S -> is_val a = None.
 Proof.
   intros.
   assert (forall b from to C, context from to C -> (from = to /\ C = fun x => x) \/ is_val (C b) = None).
@@ -2177,7 +2211,7 @@ Qed.
 
 Theorem do_step_complete:
   forall w S t S' w',
-  possible_trace w t w' -> Csem.step ge S t S' -> exists rule, In (TR rule t S') (do_step w S).
+  possible_trace w t w' -> Csem.step fn_stack_requirements ge S t S' -> exists rule, In (TR rule t S') (do_step w S).
 Proof with (unfold ret; eauto with coqlib).
   intros until w'; intros PT H.
   destruct H.
@@ -2206,7 +2240,8 @@ Proof with (unfold ret; eauto with coqlib).
   unfold do_step; rewrite NOTVAL.
   exploit callred_topred; eauto. instantiate (1 := w). instantiate (1 := e).
   intros (rule & STEP). exists rule.
-  change (TR rule E0 (Callstate fd vargs (Kcall f e C ty k) m)) with (expr_final_state f k e (C, Callred rule fd vargs ty m)).
+  change (TR rule E0 (Callstate fd vargs (Kcall f e C ty k) m (fn_stack_requirements
+id)) )with (expr_final_state f k e (C, Callred rule fd vargs ty m id)).
   apply in_map.
   generalize (step_expr_context e w _ _ _ H1 a m). unfold reducts_incl.
   intro. replace C with (fun x => C x). apply H2.
@@ -2233,16 +2268,18 @@ Proof with (unfold ret; eauto with coqlib).
   rewrite H0...
   rewrite H0...
   destruct H0; subst x...
-  rewrite H0...
   rewrite H0; rewrite H1...
+  rewrite H0; rewrite H1; rewrite H2...
   rewrite H1. red in H0. destruct k; try contradiction...
+  rewrite H2... rewrite H2...
   rewrite H0...
   destruct H0; subst x...
   rewrite H0...
 
   (* Call step *)
   rewrite pred_dec_true; auto. rewrite (do_alloc_variables_complete _ _ _ _ _ H1).
-  rewrite (sem_bind_parameters_complete _ _ _ _ _ _ H2)...
+  rewrite H2.
+  rewrite (sem_bind_parameters_complete _ _ _ _ _ _ H3)...
   exploit do_ef_external_complete; eauto. intro EQ; rewrite EQ. auto with coqlib.
 Qed.
 
@@ -2256,10 +2293,12 @@ Definition do_initial_state (p: program): option (genv * state) :=
   do b <- Genv.find_symbol ge p.(prog_main);
   do f <- Genv.find_funct_ptr ge b;
   check (type_eq (type_of_fundef f) (Tfunction Tnil type_int32s cc_default));
-  Some (ge, Callstate f nil Kstop m0).
+  Some (ge, Callstate f nil Kstop m0 (fn_stack_requirements p.(prog_main))).
 
 Definition at_final_state (S: state): option int :=
   match S with
   | Returnstate (Vint r) Kstop m => Some r
   | _ => None
   end.
+
+End ORACLE.

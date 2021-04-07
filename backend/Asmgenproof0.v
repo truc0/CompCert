@@ -418,6 +418,7 @@ Proof.
   exists (@nil val); split; constructor.
   exploit (@eval_builtin_arg_lessdef _ ge ms (fun r => rs (preg_of r))); eauto.
   intros; eapply preg_val; eauto.
+  apply H0.
   intros (v1' & A & B).
   destruct IHlist_forall2 as [vl' [C D]].
   exists (v1' :: vl'); split; constructor; auto. apply builtin_arg_match; auto.

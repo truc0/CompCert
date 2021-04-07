@@ -2056,11 +2056,11 @@ Inductive wt_state: state -> Prop :=
         (WTB: wt_stmt ge te f.(fn_return) f.(fn_body))
         (WTE: wt_rvalue ge te r),
       wt_state (ExprState f r k e m)
-  | wt_call_state: forall b fd vargs k m
+  | wt_call_state: forall b fd vargs k m sz
         (WTK: wt_call_cont k (fundef_return fd))
         (WTFD: wt_fundef ge gtenv fd)
         (FIND: Genv.find_funct ge b = Some fd),
-      wt_state (Callstate fd vargs k m)
+      wt_state (Callstate fd vargs k m sz)
   | wt_return_state: forall v k m ty
         (WTK: wt_call_cont k ty)
         (VAL: wt_val v ty),
@@ -2115,8 +2115,9 @@ Qed.
 
 End WT_FIND_LABEL.
 
+Variable fn_stack_requirements : ident -> Z.
 Lemma preservation_estep:
-  forall S t S', estep ge S t S' -> wt_state S -> wt_state S'.
+  forall S t S', estep fn_stack_requirements ge S t S' -> wt_state S -> wt_state S'.
 Proof.
   induction 1; intros WT; inv WT.
 - (* lred *)
@@ -2131,10 +2132,10 @@ Proof.
   eapply wt_rred; eauto. change (wt_expr_kind ge te RV a). eapply wt_subexpr; eauto.
 - (* call *)
   assert (A: wt_expr_kind ge te RV a) by (eapply wt_subexpr; eauto).
-  simpl in A. inv H. inv A. simpl in H9; rewrite H4 in H9; inv H9.
+  simpl in A. inv H. inv A. simpl in H10; rewrite H5 in H10; inv H10.
   assert (fundef_return fd = ty).
   { destruct fd; simpl in *.
-    unfold type_of_function in H3. congruence.
+    unfold type_of_function in H4. congruence.
     congruence. }
   econstructor.
   rewrite H. econstructor; eauto.
@@ -2189,7 +2190,7 @@ Proof.
 - inv WTS; eauto with ty.
 - exploit wt_find_label. eexact WTB. eauto. eapply call_cont_wt'; eauto.
   intros [A B]. eauto with ty.
-- inv WTFD. inv H3. econstructor; eauto. apply wt_call_cont_stmt_cont; auto.
+- inv WTFD. inv H4. econstructor; eauto. apply wt_call_cont_stmt_cont; auto.
 - inv WTFD. econstructor; eauto.
   apply has_rettype_wt_val. simpl; rewrite <- H1.
   eapply external_call_well_typed_gen; eauto.
@@ -2197,13 +2198,13 @@ Proof.
 Qed.
 
 Theorem preservation:
-  forall S t S', step ge S t S' -> wt_state S -> wt_state S'.
+  forall S t S', step fn_stack_requirements ge S t S' -> wt_state S -> wt_state S'.
 Proof.
   intros. destruct H. eapply preservation_estep; eauto. eapply preservation_sstep; eauto.
 Qed.
 
 Theorem wt_initial_state:
-  forall S, initial_state prog S -> wt_state S.
+  forall S, initial_state fn_stack_requirements prog S -> wt_state S.
 Proof.
   intros. inv H. econstructor. constructor.
   apply Genv.find_funct_ptr_prop with (p := prog) (b := b); auto.

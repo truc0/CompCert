@@ -1037,7 +1037,7 @@ Proof.
 Qed.
 *)
 
-Lemma record_frame_mach_parallel_rule:
+Lemma record_frame_parallel_rule:
   forall m1 m1' m2  j P fr ,
     m2 |= minjection j  m1 ** P ->
     Mem.record_frame m1 fr = Some m1' ->
