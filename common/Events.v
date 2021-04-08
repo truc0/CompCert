@@ -674,6 +674,14 @@ Record extcall_properties (sem: extcall_sem) (sg: signature) : Prop :=
       sem ge vargs m1 t vres m2 ->
       Mem.stackeq m1 m2;
 
+  ec_mem_iff :
+    forall ge vargs m1 t vres m2 m1',
+      sem ge vargs m1 t vres m2 ->
+      Mem.iff m1 m1' ->
+      exists m2',
+        sem ge vargs m1' t vres m2'
+       /\ Mem.iff m2 m2';
+
 (** External calls must commute with memory injections,
   in the following sense. *)
   ec_mem_inject:
@@ -739,6 +747,17 @@ Proof.
   intros. inv H.
   econstructor; split; eauto. econstructor; eauto.
   exploit Mem.load_extends'; eauto. intros [v' [A B]]. exists v'; split; auto. constructor; auto.
+Qed.
+
+Lemma volatile_load_iff:
+  forall ge chunk m b ofs t v m',
+  volatile_load ge chunk m b ofs t v ->
+  Mem.iff m m' ->
+  volatile_load ge chunk m' b ofs t v.
+Proof.
+  intros. inv H.
+  econstructor; eauto. econstructor; eauto.
+  erewrite <- Mem.load_iff; eauto.
 Qed.
 
 Lemma volatile_load_extends:
@@ -810,6 +829,9 @@ Proof.
   exists v'; exists m1'; intuition. constructor; auto.
 (* mem stackeq *)
 - inv H. reflexivity.
+(* mem iff*)
+- inv H. exists m1'. split. simpl. constructor.
+  eapply volatile_load_iff; eauto. eauto.
 (* mem injects *)
 - inv H0. inv H2. inv H7. inversion H5; subst.
   exploit volatile_load_inject; eauto. intros [v' [A B]].
@@ -905,6 +927,20 @@ Proof.
   tauto.
 Qed.
 
+Lemma volatile_store_iff:
+  forall ge chunk m1 b ofs v t m2 m1',
+    volatile_store ge chunk m1 b ofs v t m2 ->
+    Mem.iff m1 m1' ->
+    exists m2',
+      volatile_store ge chunk m1' b ofs v t m2'
+      /\ Mem.iff m2 m2'.
+Proof.
+  intros. inv H.
+- econstructor; split. econstructor; eauto. eauto.
+- exploit Mem.store_iff; eauto. intros (m2' & STORE & IFF).
+  econstructor; split. econstructor; eauto. eauto.
+Qed.
+
 Lemma volatile_store_inject:
   forall ge1 ge2 f chunk m1 b ofs v t m2 m1' b' ofs' v',
   symbols_inject f ge1 ge2 ->
@@ -976,6 +1012,10 @@ Proof.
 (* mem stackeq*)
 - inv H. inv H0. reflexivity. unfold Mem.stackeq.
   rewrite (Mem.support_store _ _ _ _ _ _ H1). auto.
+(* mem iff*)
+- inv H. exploit volatile_store_iff; eauto.
+  intros [m2' [A B]]. exists m2'. split.
+  econstructor; eauto. eauto.
 (* mem inject *)
 - inv H0. inv H2. inv H7. inv H8. inversion H5; subst.
   exploit volatile_store_inject; eauto. intros [m2' [A [B [C D]]]].
@@ -1048,6 +1088,11 @@ Proof.
 - inv H. transitivity (Mem.stack (Mem.support m')).
   rewrite (Mem.support_alloc _  _ _ _ _ H0). auto.
   rewrite (Mem.support_store _ _ _ _ _ _ H1). auto.
+(* mem iff*)
+- inv H.
+  exploit Mem.alloc_parallel_iff; eauto. intros (m'' & H1' & IFF1).
+  exploit Mem.store_iff; eauto. intros (m2' & H2' & IFF2).
+  exists m2'. split. econstructor; eauto. eauto.
 (* mem injects *)
 - inv H0. inv H2. inv H8.
   assert (SZ: v' = Vptrofs sz).
@@ -1138,6 +1183,12 @@ Proof.
 (* mem stackeq *)
 - inv H. unfold Mem.stackeq. rewrite (Mem.support_free _ _ _ _ _ H2).
   auto. reflexivity.
+(* mem iff*)
+- inv H.
+  + exploit Mem.free_parallel_iff; eauto. intros (m2' & H3' & IFF).
+    exists m2'. split. econstructor; eauto. erewrite <- Mem.load_iff; eauto.
+    eauto.
+  + exists m1'. split. constructor. auto.
 (* mem inject *)
 - inv H0.
 + inv H2. inv H7. inv H9.
@@ -1242,6 +1293,11 @@ Proof.
   tauto.
 - (* stackeq *)
   intros. inv H. unfold Mem.stackeq. rewrite (Mem.support_storebytes _ _ _ _ _ H7). auto.
+- (* memiff*)
+  intros. inv H.
+  exploit Mem.storebytes_iff; eauto. intros (m2' & STORE' & IFF).
+  exists m2'. split. econstructor; eauto.
+  erewrite <- Mem.loadbytes_iff; eauto. eauto.
 - (* injections *)
   intros. inv H0. inv H2. inv H14. inv H15. inv H11. inv H12.
   destruct (zeq sz 0).
@@ -1343,6 +1399,8 @@ Proof.
   eapply eventval_list_match_lessdef; eauto.
 (* mem stackeq *)
 - inv H. reflexivity.
+(* mem iff*)
+- inv H. exists m1'. split. constructor. auto. auto.
 (* mem injects *)
 - inv H0.
   exists f; exists Vundef; exists m1'; intuition.
@@ -1390,6 +1448,8 @@ Proof.
   eapply eventval_match_lessdef; eauto.
 (* mem stackeq *)
 - inv H. reflexivity.
+(* mem iff*)
+- inv H. exists m1'. split. constructor. auto. auto.
 (* mem inject *)
 - inv H0. inv H2. inv H7.
   exists f; exists v'; exists m1'; intuition.
@@ -1434,6 +1494,8 @@ Proof.
   econstructor; eauto.
 (* mem stackeq *)
 - inv H. reflexivity.
+(* mem iff*)
+- inv H. exists m1'. split. constructor. auto.
 (* mem injects *)
 - inv H0.
   exists f; exists Vundef; exists m1'; intuition.
@@ -1487,6 +1549,8 @@ Proof.
   apply val_inject_lessdef; auto.
 (* mem stackeq *)
 - inv H. reflexivity.
+(* mem iff*)
+- inv H. exists m1'. split. constructor. auto. auto.
 (* mem injects *)
 - inv H0. fold bsem in H3.
   specialize (bs_inject _ bsem _ _ _ H2).
@@ -1596,6 +1660,7 @@ Definition external_call_max_perm ef := ec_max_perm (external_call_spec ef).
 Definition external_call_readonly ef := ec_readonly (external_call_spec ef).
 Definition external_call_mem_extends' ef := ec_mem_extends' (external_call_spec ef).
 Definition external_call_mem_stackeq ef := ec_mem_stackeq (external_call_spec ef).
+Definition external_call_mem_iff ef := ec_mem_iff (external_call_spec ef).
 Definition external_call_mem_inject_gen ef := ec_mem_inject (external_call_spec ef).
 Definition external_call_trace_length ef := ec_trace_length (external_call_spec ef).
 Definition external_call_receptive ef := ec_receptive (external_call_spec ef).

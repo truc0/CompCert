@@ -1328,13 +1328,14 @@ Proof.
   assert ((fn_code tf)!ncont = Some(Ireturn rret)
           /\ match_stacks k cs).
     inv TK; simpl in H; try contradiction; auto.
-  destruct H1.
+  destruct H2.
   assert (fn_stacksize tf = fn_stackspace f).
-    inv TF. auto.
+  inv TF. auto.
   edestruct Mem.free_parallel_extends as [tm' []]; eauto.
   econstructor; split.
   left; apply plus_one. eapply exec_Ireturn. eauto.
-  rewrite H3. eauto. eauto.
+  rewrite H4. eauto.
+  inversion H6. congruence.
   constructor; auto.
 
   (* assign *)
@@ -1416,10 +1417,10 @@ Proof.
   exploit functions_translated; eauto. intros [tf' [P Q]].
   exploit match_stacks_call_cont; eauto. intros [U V].
   assert (fn_stacksize tf = fn_stackspace f). inv TF; auto.
-  edestruct Mem.free_parallel_extends as [tm''' []]; eauto.
+  edestruct Mem.free_parallel_extends as [tm''' [ A' B']]; eauto.
   econstructor; split.
   left; eapply plus_right. eapply star_trans. eexact A. eexact E. reflexivity.
-  eapply exec_Itailcall; eauto.
+  eapply exec_Itailcall. 2: eauto.
   {
     destruct H3 as (oo & EQ3 & EQ2). red; rewrite EQ3.
     rewrite J by (simpl; auto).
@@ -1429,6 +1430,7 @@ Proof.
   simpl. rewrite J. destruct C. eauto. discriminate P. simpl; auto.
   apply sig_transl_function; auto.
   rewrite H; eauto.
+  inversion B'. rewrite <- H6. auto.
   traceEq.
   constructor; auto.
   (* direct *)
@@ -1440,18 +1442,19 @@ Proof.
   edestruct Mem.free_parallel_extends as [tm''' []]; eauto.
   econstructor; split.
   left; eapply plus_right. eexact E.
-  eapply exec_Itailcall; eauto.
+  eapply exec_Itailcall. 2: eauto.
   {
     destruct H3 as (o & EQ3 & EQ2). inv EQ3. simpl. reflexivity.
   }
-  simpl. rewrite symbols_preserved. rewrite H6.
+  simpl. rewrite symbols_preserved. rewrite H7.
   rewrite Genv.find_funct_find_funct_ptr in P. eauto.
   apply sig_transl_function; auto.
   rewrite H; eauto.
+  inversion H6. rewrite <- H9. auto.
   traceEq.
   replace id0 with id.
   constructor; auto.
-  apply Genv.find_invert_symbol in H6.
+  apply Genv.find_invert_symbol in H7.
   destruct H3 as (o & EQ3 & EQ2). inv EQ3.
   apply Genv.find_invert_symbol in EQ2. congruence.
   (* builtin *)
@@ -1536,8 +1539,10 @@ Proof.
   inversion TF.
   edestruct Mem.free_parallel_extends as [tm' []]; eauto.
   econstructor; split.
-  left; apply plus_one. eapply exec_Ireturn; eauto.
-  rewrite H2; eauto.
+  left; apply plus_one. eapply exec_Ireturn.
+  eauto.
+  rewrite H3; eauto.
+  inversion H5. congruence.
   constructor; auto.
 
   (* return some *)
@@ -1548,8 +1553,9 @@ Proof.
   inversion TF.
   edestruct Mem.free_parallel_extends as [tm'' []]; eauto.
   econstructor; split.
-  left; eapply plus_right. eexact A. eapply exec_Ireturn; eauto.
-  rewrite H4; eauto. traceEq.
+  left; eapply plus_right. eexact A. eapply exec_Ireturn. eauto.
+  rewrite H5; eauto. inversion H7. congruence.
+  traceEq.
   simpl. constructor; auto.
 
   (* label *)

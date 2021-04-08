@@ -1299,7 +1299,8 @@ Proof.
   exploit Mem.free_parallel_extends; eauto. intros [m2' [A B]].
   left; econstructor; split.
   apply plus_one; econstructor. eapply match_is_call_cont; eauto.
-  erewrite stackspace_function_translated; eauto. eauto.
+  erewrite stackspace_function_translated; eauto.
+  inversion B. congruence.
   econstructor; eauto. eapply match_is_call_cont; eauto.
 - (* assign *)
   exploit sel_expr_correct; eauto. intros [v' [A B]].
@@ -1363,15 +1364,18 @@ Proof.
   destruct H as (bb & oo & EQ & EQ'). subst. inv B.
   eexists; eexists; split; eauto. rewrite symbols_preserved; eauto.
   econstructor; eauto. eapply sig_function_translated; eauto.
+  inversion Q. rewrite <- H7. auto.
   destruct H3 as [b [U V]]. subst vf. inv B.
   econstructor; eauto.
   destruct H as (bb & oo & EQ & EQ'). inv EQ. subst.
   eexists; eexists; split; eauto. rewrite symbols_preserved; eauto.
   econstructor; eauto. rewrite symbols_preserved; eauto. eapply sig_function_translated; eauto.
+  inversion Q. rewrite <- H6. auto.
   econstructor; eauto.
   destruct H as (bb & oo & EQ & EQ'). subst. inv B.
   eexists; eexists; split; eauto. rewrite symbols_preserved; eauto.
   econstructor; eauto. eapply sig_function_translated; eauto.
+  inversion Q. rewrite <- H7. auto.
   eapply match_callstate with (cunit := cunit'); eauto.
   eapply call_cont_commut; eauto.
 - (* Sbuiltin *)
@@ -1426,7 +1430,7 @@ Proof.
   erewrite <- stackspace_function_translated in P by eauto.
   left; econstructor; split.
   apply plus_one; econstructor. simpl; eauto.
-  eauto.
+  eauto. inversion Q. congruence.
   econstructor; eauto. eapply call_cont_commut; eauto.
 - (* Sreturn Some *)
   exploit Mem.free_parallel_extends; eauto. intros [m2' [P Q]].
@@ -1434,6 +1438,7 @@ Proof.
   exploit sel_expr_correct; eauto. intros [v' [A B]].
   left; econstructor; split.
   apply plus_one; econstructor; eauto.
+  inversion Q. congruence.
   econstructor; eauto. eapply call_cont_commut; eauto.
 - (* Slabel *)
   left; econstructor; split. apply plus_one; constructor. econstructor; eauto.

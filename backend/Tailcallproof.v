@@ -637,6 +637,7 @@ Proof.
   left. exists (Callstate s' (transf_fundef fd) (rs'##args) m'' (fn_stack_requirements id)); split.
   eapply exec_Itailcall; eauto. eapply find_function_id_preserved; eauto.
   apply sig_preserved.
+  inv STK. rewrite (Mem.support_free _ _ _ _ _ FREE). congruence.
   econstructor. eapply match_stackframes_tail; eauto. apply regs_lessdef_regs; auto.
   eapply Mem.free_right_extends'; eauto. eapply Mem.push_stage_left_extends'; eauto.
   rewrite stacksize_preserved. rewrite H8. intros. extlia.
@@ -659,6 +660,7 @@ Proof.
   eapply exec_Itailcall; eauto. eapply find_function_id_preserved; eauto.
   apply sig_preserved.
   rewrite stacksize_preserved; auto.
+  inv STK. rewrite (Mem.support_free _ _ _ _ _ FREE). congruence.
   econstructor. eauto.  apply regs_lessdef_regs; auto. auto.
   rewrite (Mem.support_free _ _ _ _ _ H3).
   rewrite (Mem.support_free _ _ _ _ _ FREE).
@@ -707,6 +709,7 @@ Proof.
   TransfInstr.
   left. exists (Returnstate s' (regmap_optget or Vundef rs') m'1); split.
   apply exec_Ireturn; auto. rewrite stacksize_preserved; auto.
+  inv STK. rewrite (Mem.support_free _ _ _ _ _ FREE). congruence.
   econstructor. eauto.
   destruct or; simpl. apply RLD. constructor.
   auto.

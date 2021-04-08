@@ -250,6 +250,7 @@ Inductive step: state -> trace -> state -> Prop :=
       find_function ros rs = Some fd ->
       funsig fd = sig ->
       Mem.free m stk 0 f.(fn_stacksize) = Some m' ->
+      Mem.stack (Mem.support m') <> nil ->
       step (State s f (Vptr stk Ptrofs.zero) pc rs m)
         E0 (Callstate s fd rs##args m' (fn_stack_requirements id))
   | exec_Ibuiltin:
@@ -278,6 +279,7 @@ Inductive step: state -> trace -> state -> Prop :=
       forall s f stk pc rs m or m',
       (fn_code f)!pc = Some(Ireturn or) ->
       Mem.free m stk 0 f.(fn_stacksize) = Some m' ->
+      Mem.stack (Mem.support m') <> nil ->
       step (State s f (Vptr stk Ptrofs.zero) pc rs m)
         E0 (Returnstate s (regmap_optget or Vundef rs) m')
   | exec_function_internal:

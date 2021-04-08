@@ -1497,7 +1497,7 @@ Proof.
   exploit match_stacks_inside_globalenvs; eauto. intros [support G].
   exploit find_function_agree; eauto. intros (cu & fd' & A & B & C).
   assert (PRIV': range_private F m' m'0 (fresh_block sps') (dstk ctx) f'.(fn_stacksize)).
-  { eapply range_private_free_left; eauto. inv FB. rewrite <- H5. auto. }
+  { eapply range_private_free_left; eauto. inv FB. rewrite <- H6. auto. }
   exploit tr_funbody_inv; eauto. intros TR; inv TR.
 + (* within the original function *)
   inv MS0; try congruence.
@@ -1512,6 +1512,7 @@ Proof.
   eapply plus_one. eapply exec_Itailcall; eauto.
   eapply ros_is_function_transf; eauto.
   eapply sig_function_translated; eauto.
+  inv SIZES. rewrite (Mem.support_free _ _ _ _ _ FREE). congruence.
   econstructor; eauto.
   eapply match_stacks_support with (support := sps').
   eapply match_stacks_invariant; eauto.
@@ -1548,7 +1549,7 @@ Proof.
   }
   destruct n. lia. simpl.
   destruct (Mem.stack(Mem.support m)).
-  { inv SIZES. simpl in H11. congruence. }
+  { inv SIZES. simpl in H12. congruence. }
   eapply inline_sizes_upright; eauto.
 + (* inlined *)
   assert (EQ: fd = Internal f0) by (eapply find_inlined_function; eauto).
@@ -1561,7 +1562,7 @@ Proof.
   apply agree_val_regs_gen; auto.
   eapply Mem.free_left_inject; eauto.
   red; intros; apply PRIV'.
-    assert (dstk ctx <= dstk ctx'). red in H15; rewrite H15. apply align_le. apply min_alignment_pos.
+    assert (dstk ctx <= dstk ctx'). red in H16; rewrite H16. apply align_le. apply min_alignment_pos.
     lia.
     rewrite (Mem.support_free _ _ _ _ _ H3). auto.
 - (* builtin *)
@@ -1644,7 +1645,8 @@ Proof.
     generalize (Zmax_spec (fn_stacksize f) 0). destruct (zlt 0 (fn_stacksize f)); lia.
   destruct X as [m1' FREE].
   left; econstructor; split.
-  eapply plus_one. eapply exec_Ireturn; eauto.
+  eapply plus_one. eapply exec_Ireturn; eauto. inv SIZES.
+  rewrite (Mem.support_free _ _ _ _ _ FREE). congruence.
   econstructor; eauto.
   eapply match_stacks_support with (support := sps').
   eapply match_stacks_invariant; eauto.
@@ -1658,7 +1660,7 @@ Proof.
   (* show that no valid location points into the stack block being freed *)
   intros. inversion FB; subst.
   assert (PRIV': range_private F m' m'0 (fresh_block sps') (dstk ctx) f'.(fn_stacksize)).
-    rewrite H8 in PRIV. eapply range_private_free_left; eauto.
+    rewrite H9 in PRIV. eapply range_private_free_left; eauto.
   rewrite DSTK in PRIV'. exploit (PRIV' (ofs + delta)). lia. intros [A B].
   eelim B; eauto. replace (ofs + delta - delta) with ofs by lia.
   apply Mem.perm_max with k. apply Mem.perm_implies with p; auto with mem.
@@ -1672,7 +1674,7 @@ Proof.
     intros. eapply Mem.perm_free_3; eauto.
   destruct or; simpl. apply agree_val_reg; auto. auto.
   eapply Mem.free_left_inject; eauto.
-  inv FB. rewrite H4 in PRIV. eapply range_private_free_left; eauto.
+  inv FB. rewrite H5 in PRIV. eapply range_private_free_left; eauto.
   rewrite (Mem.support_free _ _ _ _ _ H0). auto.
 - (* internal function, not inlined *)
   assert (A: exists f', tr_function cunit f f' /\ fd' = Internal f').

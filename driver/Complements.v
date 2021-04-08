@@ -32,7 +32,7 @@ Theorem transf_c_program_preservation:
   forall p tp beh,
   transf_c_program p = OK tp ->
   program_behaves (Asm.semantics tp) beh ->
-  exists beh', program_behaves (Csem.semantics p) beh' /\ behavior_improves beh' beh.
+  exists beh', program_behaves (Csem.semantics (fn_stack_requirements tp )p) beh' /\ behavior_improves beh' beh.
 Proof.
   intros. eapply backward_simulation_behavior_improves; eauto.
   apply transf_c_program_correct; auto.
@@ -45,8 +45,8 @@ Qed.
 Theorem transf_c_program_is_refinement:
   forall p tp,
   transf_c_program p = OK tp ->
-  (forall beh, program_behaves (Csem.semantics p) beh -> not_wrong beh) ->
-  (forall beh, program_behaves (Asm.semantics tp) beh -> program_behaves (Csem.semantics p) beh).
+  (forall beh, program_behaves (Csem.semantics (fn_stack_requirements tp )p) beh -> not_wrong beh) ->
+  (forall beh, program_behaves (Asm.semantics tp) beh -> program_behaves (Csem.semantics (fn_stack_requirements tp)p) beh).
 Proof.
   intros. eapply backward_simulation_same_safe_behavior; eauto.
   apply transf_c_program_correct; auto.
@@ -58,18 +58,18 @@ Qed.
 Theorem transf_cstrategy_program_preservation:
   forall p tp,
   transf_c_program p = OK tp ->
-  (forall beh, program_behaves (Cstrategy.semantics p) beh ->
+  (forall beh, program_behaves (Cstrategy.semantics (fn_stack_requirements tp)p) beh ->
      exists beh', program_behaves (Asm.semantics tp) beh' /\ behavior_improves beh beh')
 /\(forall beh, program_behaves (Asm.semantics tp) beh ->
-     exists beh', program_behaves (Cstrategy.semantics p) beh' /\ behavior_improves beh' beh)
+     exists beh', program_behaves (Cstrategy.semantics (fn_stack_requirements tp)p) beh' /\ behavior_improves beh' beh)
 /\(forall beh, not_wrong beh ->
-     program_behaves (Cstrategy.semantics p) beh -> program_behaves (Asm.semantics tp) beh)
+     program_behaves (Cstrategy.semantics (fn_stack_requirements tp)p) beh -> program_behaves (Asm.semantics tp) beh)
 /\(forall beh,
-     (forall beh', program_behaves (Cstrategy.semantics p) beh' -> not_wrong beh') ->
+     (forall beh', program_behaves (Cstrategy.semantics (fn_stack_requirements tp )p) beh' -> not_wrong beh') ->
      program_behaves (Asm.semantics tp) beh ->
-     program_behaves (Cstrategy.semantics p) beh).
+     program_behaves (Cstrategy.semantics (fn_stack_requirements tp)p) beh).
 Proof.
-  assert (WBT: forall p, well_behaved_traces (Cstrategy.semantics p)).
+  assert (WBT: forall p fsr, well_behaved_traces (Cstrategy.semantics fsr p)).
     intros. eapply ssr_well_behaved. apply Cstrategy.semantics_strongly_receptive.
   intros.
   assert (MATCH: match_prog p tp) by (apply transf_c_program_match; auto).
@@ -95,18 +95,18 @@ Theorem bigstep_cstrategy_preservation:
   forall p tp,
   transf_c_program p = OK tp ->
   (forall t r,
-     Cstrategy.bigstep_program_terminates p t r ->
+     Cstrategy.bigstep_program_terminates (fn_stack_requirements tp) p t r ->
      program_behaves (Asm.semantics tp) (Terminates t r))
 /\(forall T,
-     Cstrategy.bigstep_program_diverges p T ->
+     Cstrategy.bigstep_program_diverges (fn_stack_requirements tp) p T ->
        program_behaves (Asm.semantics tp) (Reacts T)
     \/ exists t, program_behaves (Asm.semantics tp) (Diverges t) /\ traceinf_prefix t T).
 Proof.
   intuition.
   apply transf_cstrategy_program_preservation with p; auto. red; auto.
-  apply behavior_bigstep_terminates with (Cstrategy.bigstep_semantics p); auto.
+  apply behavior_bigstep_terminates with (Cstrategy.bigstep_semantics (fn_stack_requirements tp) p); auto.
   apply Cstrategy.bigstep_semantics_sound.
-  exploit (behavior_bigstep_diverges (Cstrategy.bigstep_semantics_sound p)). eassumption.
+  exploit (behavior_bigstep_diverges (Cstrategy.bigstep_semantics_sound (fn_stack_requirements tp) p)). eassumption.
   intros [A | [t [A B]]].
   left. apply transf_cstrategy_program_preservation with p; auto. red; auto.
   right; exists t; split; auto. apply transf_cstrategy_program_preservation with p; auto. red; auto.
@@ -133,10 +133,10 @@ Definition specification := program_behavior -> Prop.
   are in the specification. *)
 
 Definition c_program_satisfies_spec (p: Csyntax.program) (spec: specification): Prop :=
-  forall beh,  program_behaves (Csem.semantics p) beh -> spec beh.
+  forall beh fsr,  program_behaves (Csem.semantics fsr p) beh -> spec beh.
 Definition asm_program_satisfies_spec (p: Asm.program) (spec: specification): Prop :=
   forall beh,  program_behaves (Asm.semantics p) beh -> spec beh.
-  
+
 (** It is not always the case that if the source program satisfies a
   specification, then the generated assembly code satisfies it as
   well.  For example, if the specification is ``the program goes wrong
@@ -181,7 +181,7 @@ Qed.
   liveness property, and it is preserved by compilation. *)
 
 Definition c_program_has_initial_trace (p: Csyntax.program) (t: trace): Prop :=
-  forall beh, program_behaves (Csem.semantics p) beh -> behavior_prefix t beh.
+  forall beh fsr, program_behaves (Csem.semantics fsr p) beh -> behavior_prefix t beh.
 Definition asm_program_has_initial_trace (p: Asm.program) (t: trace): Prop :=
   forall beh, program_behaves (Asm.semantics p) beh -> behavior_prefix t beh.
 
@@ -244,7 +244,7 @@ Let compiled_linking: link_list asm_units = Some asm_program := proj2_sig compil
 Theorem separate_transf_c_program_preservation:
   forall beh,
   program_behaves (Asm.semantics asm_program) beh ->
-  exists beh', program_behaves (Csem.semantics c_program) beh' /\ behavior_improves beh' beh.
+  exists beh', program_behaves (Csem.semantics (fn_stack_requirements asm_program)c_program) beh' /\ behavior_improves beh' beh.
 Proof.
   intros. exploit separate_transf_c_program_correct; eauto. intros (a & P & Q).
   assert (a = asm_program) by congruence. subst a. 
@@ -255,8 +255,8 @@ Qed.
   the behavior of [asm_program] is one of the possible behaviors of [c_program]. *)
 
 Theorem separate_transf_c_program_is_refinement:
-  (forall beh, program_behaves (Csem.semantics c_program) beh -> not_wrong beh) ->
-  (forall beh, program_behaves (Asm.semantics asm_program) beh -> program_behaves (Csem.semantics c_program) beh).
+  (forall beh, program_behaves (Csem.semantics (fn_stack_requirements asm_program)c_program) beh -> not_wrong beh) ->
+  (forall beh, program_behaves (Asm.semantics asm_program) beh -> program_behaves (Csem.semantics (fn_stack_requirements asm_program)c_program) beh).
 Proof.
   intros. exploit separate_transf_c_program_preservation; eauto. intros (beh' & P & Q).
   assert (not_wrong beh') by auto.

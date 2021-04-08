@@ -653,7 +653,7 @@ Proof.
 - inv WT_STMT. econstructor; eauto.
   eapply wt_find_funct; eauto.
   eapply wt_eval_exprlist; eauto.
-  rewrite H9; eapply call_cont_wt; eauto.
+  rewrite H10; eapply call_cont_wt; eauto.
 - inv WT_STMT. exploit external_call_well_typed; eauto. intros TRES.
   econstructor; eauto using wt_Sskip.
   destruct optid; auto. apply wt_env_assign; auto. rewrite <- H6; auto.

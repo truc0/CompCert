@@ -5903,7 +5903,7 @@ Proof.
 Qed.
 
 (** * Invariance properties between two memory states *)
-(*
+
 Section MEMIFF.
 
 Record iff (m1 m2: mem) : Prop := mk_iff {
@@ -5948,22 +5948,260 @@ Proof.
   intros. destruct H. unfold perm. rewrite access_iff0.
   reflexivity.
 Qed.
-Print load.
-Print valid_access.
+
+
+Lemma range_perm_iff:
+  forall m m' b lo hi k p,
+    iff m m' ->
+    range_perm m b lo hi k p = range_perm m' b lo hi k p.
+Proof.
+  unfold range_perm. intros.
+  inv H.
+  unfold perm. rewrite access_iff0.
+  auto.
+Qed.
+
 Lemma valid_access_iff:
   forall m1 m2 chunk b ofs p,
     iff m1 m2 ->
-    valid_access 
-Lemma load_iff:
-  forall m1 m2 chunk b ofs v,
-    iff m1 m2 ->
-    load chunk m1 b ofs = Some v ->
-    load chunk m2 b ofs = Some v.
+    valid_access m1 chunk b ofs p <-> valid_access m2 chunk b ofs p.
 Proof.
-  intros m1 m2 chunk b ofs v IFF LOAD.
-Search load.
-  unfold load. rewrite pred_dec_true.
-  *)
+  intros. inv H.
+  unfold valid_access.
+  unfold range_perm.
+  unfold perm.
+  rewrite access_iff0. reflexivity.
+Qed.
+
+Lemma load_iff:
+  forall m1 m2 chunk b ofs,
+    iff m1 m2 ->
+    load chunk m1 b ofs = load chunk m2 b ofs.
+Proof.
+  intros. inversion H. unfold load.
+  destruct (valid_access_dec m1 chunk b ofs Readable).
+  - rewrite pred_dec_true. rewrite contents_iff0. reflexivity.
+    rewrite <- valid_access_iff; eauto.
+  - rewrite pred_dec_false. auto.
+    rewrite <- valid_access_iff; eauto.
+Qed.
+
+Lemma loadv_iff:
+  forall m1 m2 chunk  addr,
+    iff m1 m2 ->
+    loadv chunk m1 addr = loadv chunk m2 addr.
+Proof.
+  intros. inversion H. unfold loadv.
+  destruct addr; eauto.
+  apply load_iff. eauto.
+Qed.
+
+Lemma loadbytes_iff:
+  forall m1 m2 b ofs n,
+    iff m1 m2 ->
+    loadbytes m1 b ofs n = loadbytes m2 b ofs n.
+Proof.
+  intros. inversion H.
+  unfold loadbytes.
+  repeat destr.
+  erewrite range_perm_iff in r; eauto. congruence.
+  erewrite <- range_perm_iff in r; eauto. congruence.
+Qed.
+
+Lemma store_iff:
+  forall m1 m2 m1' chunk b ofs v,
+    iff m1 m2 ->
+    store chunk m1 b ofs v = Some m1' ->
+    exists m2',
+      store chunk m2 b ofs v = Some m2'
+      /\ iff m1' m2'.
+Proof.
+  intros m1 m2 m1' chunk b ofs v IFF STORE.
+  inversion IFF.
+  apply store_valid_access_3 in STORE as VALID.
+  apply store_valid_access_3 in STORE as VALID'.
+  erewrite valid_access_iff in VALID'; eauto.
+  eapply valid_access_store in VALID' as X.
+  destruct X as [m2' STORE'].
+  exists m2'. split. eauto.
+  unfold store in *.
+  rewrite pred_dec_true in STORE; eauto.
+  rewrite pred_dec_true in STORE'; eauto.
+  inv STORE. inv STORE'.
+  constructor; auto. simpl.
+  rewrite contents_iff0. auto.
+Qed.
+
+Lemma storev_iff:
+  forall m1 m2 m1' chunk addr v,
+    iff m1 m2 ->
+    storev chunk m1 addr v = Some m1' ->
+    exists m2',
+      storev chunk m2 addr v = Some m2'
+      /\ iff m1' m2'.
+Proof.
+  intros m1 m2 m1' chunk addr v IFF.
+  unfold storev. destruct addr; try congruence; eauto.
+  apply store_iff. auto.
+Qed.
+
+Lemma storebytes_iff:
+  forall m1 m2 m1' b ofs bytes,
+    iff m1 m2 ->
+    storebytes m1 b ofs bytes = Some m1' ->
+    exists m2',
+      storebytes m2 b ofs bytes = Some m2'
+      /\ iff m1' m2'.
+Proof.
+  intros. inversion H.
+  apply storebytes_range_perm in H0 as PERM.
+  apply storebytes_range_perm in H0 as PERM'.
+  erewrite range_perm_iff in PERM'; eauto.
+  apply range_perm_storebytes in PERM' as X.
+  destruct X as [m2' STORE'].
+  exists m2'. split. auto. unfold storebytes in *.
+  destr_in H0. inv H0.
+  destr_in STORE'. inv STORE'.
+  constructor; auto. simpl.
+  rewrite contents_iff0. auto.
+Qed.
+
+Lemma push_stage_iff:
+  forall m, iff m (Mem.push_stage m).
+Proof.
+  intros. constructor; auto.
+Qed.
+
+Lemma pop_stage_iff:
+  forall m m', Mem.pop_stage m = Some m' -> iff m m'.
+Proof.
+  intros. unfold pop_stage in H.
+  destruct (stack (support m)). discriminate.
+  inv H.
+  constructor; auto.
+Qed.
+
+Lemma record_frame_iff:
+  forall m m' fr, Mem.record_frame m fr = Some m' -> iff m m'.
+Proof.
+  intros. unfold record_frame in H.
+  destr_in H. destr_in H. inv H.
+  constructor; auto.
+Qed.
+
+Lemma push_stage_right_iff:
+  forall m1 m2,
+    iff m1 m2 -> iff m1 (Mem.push_stage m2).
+Proof.
+  intros.
+  eapply iff_trans.  eauto.  eapply push_stage_iff.
+Qed.
+
+Lemma push_stage_left_iff:
+  forall m1 m2,
+    iff m1 m2 -> iff (Mem.push_stage m1) m2.
+Proof.
+  intros.
+  eapply iff_trans. eapply iff_comm. eapply push_stage_iff; eauto. eauto.
+Qed.
+
+Lemma pop_stage_right_iff:
+  forall m1 m2 m2',
+    iff m1 m2 -> Mem.pop_stage m2 = Some m2' -> iff m1 m2'.
+Proof.
+  intros.
+  eapply iff_trans. eauto. eapply pop_stage_iff. eauto.
+Qed.
+
+Lemma pop_stage_left_iff:
+  forall m1 m2 m1',
+    iff m1 m2 -> Mem.pop_stage m1 = Some m1' -> iff m1' m2.
+Proof.
+  intros.
+  eapply iff_trans. eapply iff_comm. eapply pop_stage_iff; eauto. eauto.
+Qed.
+
+Lemma free_parallel_iff:
+  forall m1 m2 m1' b lo hi,
+    iff m1 m2 ->
+    free m1 b lo hi = Some m1' ->
+    exists m2', free m2 b lo hi = Some m2'
+           /\ iff m1' m2'.
+Proof.
+  intros.
+  apply free_range_perm in H0 as PERM.
+  apply free_range_perm in H0 as PERM'.
+  erewrite range_perm_iff in PERM'; eauto.
+  eapply range_perm_free in PERM' as X.
+  destruct X as [m2' FREE].
+  exists m2'. split. auto.
+  unfold free in *.
+  rewrite pred_dec_true in *; eauto.
+  inv H0. inv FREE. unfold unchecked_free.
+  inv H. constructor; eauto. simpl.
+  rewrite access_iff0. eauto.
+Qed.
+
+Lemma alloc_parallel_iff:
+  forall m1 m2 m1' lo hi b,
+    iff m1 m2 ->
+    alloc m1 lo hi = (m1',b) ->
+    exists m2', alloc m2 lo hi = (m2',b)
+           /\ iff m1' m2'.
+Proof.
+  intros.  inversion H.
+  caseEq (alloc m2 lo hi).
+  intros.
+  assert (p = b).
+   apply alloc_result in H0.
+   apply alloc_result in H1.
+  unfold nextblock in *. unfold fresh_block in *.
+  rewrite supp_iff0 in H0. congruence.
+  subst.
+  exists m. split. auto.
+  unfold alloc in *. inv H0. inv H1.
+  constructor; simpl; try congruence.
+  unfold fresh_block. rewrite supp_iff0. auto.
+Qed.
+
+Lemma pop_stage_safe_iff:
+  forall m1 m2 m1' m2',
+    iff m1 m2 ->
+    pop_stage m1 = Some m1' ->
+    pop_stage m2 = Some m2' ->
+    iff m1' m2'.
+Proof.
+  intros.
+  eapply iff_trans. eapply iff_comm.
+  eapply pop_stage_iff; eauto.
+  eapply iff_trans. eauto.
+  eapply pop_stage_iff; eauto.
+Qed.
+
+Lemma push_stage_safe_iff:
+  forall m1 m2,
+    iff m1 m2 -> iff (push_stage m1) (push_stage m2).
+Proof.
+  intros. inv H. constructor; auto.
+Qed.
+
+
+Lemma record_frame_safe_iff:
+  forall m1 m2 m1' m2' fr,
+    iff m1 m2 ->
+    record_frame m1 fr = Some m1' ->
+    record_frame m2 fr = Some m2' ->
+    iff m1' m2'.
+Proof.
+  intros.
+  eapply iff_trans. eapply iff_comm.
+  eapply record_frame_iff; eauto.
+  eapply iff_trans. eauto.
+  eapply record_frame_iff; eauto.
+Qed.
+
+End MEMIFF.
+
 Section UNCHANGED_ON.
 
 Variable P: block -> Z -> Prop.

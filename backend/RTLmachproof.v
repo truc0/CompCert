@@ -80,12 +80,22 @@ Lemma lessdef_list_refl : forall s,
 Proof.
   induction s; eauto.
 Qed.
+
 Inductive match_stackadt : Mem.stackadt -> Mem.stackadt -> Prop :=
   |match_stackadt_nil : match_stackadt nil nil
   |match_stackadt_cons : forall s1 s2 (t1:Mem.stage) (t1':Mem.stage) (frame:Mem.frame),
      match_stackadt s1 s2 ->
      t1 = frame::t1' ->
      match_stackadt (t1::s1) ((frame::nil)::s2).
+
+Lemma match_stackadt_nonempty : forall s1 s2,
+    match_stackadt s1 s2 ->
+    s1 = nil <-> s2 = nil.
+Proof.
+  intros. inv H.
+  - reflexivity.
+  - split; congruence.
+Qed.
 
 Lemma match_stackadt_size : forall s1 s2,
     match_stackadt s1 s2 ->
@@ -99,52 +109,268 @@ Proof.
 Qed.
 
 
-Inductive match_stackframes: list stackframe -> list stackframe -> Prop :=
-  | match_stackframes_nil:
-      match_stackframes nil nil
-  | match_stackframes_normal: forall stk stk' res sp pc rs rs' f,
-      match_stackframes stk stk' ->
-      regs_lessdef rs rs' ->
-      match_stackframes
-        (Stackframe res f sp pc rs :: stk)
-        (Stackframe res f sp pc rs' :: stk').
+Lemma valid_pointer_memiff : forall m1 m2 b ofs,
+    Mem.iff m1 m2 -> Mem.valid_pointer m1 b ofs = true <-> Mem.valid_pointer m2 b ofs = true.
+Proof. intros. inv H.
+       transitivity (Mem.perm m1 b ofs Cur Nonempty).
+       apply Mem.valid_pointer_nonempty_perm.
+       transitivity (Mem.perm m2 b ofs Cur Nonempty).
+       unfold Mem.perm. rewrite access_iff. reflexivity.
+       symmetry. apply Mem.valid_pointer_nonempty_perm.
+Qed.
+
+Lemma valid_pointer_memiff1 : forall m1 m2 b ofs,
+    Mem.iff m1 m2 -> Mem.valid_pointer m1 b ofs = Mem.valid_pointer m2 b ofs.
+Proof. intros.
+       destruct (Mem.valid_pointer m1 b ofs) eqn:vp1.
+       generalize (valid_pointer_memiff _ _ b ofs H). intros.
+       apply H0 in vp1. rewrite vp1. auto.
+       destruct (Mem.valid_pointer m2 b ofs) eqn:vp2.
+       eapply valid_pointer_memiff in vp2; eauto. auto.
+Qed.
+Lemma eval_cond_memiff:
+    forall  (m m0 : mem) (cond : condition) (vl : list val),
+      Mem.iff m m0 ->
+      eval_condition cond vl m0 =
+      eval_condition cond vl m.
+Proof.
+    intros m m0 cond vl H6.
+    unfold eval_condition. destruct cond; auto.
+    unfold Val.cmplu_bool. repeat destr.
+    repeat (erewrite (valid_pointer_memiff1 m m0 _ _) in Heqb2; eauto). congruence.
+    repeat (erewrite (valid_pointer_memiff1 m m0 _ _) in Heqb2; eauto). congruence.
+    repeat (erewrite (valid_pointer_memiff1 m m0 _ _) in Heqb2; eauto). congruence.
+    repeat (erewrite (valid_pointer_memiff1 m m0 _ _) in Heqb2; eauto). congruence.
+    repeat (erewrite (valid_pointer_memiff1 m m0 _ _) in Heqb2; eauto). congruence.
+    repeat (erewrite (valid_pointer_memiff1 m m0 _ _) in Heqb2; eauto). congruence.
+    repeat (erewrite (valid_pointer_memiff1 m m0 _ _) in Heqb2; eauto). congruence.
+    repeat (erewrite (valid_pointer_memiff1 m m0 _ _) in Heqb2; eauto). congruence.
+    unfold Val.cmplu_bool. repeat destr.
+    repeat (erewrite (valid_pointer_memiff1 m m0 _ _) in Heqb2; eauto). congruence.
+    repeat (erewrite (valid_pointer_memiff1 m m0 _ _) in Heqb2; eauto). congruence.
+Qed.
+Lemma eval_op_memiff:
+  forall (sp : val) (m m0 : mem) (op : operation)
+    (vl :list val) (v : val) (H3 : eval_operation ge sp op vl m = Some v)
+    (H6 : Mem.iff m m0), eval_operation ge sp op vl m0 = Some v.
+Proof.
+  intros sp m m0 op vl v H3 H6.
+  unfold eval_operation in *. destruct op; auto.
+  erewrite eval_cond_memiff; eauto.
+  repeat destr.
+  erewrite eval_cond_memiff; eauto.
+Qed.
+
+Lemma eval_builtin_arg_memiff:
+  forall sp rs m m0 args vargs,
+    eval_builtin_arg ge (fun r: positive => rs # r) sp m args vargs ->
+    Mem.iff m m0 ->
+    eval_builtin_arg ge (fun r: positive => rs # r) sp m0 args vargs.
+Proof.
+  intros. induction H; constructor; eauto.
+  erewrite <- Mem.loadv_iff; eauto.
+  erewrite <- Mem.loadv_iff; eauto.
+Qed.
+
+Lemma eval_builtin_args_memiff:
+  forall (sp : val) (rs : Regmap.t val) (m m0 : mem) (args : list (builtin_arg reg))
+    (vargs : list val) (H3 : eval_builtin_args ge (fun r : positive => rs # r) sp m args vargs)
+    (H7 : Mem.iff m m0),
+    eval_builtin_args ge (fun r : positive => rs # r) sp m0 args vargs.
+Proof.
+  intros sp rs m m0 args vargs H3 H7.
+  unfold eval_builtin_args in *.
+  induction H3; constructor; auto.
+  eapply eval_builtin_arg_memiff; eauto.
+Qed.
 
 Inductive match_states: RTL.state -> RTL.state -> Prop :=
-  | match_regular_states: forall stk stk' f sp pc rs rs' m m',
-        regs_lessdef rs' rs ->
-        Mem.extends' m' m ->
-        match_stackframes stk' stk ->
+  | match_regular_states: forall stk f sp pc rs m m',
+        Mem.iff m m' ->
         match_stackadt (Mem.stack(Mem.support m)) (Mem.stack(Mem.support m'))->
       match_states (State stk f sp pc rs m)
-                   (State stk' f sp pc rs' m')
-  | match_callstates: forall stk stk' f args args' m sz m' hd tl,
-        Val.lessdef_list args' args->
-        Mem.extends' m' m ->
-        match_stackframes stk' stk ->
+                   (State stk f sp pc rs m')
+  | match_callstates: forall stk f args m sz m' hd tl,
+        Mem.iff m m' ->
         Mem.stack(Mem.support m) = hd :: tl ->
         match_stackadt tl (Mem.stack(Mem.support m')) ->
       match_states (Callstate stk f args m sz)
-                   (Callstate stk' f args' m' sz)
-  | match_returnstates: forall stk stk' v v' m m' hd tl,
-        Val.lessdef v' v ->
-        Mem.extends' m' m ->
-        match_stackframes stk' stk ->
+                   (Callstate stk f args m' sz)
+  | match_returnstates: forall stk v  m m' hd tl,
+        Mem.iff m m' ->
         Mem.stack(Mem.support m) = hd :: tl ->
         match_stackadt tl (Mem.stack(Mem.support m')) ->
       match_states (Returnstate stk v m)
-                   (Returnstate stk' v' m').
+                   (Returnstate stk v m').
 
-
-Lemma regs_lessdef_init_regs:
-  forall params vl vl',
-  Val.lessdef_list vl vl' ->
-  regs_lessdef (init_regs vl params) (init_regs vl' params).
+Lemma step_simulation:
+  forall S1 t S2, RTL.step fn_stack_requirements ge S1 t S2 ->
+  forall S1', match_states S1 S1' ->
+  exists S2', step fn_stack_requirements tge S1' t S2' /\ match_states S2 S2'.
 Proof.
-  induction params; intros.
-  simpl. red; intros. rewrite Regmap.gi. constructor.
-  simpl. inv H.   red; intros. rewrite Regmap.gi. constructor.
-  apply set_reg_lessdef. auto. auto.
+  intros. inv H; inv H0.
+  - econstructor; eauto. split.
+    econstructor; eauto.
+    econstructor; eauto.
+  - econstructor; eauto. split.
+    eapply exec_Iop; eauto. rewrite <- genv_eq.
+    eapply eval_op_memiff; eauto.
+    econstructor; eauto.
+  - econstructor; eauto. split.
+    rewrite <- genv_eq.
+    eapply exec_Iload; eauto.
+    erewrite <- Mem.loadv_iff; eauto.
+    econstructor; eauto.
+  - exploit Mem.storev_iff; eauto.
+    intros (m2' & H3' & IFF').
+    econstructor; eauto. split.
+    rewrite <- genv_eq.
+    eapply exec_Istore; eauto.
+    econstructor; eauto.
+    rewrite <- (Mem.support_storev _ _ _ _ _ H3).
+    rewrite <- (Mem.support_storev _ _ _ _ _ H3').
+    auto.
+  - econstructor; eauto. split.
+    rewrite <- genv_eq.
+    eapply exec_Icall; eauto.
+    econstructor; eauto.
+    eapply Mem.push_stage_left_iff; eauto.
+    simpl. reflexivity.
+  - exploit Mem.free_parallel_iff; eauto.
+    intros (m2' & H5' & IFF').
+    rewrite <- (Mem.support_free _ _ _ _ _ H5) in H13.
+    rewrite <- (Mem.support_free _ _ _ _ _ H5') in H13.
+    inv H13.  congruence.
+    assert ({m3':mem|Mem.pop_stage m2'= Some m3'}).
+      apply Mem.nonempty_pop_stage. congruence.
+    destruct X as [m3' POP].
+    apply Mem.stack_pop_stage in POP as STKm2'.
+    destruct STKm2' as [hd STKm2'].
+    econstructor; eauto. split.
+    rewrite <- genv_eq.
+    eapply exec_Itailcall; eauto.
+    econstructor; eauto.
+    eapply Mem.pop_stage_right_iff; eauto.
+    rewrite STKm2' in H0. inv H0. auto.
+  - exploit Mem.push_stage_left_iff; eauto. intro.
+    exploit external_call_mem_iff; eauto. intros (m'1 & EXT &IFF').
+    econstructor; eauto. split.
+    rewrite <- genv_eq.
+    econstructor; eauto.
+    eapply eval_builtin_args_memiff; eauto.
+    econstructor; eauto.
+    eapply Mem.pop_stage_left_iff; eauto.
+    rewrite <- (external_call_mem_stackeq _ _ _ _ _ _ _ EXT).
+    apply Mem.stack_pop_stage in H4. destruct H4.
+    rewrite <- (external_call_mem_stackeq _ _ _ _ _ _ _ H3) in H0.
+    simpl in H0. inv H0. auto.
+  - econstructor; eauto. split.
+    rewrite <- genv_eq.
+    eapply exec_Icond; eauto.
+    erewrite eval_cond_memiff; eauto.
+    econstructor; eauto.
+  - econstructor; eauto. split.
+    rewrite <- genv_eq.
+    eapply exec_Ijumptable; eauto.
+    econstructor; eauto.
+  - exploit Mem.free_parallel_iff; eauto.
+    intros (m'1 & H2' & IFF).
+    rewrite <- (Mem.support_free _ _ _ _ _ H2) in H11.
+    rewrite <- (Mem.support_free _ _ _ _ _ H2') in H11.
+    inv H11.  congruence.
+    assert ({m'2:mem|Mem.pop_stage m'1= Some m'2}).
+      apply Mem.nonempty_pop_stage. congruence.
+    destruct X as [m'2 POP].
+    econstructor; eauto. split.
+    eapply exec_Ireturn; eauto.
+    econstructor; eauto.
+    eapply Mem.pop_stage_right_iff; eauto.
+    apply Mem.stack_pop_stage in POP. destruct POP.
+    rewrite H5 in H0. inv H0. auto.
+  - exploit Mem.alloc_parallel_iff; eauto.
+    intros (m'1 & H1' & IFF).
+    exploit Mem.push_stage_right_iff. apply IFF. intro.
+    apply Mem.stack_record_frame in H2 as STK.
+    apply Mem.record_frame_size1 in H2 as SIZE. simpl in SIZE.
+    destruct STK as (hd' & tl' & STKm' & STKm'').
+    assert ({m'2:mem|Mem.record_frame (Mem.push_stage m'1) (Mem.mk_frame sz) = Some m'2}).
+      apply Mem.request_record_frame. simpl. congruence.
+      simpl.
+      rewrite (Mem.support_alloc _ _ _ _ _ H1'). simpl.
+      rewrite (Mem.support_alloc _ _ _ _ _ H1) in SIZE. simpl in SIZE.
+      apply match_stackadt_size in H10. rewrite H9 in SIZE. simpl in *.
+      generalize (Mem.size_of_all_frames_pos hd). lia.
+    destruct X as [m'2 RECORD].
+    econstructor; eauto. split.
+    econstructor; eauto.
+    econstructor; eauto.
+    eapply Mem.record_frame_safe_iff; eauto.
+    apply Mem.stack_record_frame in RECORD as STK.
+    destruct STK as (hd''&tl''&STKm'1&STKm'2).
+    rewrite STKm'2. simpl in STKm'1. inv STKm'1.
+    rewrite STKm''. econstructor. 2:eauto.
+    rewrite (Mem.support_alloc _ _ _ _ _ H1').
+    rewrite (Mem.support_alloc _ _ _ _ _ H1) in STKm'.
+    simpl in STKm'. rewrite STKm' in H9. inv H9.
+    simpl. auto.
+  - exploit external_call_mem_iff; eauto.
+    intros (m2' & H1'& IFF).
+    econstructor; eauto. split.
+    rewrite <- genv_eq.
+    econstructor; eauto.
+    econstructor; eauto.
+    rewrite <- (external_call_mem_stackeq _ _ _ _ _ _ _ H1). eauto.
+    rewrite <- (external_call_mem_stackeq _ _ _ _ _ _ _ H1'). eauto.
+  - apply Mem.stack_pop_stage in H1 as H1'. destruct H1'.
+    econstructor; eauto. split.
+    econstructor; eauto.
+    econstructor; eauto.
+    eapply Mem.pop_stage_left_iff; eauto.
+    rewrite H in H6. inv H6. auto.
 Qed.
+
+Lemma transf_initial_states:
+  forall S1, RTL.initial_state fn_stack_requirements prog S1 ->
+  exists S2, initial_state fn_stack_requirements tprog S2 /\ match_states S1 S2.
+Proof.
+  intros. inv TRANSL. inv H.
+  exists (Callstate nil f nil m0 (fn_stack_requirements (prog_main tprog))).
+  split.
+  econstructor; eauto.
+  econstructor; eauto.
+  eapply Mem.push_stage_left_iff. apply Mem.iff_refl.
+  simpl. reflexivity.
+  apply Genv.init_mem_stack in H0. rewrite H0.
+  constructor.
+Qed.
+
+Lemma transf_final_states:
+  forall S1 S2 r, match_states S1 S2 -> RTL.final_state S1 r -> final_state S2 r.
+Proof.
+  intros. inv H0. inv H. constructor.
+Qed.
+
+
+Theorem transf_program_correct:
+  forward_simulation (RTL.semantics fn_stack_requirements prog)
+                     (RTLmach.semantics fn_stack_requirements tprog).
+Proof.
+  eapply forward_simulation_step.
+  rewrite prog_eq. auto.
+  eexact transf_initial_states.
+  eexact transf_final_states.
+  exact step_simulation.
+Qed.
+
+End PRESERVATION.
+
+Instance TransfRTLmachLink : TransfLink match_prog.
+Proof.
+  red; intros. destruct (link_linkorder _ _ _ H) as (LO1 & LO2).
+  eexists p. split. inv H0. inv H1. auto. reflexivity.
+Qed.
+
+(*
 
 Lemma backward_simulation_step:
   forall S1' t S2', step fn_stack_requirements ge S1' t S2' ->
@@ -155,151 +381,113 @@ Proof.
   - econstructor; eauto. split.
     apply plus_one. econstructor; eauto.
     econstructor; eauto.
-  - assert (Val.lessdef_list (rs##args) (rs0##args)). apply regs_lessdef_regs; auto.
-    exploit eval_operation_lessdef; eauto.
-    intros [v' [EVAL' VLD]].
-    econstructor; eauto. split.
+  - econstructor; eauto. split.
     apply plus_one. eapply RTL.exec_Iop; eauto.
-    econstructor; eauto. apply set_reg_lessdef; eauto.
-  - assert (Val.lessdef_list (rs##args) (rs0##args)). apply regs_lessdef_regs; auto.
-    exploit eval_addressing_lessdef; eauto.
-    intros [v' [EVAL' VLD]].
-    exploit Mem.loadv_extends'; eauto.
-    intros [v'' [LOAD VLD']].
-    econstructor; eauto. split. apply plus_one.
+    eapply eval_op_memiff; eauto.
+    econstructor; eauto.
+  - econstructor; eauto. split. apply plus_one.
     eapply RTL.exec_Iload; eauto.
-    econstructor; eauto. intro.
-    apply set_reg_lessdef; eauto.
-  - assert (Val.lessdef_list (rs##args) (rs0##args)). apply regs_lessdef_regs; auto.
-    exploit eval_addressing_lessdef; eauto.
-    intros [v' [EVAL' VLD]].
-    exploit Mem.storev_extends'; eauto.
-    intros [m2' [STORE VLD']].
+    erewrite <- Mem.loadv_iff; eauto.
+    econstructor; eauto.
+  - exploit Mem.storev_iff; eauto. intros [m0' [STOREV IFF]].
     econstructor; eauto. split. apply plus_one.
     eapply RTL.exec_Istore; eauto.
     econstructor; eauto.
     rewrite <- (Mem.support_storev _ _ _ _ _ H4).
-    rewrite <- (Mem.support_storev _ _ _ _ _ STORE).
+    rewrite <- (Mem.support_storev _ _ _ _ _ STOREV).
     auto.
   - econstructor; eauto. split. apply plus_one.
     eapply RTL.exec_Icall; eauto.
-    eapply find_function_id_preserved; eauto.
-    eapply find_function_translated; eauto.
-    eapply match_callstates; eauto. apply regs_lessdef_regs. auto.
-    2: constructor; auto.
-    2: constructor; auto.
-    {
-      inv H12. constructor; simpl; eauto. inv mext_inj.
-      constructor; eauto.
-    }
-  - exploit Mem.free_parallel_extends'; eauto.
-    intros [m2' [FREE EXT]].
-      destruct (Mem.stack(Mem.support m2')) eqn : S2.
-        apply Mem.support_free in FREE. rewrite <- FREE in H16.
-        rewrite S2 in H16. inv H16.
-        apply Mem.pop_stage_nonempty in H7.
-        erewrite Mem.support_free in H7; eauto. congruence.
+    econstructor; eauto.
+    eapply Mem.push_stage_right_iff; eauto.
+    reflexivity.
+  - exploit Mem.free_parallel_iff; eauto. intros (m0' & H6' & IFF').
+    apply Mem.stack_pop_stage in H7 as H7'. destruct H7'.
+    inv H14.
+    rewrite <- (Mem.support_free _ _ _ _ _ H6) in H8.
+    apply Mem.pop_stage_nonempty in H7. rewrite  H8 in H7.
+    congruence.
     econstructor; eauto. split. apply plus_one.
     eapply RTL.exec_Itailcall; eauto.
-    eapply find_function_id_preserved; eauto.
-    eapply find_function_translated; eauto.
-    eapply match_callstates; eauto. apply regs_lessdef_regs. auto.
-    eapply Mem.pop_stage_left_extends'; eauto.
-    eapply Mem.stack_pop_stage in H7.
-    destruct H7 as [hd H7].
-    rewrite <- (Mem.support_free _ _ _ _ _ FREE) in H16.
-    rewrite <- (Mem.support_free _ _ _ _ _ H6) in H16.
-    rewrite S2 in H16. rewrite H7 in H16. inv H16.
-    auto.
-  - exploit (@eval_builtin_args_lessdef _ ge (fun r => rs#r) (fun r => rs0#r)); eauto.
-    intros (vargs' & P & Q).
-    assert (Mem.extends' m (Mem.push_stage m0)).
-    {
-      inv H12. constructor; simpl; eauto. inv mext_inj.
-      constructor; eauto.
-    }
-    exploit external_call_mem_extends'. 2: apply H. all:eauto.
-    intros [v' [m'1 [A [B [C D]]]]].
-    apply external_call_mem_stackeq in A as A'.
-    assert ({m'2:mem|Mem.pop_stage m'1 = Some m'2}).
+    econstructor. eauto.
+    eapply Mem.iff_trans. eapply Mem.iff_comm. eapply Mem.pop_stage_iff; eauto. eauto.
+    rewrite (Mem.support_free _ _ _ _ _ H6'). symmetry. eauto.
+    rewrite <- (Mem.support_free _ _ _ _ _ H6) in H5.
+    rewrite H in H5. inv H5. auto.
+  - exploit Mem.push_stage_right_iff; eauto. intros.
+    exploit external_call_mem_iff; eauto. intros (m2' & EXTER & IFF').
+    assert ({m3':mem|Mem.pop_stage m2' = Some m3'}).
       apply Mem.nonempty_pop_stage.
-      rewrite <- A'. simpl. congruence.
-    destruct X as [m'2 POP].
+      rewrite <- (external_call_mem_stackeq _ _ _ _ _ _ _ EXTER).
+      simpl. congruence.
+    destruct X as [m3' POP].
     econstructor; eauto. split. apply plus_one.
-    eapply RTL.exec_Ibuiltin; eauto.
-    econstructor; eauto. apply set_res_lessdef; auto.
-    eapply Mem.pop_stage_right_extends'; eauto.
-    erewrite <- (external_call_mem_stackeq _ _ _ _ _ _ _ H4).
-    apply Mem.stack_pop_stage in POP. destruct POP as [hd POP].
-    rewrite <- A' in POP. simpl in POP. inv POP.
-    auto.
-  - exists (State stk f sp (if b then ifso else ifnot) rs0 m0); split.
-    apply plus_one. eapply RTL.exec_Icond; eauto.
-    apply eval_condition_lessdef with (rs##args) m; auto. apply regs_lessdef_regs; auto.
     econstructor; eauto.
-  - exists (State stk f sp pc' rs0 m0); split.
-    apply plus_one. eapply RTL.exec_Ijumptable; eauto.
-    generalize (H9 arg). rewrite H3. intro. inv H. auto.
+    eapply eval_builtin_args_memiff; eauto.
     econstructor; eauto.
-  - exploit Mem.free_parallel_extends'; eauto.
-    intros [m2' [FREE EXT]].
-    apply Mem.stack_pop_stage in H4 as H4'.
-    destruct H4' as [hd H4'].
-    rewrite <- (Mem.support_free _ _ _ _ _ H3) in H14.
-    rewrite H4' in H14.
-    inv H14.
-    exists (Returnstate stk0 (regmap_optget or Vundef rs0) m2'); split.
-    apply plus_one. eapply RTL.exec_Ireturn; eauto.
+    eapply Mem.pop_stage_right_iff; eauto.
+    apply external_call_mem_stackeq in EXTER.
+    apply Mem.stack_pop_stage in POP. destruct POP.
+    rewrite <- EXTER in H0. simpl in H0. inv H0.
+    apply external_call_mem_stackeq in H4.
+    rewrite <- H4. auto.
+  - econstructor; eauto. split. apply plus_one.
+    eapply RTL.exec_Icond; eauto.
+    erewrite eval_cond_memiff; eauto.
     econstructor; eauto.
-    destruct or; simpl. apply H9. constructor.
-    eapply Mem.pop_stage_left_extends'; eauto.
-    rewrite (Mem.support_free _ _ _ _ _ FREE). inv H. reflexivity.
-  - red in H1. generalize (H1 (Callstate stk0 (Internal f )args0 m0 sz)). intros.
+  - econstructor; eauto. split. apply plus_one.
+    eapply RTL.exec_Ijumptable; eauto.
+    econstructor; eauto.
+  - exploit Mem.free_parallel_iff; eauto. intros (m1 & H3' & IFF').
+    apply Mem.stack_pop_stage in H4 as H4'. destruct H4'.
+    rewrite <- (Mem.support_free _ _ _ _ _ H3) in H12.
+    rewrite H in H12. inv H12.
+    econstructor; eauto. split. apply plus_one.
+    eapply RTL.exec_Ireturn; eauto.
+    econstructor; eauto.
+    eapply Mem.iff_trans. eapply Mem.iff_comm. eapply Mem.pop_stage_iff; eauto. eauto.
+    rewrite (Mem.support_free _ _ _ _ _ H3'). eauto.
+  - red in H1. generalize (H1 (Callstate s (Internal f) args m0 sz)). intros.
     exploit H. apply star_refl. intros [Sf|Sf].
     + destruct Sf as [r Sf]. inv Sf.
     + destruct Sf as (E & s'' & STEP).
       exists s''. split. apply plus_one. simpl in STEP. unfold ge.
       inv STEP. econstructor. eauto. eauto.
       inv STEP.
-      exploit Mem.alloc_extends'; eauto.
-      instantiate (1 := 0). lia.
-      instantiate (1 := fn_stacksize f). lia.
-      intros (m'1 & ALLOC & EXT).
-      rewrite H15 in ALLOC. inv ALLOC.
+      exploit Mem.alloc_parallel_iff; eauto.
+      intros (m1 & ALLOC & EXT).
+      rewrite H13 in ALLOC. inv ALLOC.
       eapply match_regular_states.
-      apply regs_lessdef_init_regs. auto.
-      eapply Mem.push_stage_left_extends' in EXT; eauto.
-    exploit Mem.record_frame_safe_extends'; eauto. auto.
-    apply Mem.stack_record_frame in H3 as STK1.
-    apply Mem.stack_record_frame in H16 as STK2.
-    destruct STK2 as (hd2 & tl2 & STKm'1 & STKm''0).
-    rewrite (Mem.support_alloc _ _ _ _ _ H15) in STKm'1.
-    simpl in STKm'1. rewrite H12 in STKm'1. inv STKm'1.
-    rewrite STKm''0.
-    destruct STK1 as (hd1 & tl1 & STKpm' & STKm'').
-    simpl in STKpm'. inv STKpm'. rewrite  STKm''.
-    apply Mem.support_alloc in H2. simpl in H2.
-    rewrite H2. simpl.
-    inv H13.
-    * econstructor. constructor. eauto.
-    * econstructor. econstructor. eauto. eauto. eauto.
-  -  exploit external_call_mem_extends'; eauto.
-    intros [v' [m1 [A [B [C D]]]]].
-    econstructor. split.
-    apply plus_one. econstructor. eauto.
+      eapply Mem.record_frame_safe_iff. 2: eauto. 2: eauto.
+      eapply Mem.iff_trans. eapply Mem.iff_comm.
+      eapply Mem.push_stage_iff. eauto.
+      apply Mem.stack_record_frame in H3 as STK.
+      destruct STK as (hd'&tl'&STKpm'&STKm'').
+      apply Mem.stack_record_frame in H14 as STK.
+      destruct STK as (hd''&tl''&STKm1&STKm''0).
+      rewrite STKm'',STKm''0.
+      rewrite (Mem.support_alloc _ _ _ _ _ H13) in STKm1. simpl in STKm1.
+      rewrite STKm1 in H10. inv H10. simpl. simpl in STKpm'.
+      inv STKpm'.
+      econstructor.
+      rewrite (Mem.support_alloc _ _ _ _ _ H2). simpl. auto.
+      eauto.
+  - exploit external_call_mem_iff; eauto. intros (m1 & H2' & IFF').
+    econstructor; eauto. split. apply plus_one.
+    econstructor; eauto.
     econstructor; eauto.
     erewrite <- external_call_mem_stackeq; eauto.
     erewrite <- external_call_mem_stackeq; eauto.
   - assert ({m1:mem|Mem.pop_stage m0 = Some m1}).
       apply Mem.nonempty_pop_stage. congruence.
-      destruct X as [m1 POP].
-    inv H7.
-    econstructor. split. apply plus_one.
-    eapply RTL.exec_return; eauto.
-    econstructor; eauto. apply set_reg_lessdef; auto.
-    eapply Mem.pop_stage_right_extends'; eauto.
-    destruct (Mem.stack_pop_stage   _ _ POP).
-    rewrite H in H8. inv H8. auto.
+    destruct X as [m1 POP].
+    econstructor; eauto. split. apply plus_one.
+    econstructor; eauto.
+    econstructor; eauto.
+    eapply Mem.pop_stage_right_iff; eauto.
+    apply Mem.stack_pop_stage in POP.
+    destruct POP. rewrite H in H6. inv H6.
+    auto.
 Qed.
 
 Definition initial_states_exist:
@@ -324,8 +512,8 @@ Proof.
   rewrite H3 in H6. inv H6.
   rewrite H1 in H. inv H.
   eapply match_callstates; eauto.
-  eapply Mem.push_stage_right_extends'; eauto. apply Mem.extends'_refl.
-  constructor. simpl. reflexivity.
+  eapply Mem.push_stage_iff; eauto.
+  simpl. eauto.
   apply Genv.init_mem_stack in H1. rewrite H1.
   constructor.
 Qed.
@@ -334,18 +522,98 @@ Definition match_final_states:
   forall s1 s2 r,
   match_states s1 s2 -> final_state s2 r -> RTL.final_state s1 r.
 Proof.
-  intros. inv H0. inv H. inv H6. inv H3. inv H7.
-  constructor.
+  intros. inv H0. inv H. constructor.
 Qed.
+
+Check safe.
 Definition progress:
   forall s1 s2,
   match_states s1 s2 -> safe (RTL.semantics fn_stack_requirements prog) s1 ->
   (exists r, RTL.final_state s2 r) \/
   (exists t, exists s2', (step fn_stack_requirements) tge s2 t s2').
 Proof.
-  Admitted.
+  intros. exploit H0. apply star_refl. intros [FIN | [t [S' STEP]]].
+  (* 1. Finished. *)
+  left. destruct FIN as [r FIN].
+  inv FIN. inv H. exists r. constructor.
+  right. remember STEP . destruct s.
+  - inv H. eexists. eexists. eapply exec_Inop; eauto.
+  - inv H. eexists. eexists.
+    eapply exec_Iop; eauto.
+    rewrite <- genv_eq. unfold ge.
+    eapply eval_op_memiff; eauto. apply Mem.iff_comm; auto.
+  - inv H. eexists. eexists.
+    eapply exec_Iload; eauto.
+    rewrite <- genv_eq. unfold ge. eauto.
+    erewrite Mem.loadv_iff; eauto.
+  - inv H. apply Mem.iff_comm in H8.
+    exploit Mem.storev_iff; eauto. intros (m'1 & A & B).
+    eexists. eexists.
+    eapply exec_Istore; eauto.
+    rewrite <- genv_eq. unfold ge. eauto.
+  - inv H. eexists. eexists.
+    eapply exec_Icall; eauto.
+    rewrite <- genv_eq. unfold ge. eauto.
+    rewrite <- genv_eq. unfold ge. eauto.
+  - inversion H.
+    apply Mem.iff_comm in H8.
+    exploit Mem.free_parallel_iff; eauto.
+    intros (m'1 & A & B).
+    exploit star_safe. apply star_one. apply STEP. auto. apply star_refl.
+    intros [FIN | [t [S'' STEP']]].
+    + destruct FIN as [r' FIN]. inv FIN.
+    + remember STEP'. clear Heqs0. inv s0.
+      * assert ({m''1:mem|Mem.pop_stage m'1 = Some m''1}).
+        apply Mem.nonempty_pop_stage.
+        apply Mem.record_frame_nonempty in H18.
+        rewrite (Mem.support_free _ _ _ _ _ A).
+        rewrite <- (Mem.support_free _ _ _ _ _ e2) in H9.
+        apply Mem.support_alloc in H17. rewrite H17 in H18.
+        simpl in H18.
+        apply match_stackadt_nonempty in H9.
+        intro. apply H18. apply H9. auto.
+        destruct X as [m''1 POP].
+        eexists. eexists.
+        eapply exec_Itailcall; eauto.
+        rewrite <- genv_eq. unfold ge. eauto.
+        rewrite <- genv_eq. unfold ge. eauto.
+      * 
+        rewrite <- genv_eq. unfold ge. eauto.
+  -     rewrite <- genv_eq. unfold ge. eauto.
+    
+    
+  (* 2. Expression step. *)
+  assert (exists t, exists S', estep S t S').
+    inv H0.
+    (* lred *)
+    eapply can_estep; eauto. inv H2; auto.
+    (* rred *)
+    eapply can_estep; eauto. inv H2; auto. inv H1; auto.
+    (* callred *)
+    eapply can_estep; eauto. inv H2; auto. inv H1; auto.
+    (* stuck *)
+    exploit (H Stuckstate). apply star_one. left. econstructor; eauto.
+    intros [[r F] | [t [S' R]]]. inv F. inv R. inv H0. inv H0.
+  destruct H1 as [t' [S'' ESTEP]].
+  exists t'; exists S''; left; auto.
+  (* 3. Other step. *)
+  exists t; exists S'; right; auto.
+
+  intros.
+
+  red in H0. generalize (H0 s1). intros.
+
+    exploit H1. apply star_refl. intros [Sf|Sf].
+    + destruct Sf as [r Sf]. inv Sf.
+      left. exists r. inv H. constructor.
+    + destruct Sf as (E & s'' & STEP).
+      right.
+      destruct STEP; inv H.
+      - eexist. eexist. eapply exec_Inop.
+      
 
 End PRESERVATION.
 
 
 
+*)

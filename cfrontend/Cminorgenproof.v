@@ -2023,14 +2023,19 @@ Proof.
   exploit match_callstack_freelist; eauto. intros [tm' [P [Q R]]].
   apply Mem.stack_pop_stage in H1 as H2. destruct H2.
   econstructor; split.
-  eapply plus_right. eexact A. apply step_skip_call. auto. eauto. traceEq.
+  eapply plus_right. eexact A. apply step_skip_call. auto. eauto.
+  rewrite (Mem.support_free _ _ _ _ _ P).
+  rewrite <- STK.
+  rewrite <- (support_freelist _ _ _ H0).
+  eapply Mem.pop_stage_nonempty; eauto.
+  traceEq.
   econstructor; eauto.
   eapply Mem.pop_stage_left_inject; eauto.
   instantiate (1:=x).  rewrite <- H2.
   rewrite (Mem.support_free _ _ _ _ _ P).
   rewrite (support_freelist _ _ _ H0).
   congruence.
-  eapply match_callstack_invariant. 
+  eapply match_callstack_invariant.
   eapply match_callstack_incr_bound.
   eapply Q. eapply Mem.sup_include_pop_stage; eauto.
   apply Mem.sup_include_refl. auto.
@@ -2221,6 +2226,10 @@ Opaque PTree.set.
   apply Mem.stack_pop_stage in H0 as H2. destruct H2.
   econstructor; split.
   apply plus_one. eapply step_return_0. eauto.
+  rewrite (Mem.support_free _ _ _ _ _ A).
+  rewrite <- STK.
+  rewrite <- (support_freelist _ _ _ H).
+  eapply Mem.pop_stage_nonempty; eauto.
   econstructor; eauto.
   rewrite (Mem.support_free _ _ _ _ _ A). rewrite <- STK.
   rewrite <- (support_freelist _  _ _ H). eapply H2.
@@ -2241,6 +2250,10 @@ Opaque PTree.set.
   apply Mem.stack_pop_stage in H1 as H3. destruct H3.
   econstructor; split.
   apply plus_one. eapply step_return_1. eauto. eauto.
+  rewrite (Mem.support_free _ _ _ _ _ A).
+  rewrite <- STK.
+  rewrite <- (support_freelist _ _ _ H0).
+  eapply Mem.pop_stage_nonempty; eauto.
   econstructor; eauto.
   rewrite (Mem.support_free _ _ _ _ _ A). rewrite <- STK.
   rewrite <- (support_freelist _  _ _ H0). eapply H3.

@@ -293,7 +293,7 @@ Inductive instruction: Type :=
   | Psubq_ri (rd: ireg) (n: int64).
 
 Definition code := list instruction.
-Record function : Type := mkfunction { fn_sig: signature; fn_code: code }.
+Record function : Type := mkfunction { fn_sig: signature; fn_code: code; fn_stacksize:Z }.
 Definition fundef := AST.fundef function.
 Definition program := AST.program fundef unit.
 
