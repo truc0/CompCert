@@ -108,59 +108,6 @@ Proof.
     lia.
 Qed.
 
-
-Lemma valid_pointer_memiff : forall m1 m2 b ofs,
-    Mem.iff m1 m2 -> Mem.valid_pointer m1 b ofs = true <-> Mem.valid_pointer m2 b ofs = true.
-Proof. intros. inv H.
-       transitivity (Mem.perm m1 b ofs Cur Nonempty).
-       apply Mem.valid_pointer_nonempty_perm.
-       transitivity (Mem.perm m2 b ofs Cur Nonempty).
-       unfold Mem.perm. rewrite access_iff. reflexivity.
-       symmetry. apply Mem.valid_pointer_nonempty_perm.
-Qed.
-
-Lemma valid_pointer_memiff1 : forall m1 m2 b ofs,
-    Mem.iff m1 m2 -> Mem.valid_pointer m1 b ofs = Mem.valid_pointer m2 b ofs.
-Proof. intros.
-       destruct (Mem.valid_pointer m1 b ofs) eqn:vp1.
-       generalize (valid_pointer_memiff _ _ b ofs H). intros.
-       apply H0 in vp1. rewrite vp1. auto.
-       destruct (Mem.valid_pointer m2 b ofs) eqn:vp2.
-       eapply valid_pointer_memiff in vp2; eauto. auto.
-Qed.
-Lemma eval_cond_memiff:
-    forall  (m m0 : mem) (cond : condition) (vl : list val),
-      Mem.iff m m0 ->
-      eval_condition cond vl m0 =
-      eval_condition cond vl m.
-Proof.
-    intros m m0 cond vl H6.
-    unfold eval_condition. destruct cond; auto.
-    unfold Val.cmplu_bool. repeat destr.
-    repeat (erewrite (valid_pointer_memiff1 m m0 _ _) in Heqb2; eauto). congruence.
-    repeat (erewrite (valid_pointer_memiff1 m m0 _ _) in Heqb2; eauto). congruence.
-    repeat (erewrite (valid_pointer_memiff1 m m0 _ _) in Heqb2; eauto). congruence.
-    repeat (erewrite (valid_pointer_memiff1 m m0 _ _) in Heqb2; eauto). congruence.
-    repeat (erewrite (valid_pointer_memiff1 m m0 _ _) in Heqb2; eauto). congruence.
-    repeat (erewrite (valid_pointer_memiff1 m m0 _ _) in Heqb2; eauto). congruence.
-    repeat (erewrite (valid_pointer_memiff1 m m0 _ _) in Heqb2; eauto). congruence.
-    repeat (erewrite (valid_pointer_memiff1 m m0 _ _) in Heqb2; eauto). congruence.
-    unfold Val.cmplu_bool. repeat destr.
-    repeat (erewrite (valid_pointer_memiff1 m m0 _ _) in Heqb2; eauto). congruence.
-    repeat (erewrite (valid_pointer_memiff1 m m0 _ _) in Heqb2; eauto). congruence.
-Qed.
-Lemma eval_op_memiff:
-  forall (sp : val) (m m0 : mem) (op : operation)
-    (vl :list val) (v : val) (H3 : eval_operation ge sp op vl m = Some v)
-    (H6 : Mem.iff m m0), eval_operation ge sp op vl m0 = Some v.
-Proof.
-  intros sp m m0 op vl v H3 H6.
-  unfold eval_operation in *. destruct op; auto.
-  erewrite eval_cond_memiff; eauto.
-  repeat destr.
-  erewrite eval_cond_memiff; eauto.
-Qed.
-
 Lemma eval_builtin_arg_memiff:
   forall sp rs m m0 args vargs,
     eval_builtin_arg ge (fun r: positive => rs # r) sp m args vargs ->
@@ -214,7 +161,7 @@ Proof.
     econstructor; eauto.
   - econstructor; eauto. split.
     eapply exec_Iop; eauto. rewrite <- genv_eq.
-    eapply eval_op_memiff; eauto.
+    eapply eval_operation_memiff; eauto.
     econstructor; eauto.
   - econstructor; eauto. split.
     rewrite <- genv_eq.
@@ -267,7 +214,7 @@ Proof.
   - econstructor; eauto. split.
     rewrite <- genv_eq.
     eapply exec_Icond; eauto.
-    erewrite eval_cond_memiff; eauto.
+    erewrite <- eval_condition_memiff; eauto.
     econstructor; eauto.
   - econstructor; eauto. split.
     rewrite <- genv_eq.

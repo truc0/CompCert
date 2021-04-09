@@ -837,11 +837,11 @@ Definition transl_store (chunk: memory_chunk) (addr: addressing)
 
 Definition transl_epilogue (f: Mach.function) (k: code) :=
   if is_leaf_function f then
-    Pfreeframe f.(fn_stacksize) f.(fn_link_ofs) :: k
+    Pfreeframe f.(Mach.fn_stacksize) f.(fn_link_ofs) :: k
   else
     Plwz GPR0 (Cint (Ptrofs.to_int f.(fn_retaddr_ofs))) GPR1 ::
     Pmtlr GPR0 ::
-    Pfreeframe f.(fn_stacksize) f.(fn_link_ofs) :: k.
+    Pfreeframe f.(Mach.fn_stacksize) f.(fn_link_ofs) :: k.
 
 (** Translation of a Mach instruction. *)
 
@@ -935,10 +935,22 @@ Definition transl_code' (f: Mach.function) (il: list Mach.instruction) (it1p: bo
 Definition transl_function (f: Mach.function) :=
   do c <- transl_code' f f.(Mach.fn_code) false;
   OK (mkfunction f.(Mach.fn_sig)
-       (Pallocframe f.(fn_stacksize) f.(fn_link_ofs) f.(fn_retaddr_ofs) ::
+       (Pallocframe f.(Mach.fn_stacksize) f.(fn_link_ofs) f.(fn_retaddr_ofs) ::
         Pmflr GPR0 ::
         Pstw GPR0 (Cint (Ptrofs.to_int f.(fn_retaddr_ofs))) GPR1 ::
-        Pcfi_rel_offset (Ptrofs.to_int f.(fn_retaddr_ofs)) :: c)).
+        Pcfi_rel_offset (Ptrofs.to_int f.(fn_retaddr_ofs)) :: c)
+        f.(Mach.fn_stacksize)).
+
+
+Lemma transl_function_stacksize :
+  forall f tf,
+    transl_function f = OK tf ->
+    Mach.fn_stacksize f = fn_stacksize tf.
+Proof.
+  intros.
+  unfold transl_function in H. unfold bind in H.
+  destr_in H. inv H. simpl. auto.
+Qed.
 
 Definition transf_function (f: Mach.function) : res Asm.function :=
   do tf <- transl_function f;

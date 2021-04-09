@@ -1147,7 +1147,7 @@ Lemma transl_cond_correct_3:
 Proof.
   intros.
   exploit transl_cond_correct_2. eauto.
-    eapply eval_condition_lessdef. eapply preg_vals; eauto. eauto. eauto.
+    eapply eval_condition_lessdef. eapply preg_vals; eauto. apply H2. eauto.
   intros [rs' [A [B C]]].
   exists rs'; split. eauto. split. auto.
   apply agree_undef_regs with rs; auto. intros r D E.
@@ -1529,7 +1529,7 @@ Lemma transl_op_correct:
   /\ forall r, important_preg r = true -> r <> preg_of res -> preg_notin r (destroyed_by_op op) -> rs' r = rs r.
 Proof.
   intros.
-  exploit eval_operation_lessdef. eapply preg_vals; eauto. eauto. eauto.
+  exploit eval_operation_lessdef. eapply preg_vals; eauto. apply H2. eauto.
   intros [v' [A B]].  rewrite (sp_val _ _ _ H0) in A.
   exploit transl_op_correct_aux; eauto. intros [rs' [P [Q R]]].
   exists rs'; split. eexact P.
@@ -1805,33 +1805,35 @@ Qed.
 (** Translation of function epilogues *)
 
 Lemma transl_epilogue_correct:
-  forall ge0 f m stk soff cs m' ms rs k tm,
+  forall ge0 f m stk soff cs m' m'' ms rs k tm,
   load_stack m (Vptr stk soff) Tptr f.(fn_link_ofs) = Some (parent_sp cs) ->
   load_stack m (Vptr stk soff) Tptr f.(fn_retaddr_ofs) = Some (parent_ra cs) ->
-  Mem.free m stk 0 f.(fn_stacksize) = Some m' ->
+  Mem.free m stk 0 f.(Mach.fn_stacksize) = Some m' ->
+  Mem.pop_stage m' = Some m'' ->
   agree ms (Vptr stk soff) rs ->
   (is_leaf_function f = true -> rs#LR = parent_ra cs) ->
   Mem.extends m tm ->
   match_stack ge0 cs ->
-  exists rs', exists tm',
-     exec_straight ge fn (transl_epilogue f k) rs tm k rs' tm'
+  exists rs', exists tm'',
+     exec_straight ge fn (transl_epilogue f k) rs tm k rs' tm''
   /\ agree ms (parent_sp cs) rs'
-  /\ Mem.extends m' tm'
+  /\ Mem.extends m'' tm''
   /\ rs'#LR = parent_ra cs
   /\ rs'#SP = parent_sp cs
   /\ (forall r, r <> PC -> r <> LR -> r <> SP -> r <> GPR0 -> rs'#r = rs#r).
 Proof.
-  intros until tm; intros LP LRA FREE AG LEAF MEXT MCS.
+  intros until tm; intros LP LRA FREE POP AG LEAF MEXT MCS.
   exploit Mem.loadv_extends. eauto. eexact LP. auto. simpl. intros (parent' & LP' & LDP').
   exploit Mem.loadv_extends. eauto. eexact LRA. auto. simpl. intros (ra' & LRA' & LDRA').
   exploit lessdef_parent_sp; eauto. intros EQ; subst parent'; clear LDP'.
   exploit lessdef_parent_ra; eauto. intros EQ; subst ra'; clear LDRA'.
   exploit Mem.free_parallel_extends; eauto. intros (tm' & FREE' & MEXT').
+  exploit Mem.pop_stage_extends; eauto. intros (tm'' & POP' & MEXT'').
   unfold transl_epilogue. destruct (is_leaf_function f).
 - (* leaf function *)
-  econstructor; exists tm'.
-  split. apply exec_straight_one. simpl. rewrite <- (sp_val _ _ _ AG). simpl. 
-  rewrite LP'. rewrite FREE'. reflexivity. reflexivity.
+  econstructor; exists tm''.
+  split. apply exec_straight_one. simpl. rewrite <- (sp_val _ _ _ AG). simpl.
+  rewrite LP'. rewrite FREE'. rewrite POP'. reflexivity. reflexivity.
   split. apply agree_nextinstr. eapply agree_change_sp; eauto. eapply parent_sp_def; eauto.
   split. auto.
   split. Simpl. 
@@ -1841,13 +1843,13 @@ Proof.
   set (rs1 := nextinstr (rs#GPR0 <- (parent_ra cs))).
   set (rs2 := nextinstr (rs1#LR  <- (parent_ra cs))).
   set (rs3 := nextinstr (rs2#GPR1 <- (parent_sp cs))).
-  exists rs3; exists tm'.
+  exists rs3; exists tm''.
   split. apply exec_straight_three with rs1 tm rs2 tm; auto.
     simpl. unfold load1. rewrite gpr_or_zero_not_zero by congruence. 
     unfold const_low. rewrite <- (sp_val _ _ _ AG).
     erewrite loadv_offset_ptr by eexact LRA'. reflexivity.
     simpl. change (rs2#GPR1) with (rs#GPR1). rewrite <- (sp_val _ _ _ AG). simpl. 
-    rewrite LP'. rewrite FREE'. reflexivity.
+    rewrite LP'. rewrite FREE'. rewrite POP'. reflexivity.
   split. unfold rs3. apply agree_nextinstr. apply agree_change_sp with (Vptr stk soff). 
     apply agree_nextinstr. apply agree_set_other; auto. 
     apply agree_nextinstr. apply agree_set_other; auto. 

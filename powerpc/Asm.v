@@ -415,7 +415,7 @@ lbl:    .long   table[0], table[1], ...
 *)
 
 Definition code := list instruction.
-Record function : Type := mkfunction { fn_sig: signature; fn_code: code }.
+Record function : Type := mkfunction { fn_sig: signature; fn_code: code ; fn_stacksize : Z}.
 Definition fundef := AST.fundef function.
 Definition program := AST.program fundef unit.
 
@@ -708,9 +708,13 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
   | Pallocframe sz ofs _ =>
       let (m1, stk) := Mem.alloc m 0 sz in
       let sp := Vptr stk Ptrofs.zero in
-      match Mem.storev Mint32 m1 (Val.offset_ptr sp ofs) rs#GPR1 with
-      | None => Stuck
-      | Some m2 => Next (nextinstr (rs#GPR1 <- sp #GPR0 <- Vundef)) m2
+      match Mem.record_frame (Mem.push_stage m1) (Mem.mk_frame sz) with
+        |None => Stuck
+        |Some m2=>
+         match Mem.storev Mint32 m2 (Val.offset_ptr sp ofs) rs#GPR1 with
+         | None => Stuck
+         | Some m3 => Next (nextinstr (rs#GPR1 <- sp #GPR0 <- Vundef)) m3
+         end
       end
   | Pand_ rd r1 r2 =>
       let v := Val.and rs#r1 rs#r2 in
@@ -807,7 +811,11 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
           | Vptr stk ofs =>
               match Mem.free m stk 0 sz with
               | None => Stuck
-              | Some m' => Next (nextinstr (rs#GPR1 <- v)) m'
+              | Some m' =>
+                match Mem.pop_stage m' with
+                |None => Stuck
+                |Some m'' => Next (nextinstr (rs#GPR1 <- v)) m''
+                end
               end
           | _ => Stuck
           end

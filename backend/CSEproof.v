@@ -899,43 +899,6 @@ Proof.
   discriminate.
 Qed.
 
-Lemma valid_pointer_eq m m':
-  forall (PERM: forall b o k p, Mem.perm m b o k p <-> Mem.perm m' b o k p),
-    Mem.valid_pointer m = Mem.valid_pointer m'.
-Proof.
-  intros.
-  apply Axioms.extensionality.
-  intro b; apply Axioms.extensionality.
-  intro o.
-  destruct (Mem.valid_pointer m b o) eqn:?.
-  apply Mem.valid_pointer_nonempty_perm in Heqb0. rewrite PERM in Heqb0.
-  apply Mem.valid_pointer_nonempty_perm in Heqb0. auto.
-  destruct (Mem.valid_pointer m' b o) eqn:?; auto.
-  apply Mem.valid_pointer_nonempty_perm in Heqb1. rewrite <- PERM in Heqb1.
-  apply Mem.valid_pointer_nonempty_perm in Heqb1. congruence.
-Qed.
-
-Lemma eval_operation_perm:
-  forall (ge: Genv.t fundef unit) sp op args m m'
-    (PERM: forall b o k p, Mem.perm m b o k p <-> Mem.perm m' b o k p),
-    eval_operation ge sp op args m = eval_operation ge sp op args m'.
-Proof.
-  intros.
-  destruct (op_depends_on_memory op) eqn:?.
-  + destruct op; simpl in Heqb; try discriminate.
-    simpl in *. f_equal. f_equal.
-    destruct cond; simpl in *; try discriminate; repeat destr.
-    rewrite (valid_pointer_eq _ _ PERM). auto.
-    rewrite (valid_pointer_eq _ _ PERM). auto.
-    simpl in *. destruct args; auto.
-    destruct args; auto. unfold eval_condition.
-    destruct c; simpl in *; try discriminate; repeat destr.
-    rewrite (valid_pointer_eq _ _ PERM). auto.
-    rewrite (valid_pointer_eq _ _ PERM). auto.
-  + eapply op_depends_on_memory_correct; eauto.
-Qed.
-
-
 Lemma num_holds_perm:
   forall valu ge sp rs m m' n,
     numbering_holds valu ge sp rs m n ->

@@ -1447,6 +1447,111 @@ Qed.
 
 End EVAL_LESSDEF.
 
+Section EVAL_IFF.
+
+Variable F V: Type.
+Variable genv: Genv.t F V.
+
+Lemma valid_pointer_memiff : forall m1 m2 b ofs,
+    Mem.iff m1 m2 -> Mem.valid_pointer m1 b ofs = true <-> Mem.valid_pointer m2 b ofs = true.
+Proof. intros. inv H.
+       transitivity (Mem.perm m1 b ofs Cur Nonempty).
+       apply Mem.valid_pointer_nonempty_perm.
+       transitivity (Mem.perm m2 b ofs Cur Nonempty).
+       unfold Mem.perm. rewrite access_iff. reflexivity.
+       symmetry. apply Mem.valid_pointer_nonempty_perm.
+Qed.
+
+Lemma valid_pointer_memiff1 : forall m1 m2 b ofs,
+    Mem.iff m1 m2 -> Mem.valid_pointer m1 b ofs = Mem.valid_pointer m2 b ofs.
+Proof. intros.
+       destruct (Mem.valid_pointer m1 b ofs) eqn:vp1.
+       generalize (valid_pointer_memiff b ofs H). intros.
+       apply H0 in vp1. rewrite vp1. auto.
+       destruct (Mem.valid_pointer m2 b ofs) eqn:vp2.
+       eapply valid_pointer_memiff in vp2; eauto. auto.
+Qed.
+
+Lemma eval_condition_memiff:
+    forall  (m m0 : mem) (cond : condition) (vl : list val),
+      Mem.iff m m0 ->
+      eval_condition cond vl m =
+      eval_condition cond vl m0.
+Proof.
+    intros m m0 cond vl H6.
+    unfold eval_condition. destruct cond; auto.
+    unfold Val.cmplu_bool.
+    unfold Val.cmpu_bool.
+    repeat destr.
+    repeat (erewrite (valid_pointer_memiff1 _ _ H6) in Heqb1). congruence.
+    repeat (erewrite (valid_pointer_memiff1 _ _ H6) in Heqb1). congruence.
+    repeat (erewrite (valid_pointer_memiff1 _ _ H6) in Heqb1). congruence.
+    repeat (erewrite (valid_pointer_memiff1 _ _ H6) in Heqb1). congruence.
+    repeat (erewrite (valid_pointer_memiff1 _ _ H6) in Heqb0). congruence.
+    repeat (erewrite (valid_pointer_memiff1 _ _ H6) in Heqb0). congruence.
+    repeat (erewrite (valid_pointer_memiff1 _ _ H6) in Heqb0). congruence.
+    repeat (erewrite (valid_pointer_memiff1 _ _ H6) in Heqb0). congruence.
+    unfold Val.cmplu_bool.
+    unfold Val.cmpu_bool.
+    repeat destr.
+    repeat (erewrite (valid_pointer_memiff1 _ _ H6) in Heqb1). congruence.
+    repeat (erewrite (valid_pointer_memiff1 _ _ H6) in Heqb1). congruence.
+Qed.
+
+Lemma eval_operation_memiff:
+  forall sp op vl v m1 m2,
+    Mem.iff m1 m2 ->
+    eval_operation genv sp op vl m1 = Some v ->
+    eval_operation genv sp op vl m2 = Some v.
+Proof.
+  intros.
+  unfold eval_operation in *. destruct op; auto.
+  erewrite eval_condition_memiff in H0; eauto.
+  repeat destr.
+  erewrite eval_condition_memiff in H0; eauto.
+Qed.
+End EVAL_IFF.
+
+Section EVAL_PERM.
+Variable F V: Type.
+Variable genv: Genv.t F V.
+Lemma valid_pointer_perm m m':
+  forall (PERM: forall b o k p, Mem.perm m b o k p <-> Mem.perm m' b o k p),
+    Mem.valid_pointer m = Mem.valid_pointer m'.
+Proof.
+  intros.
+  apply Axioms.extensionality.
+  intro b; apply Axioms.extensionality.
+  intro o.
+  destruct (Mem.valid_pointer m b o) eqn:?.
+  apply Mem.valid_pointer_nonempty_perm in Heqb0. rewrite PERM in Heqb0.
+  apply Mem.valid_pointer_nonempty_perm in Heqb0. auto.
+  destruct (Mem.valid_pointer m' b o) eqn:?; auto.
+  apply Mem.valid_pointer_nonempty_perm in Heqb1. rewrite <- PERM in Heqb1.
+  apply Mem.valid_pointer_nonempty_perm in Heqb1. congruence.
+Qed.
+
+Lemma eval_operation_perm:
+  forall  sp op args m m'
+    (PERM: forall b o k p, Mem.perm m b o k p <-> Mem.perm m' b o k p),
+    eval_operation genv sp op args m = eval_operation genv sp op args m'.
+Proof.
+  intros.
+  destruct (op_depends_on_memory op) eqn:?.
+  + destruct op; simpl in Heqb; try discriminate.
+    simpl in *. f_equal. f_equal.
+    destruct cond; simpl in *; try discriminate; repeat destr.
+    rewrite (valid_pointer_perm _ _ PERM). auto.
+    rewrite (valid_pointer_perm _ _ PERM). auto.
+    simpl in *. destruct args; auto.
+    destruct args; auto. unfold eval_condition.
+    destruct c; simpl in *; try discriminate; repeat destr.
+    rewrite (valid_pointer_perm _ _ PERM). auto.
+    rewrite (valid_pointer_perm _ _ PERM). auto.
+  + eapply op_depends_on_memory_correct; eauto.
+Qed.
+End EVAL_PERM.
+
 (** Compatibility of the evaluation functions with memory injections. *)
 
 Section EVAL_INJECT.
