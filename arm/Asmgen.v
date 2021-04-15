@@ -758,10 +758,10 @@ Definition transl_instr (f: Mach.function) (i: Mach.instruction)
   | Mtailcall sig (inl arg) =>
       do r <- ireg_of arg;
       OK (loadind_int IR13 f.(fn_retaddr_ofs) IR14
-           (Pfreeframe f.(fn_stacksize) f.(fn_link_ofs) :: Pbreg r sig :: k))
+           (Pfreeframe f.(Mach.fn_stacksize) f.(fn_link_ofs) :: Pbreg r sig :: k))
   | Mtailcall sig (inr symb) =>
       OK (loadind_int IR13 f.(fn_retaddr_ofs) IR14
-           (Pfreeframe f.(fn_stacksize) f.(fn_link_ofs) :: Pbsymb symb sig :: k))
+           (Pfreeframe f.(Mach.fn_stacksize) f.(fn_link_ofs) :: Pbsymb symb sig :: k))
   | Mbuiltin ef args res =>
       OK (Pbuiltin ef (List.map (map_builtin_arg preg_of) args) (map_builtin_res preg_of res) :: k)
   | Mlabel lbl =>
@@ -775,7 +775,7 @@ Definition transl_instr (f: Mach.function) (i: Mach.instruction)
       OK (Pbtbl r tbl :: k)
   | Mreturn =>
       OK (loadind_int IR13 f.(fn_retaddr_ofs) IR14
-            (Pfreeframe f.(fn_stacksize) f.(fn_link_ofs) ::
+            (Pfreeframe f.(Mach.fn_stacksize) f.(fn_link_ofs) ::
              Pbreg IR14 f.(Mach.fn_sig) :: k))
   end.
 
@@ -824,9 +824,20 @@ Definition transl_function (f: Mach.function) :=
   do c <- transl_code f f.(Mach.fn_code)
                       (save_lr_preserves_R12 f.(fn_retaddr_ofs));
   OK (mkfunction f.(Mach.fn_sig)
-        (Pallocframe f.(fn_stacksize) f.(fn_link_ofs) ::
+        (Pallocframe f.(Mach.fn_stacksize) f.(fn_link_ofs) ::
          save_lr f.(fn_retaddr_ofs)
-           (Pcfi_rel_offset (Ptrofs.to_int f.(fn_retaddr_ofs)):: c))).
+           (Pcfi_rel_offset (Ptrofs.to_int f.(fn_retaddr_ofs)):: c))
+        f.(Mach.fn_stacksize)).
+
+Lemma transl_function_stacksize :
+  forall f tf,
+    transl_function f = OK tf ->
+    Mach.fn_stacksize f = fn_stacksize tf.
+Proof.
+  intros.
+  unfold transl_function in H. unfold bind in H.
+  destr_in H. inv H. simpl. auto.
+Qed.
 
 Definition transf_function (f: Mach.function) : res Asm.function :=
   do tf <- transl_function f;

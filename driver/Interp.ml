@@ -141,19 +141,43 @@ let print_state p (prog, ge, s) =
       fprintf p "stuck after an undefined expression"
 
 (* Comparing memory states and support *)
-let rank_sup = function
+let rank_list = function
   | [] -> 0
   | _::_ -> 1
 
-let rec compare_sup s1 s2 =
+let rec compare_supp s1 s2 =
   if s1 = s2 then 0 else
   match s1,s2 with
   | [],[] -> 0
   | (h1::t1),(h2::t2)  ->
     let c = P.compare h1 h2 in
-    if c<>0 then c else compare_sup t1 t2
-  | _,_ -> compare (rank_sup s1) (rank_sup s2)
+    if c<>0 then c else compare_supp t1 t2
+  | _,_ -> compare (rank_list s1) (rank_list s2)
 
+let compare_frame fr1 fr2 =
+  Z.compare (Mem.frame_size fr1) (Mem.frame_size fr2)
+
+let rec compare_stage st1 st2 =
+  if st1 = st2 then 0 else
+  match st1,st2 with
+    |[],[] -> 0
+    |(h1::t1),(h2::t2) ->
+      let c = compare_frame h1 h2 in
+      if c <> 0 then c else compare_stage t1 t2
+    |_,_ -> compare (rank_list st1) (rank_list st2)
+
+let rec compare_stack s1 s2 =
+  if s1 = s2 then 0 else
+    match s1,s2 with
+    |[],[] -> 0
+    |(h1::t1),(h2::t2) ->
+      let c = compare_stage h1 h2 in
+      if c <> 0 then c else compare_stack t1 t2
+    |_,_ -> compare (rank_list s1) (rank_list s2)
+
+let compare_sup s1 s2 =
+  let c = compare_supp (Mem.supp s1) (Mem.supp s2) in
+  if c <> 0 then c else compare_stack (Mem.stack s1) (Mem.stack s2)
 let compare_mem m1 m2 =
   (* assumes nextblocks were already compared equal *)
   (* should permissions be taken into account? *)
@@ -240,7 +264,7 @@ let mem_state = function
 
 let compare_state s1 s2 =
   if s1 == s2 then 0 else
-  let c = compare_sup ((mem_state s1).Mem.support).Mem.supp ((mem_state s2).Mem.support).Mem.supp in
+  let c = compare_sup ((mem_state s1).Mem.support) ((mem_state s2).Mem.support) in
   if c <> 0 then c else begin
   match s1, s2 with
   | State(f1,s1,k1,e1,m1), State(f2,s2,k2,e2,m2) ->

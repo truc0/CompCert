@@ -414,7 +414,7 @@ Proof.
   intros until m'; intros TRANSL EVAL AG MEXT.
   set (vl' := map rs (map preg_of args)). 
   assert (EVAL': eval_condition cond vl' m' = Some b).
-  { apply eval_condition_lessdef with (map ms args) m; auto. eapply preg_vals; eauto. }
+  { apply eval_condition_lessdef with (map ms args) m; auto. eapply preg_vals; eauto. apply MEXT. }
   clear EVAL MEXT AG.
   destruct cond; simpl in TRANSL; ArgsInv.
 - exists rs, (transl_cbranch_int32s c0 x x0 lbl).
@@ -1349,47 +1349,46 @@ Qed.
 (** Function epilogues *)
 
 Lemma make_epilogue_correct:
-  forall ge0 f m stk soff cs m' ms rs k tm,
+  forall ge0 f m stk soff cs m' m'' ms rs k tm,
   load_stack m (Vptr stk soff) Tptr f.(fn_link_ofs) = Some (parent_sp cs) ->
   load_stack m (Vptr stk soff) Tptr f.(fn_retaddr_ofs) = Some (parent_ra cs) ->
-  Mem.free m stk 0 f.(fn_stacksize) = Some m' ->
+  Mem.free m stk 0 f.(Mach.fn_stacksize) = Some m' ->
+  Mem.pop_stage m' = Some m'' ->
   agree ms (Vptr stk soff) rs ->
   Mem.extends m tm ->
   match_stack ge0 cs ->
   exists rs', exists tm',
      exec_straight ge fn (make_epilogue f k) rs tm k rs' tm'
   /\ agree ms (parent_sp cs) rs'
-  /\ Mem.extends m' tm'
+  /\ Mem.extends m'' tm'
   /\ rs'#RA = parent_ra cs
   /\ rs'#SP = parent_sp cs
   /\ (forall r, r <> PC -> r <> RA -> r <> SP -> r <> X31 -> rs'#r = rs#r).
 Proof.
-  intros until tm; intros LP LRA FREE AG MEXT MCS.
+  intros until tm; intros LP LRA FREE POP AG MEXT MCS.
   exploit Mem.loadv_extends. eauto. eexact LP. auto. simpl. intros (parent' & LP' & LDP').
   exploit Mem.loadv_extends. eauto. eexact LRA. auto. simpl. intros (ra' & LRA' & LDRA').
   exploit lessdef_parent_sp; eauto. intros EQ; subst parent'; clear LDP'.
   exploit lessdef_parent_ra; eauto. intros EQ; subst ra'; clear LDRA'.
   exploit Mem.free_parallel_extends; eauto. intros (tm' & FREE' & MEXT').
-  unfold make_epilogue. 
-  rewrite chunk_of_Tptr in *. 
-  exploit (loadind_ptr_correct SP (fn_retaddr_ofs f) RA (Pfreeframe (fn_stacksize f) (fn_link_ofs f) :: k) rs tm).
+  exploit Mem.pop_stage_extends; eauto. intros (tm'' & POP' & MEXT'').
+  unfold make_epilogue.
+  rewrite chunk_of_Tptr in *.
+  exploit (loadind_ptr_correct SP (fn_retaddr_ofs f) RA (Pfreeframe (Mach.fn_stacksize f) (fn_link_ofs f) :: k) rs tm).
     rewrite <- (sp_val _ _ _ AG). simpl. eexact LRA'. congruence.
   intros (rs1 & A1 & B1 & C1).
   econstructor; econstructor; split.
-  eapply exec_straight_trans. eexact A1. apply exec_straight_one. simpl. 
-    rewrite (C1 X2) by auto with asmgen. rewrite <- (sp_val _ _ _ AG). simpl; rewrite LP'. 
-    rewrite FREE'. eauto. auto. 
-  split. apply agree_nextinstr. apply agree_set_other; auto with asmgen. 
+  eapply exec_straight_trans. eexact A1. apply exec_straight_one. simpl.
+    rewrite (C1 X2) by auto with asmgen. rewrite <- (sp_val _ _ _ AG). simpl; rewrite LP'.
+    rewrite FREE'. rewrite POP'. eauto. auto.
+  split. apply agree_nextinstr. apply agree_set_other; auto with asmgen.
     apply agree_change_sp with (Vptr stk soff).
     apply agree_exten with rs; auto. intros; apply C1; auto with asmgen.
     eapply parent_sp_def; eauto.
   split. auto.
-  split. Simpl. 
-  split. Simpl. 
-  intros. Simpl. 
+  split. Simpl.
+  split. Simpl.
+  intros. Simpl.
 Qed.
 
 End CONSTRUCTORS.
-
-
- 

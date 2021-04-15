@@ -1168,6 +1168,16 @@ Section EVAL_LESSDEF.
 Variable F V: Type.
 Variable genv: Genv.t F V.
 
+Remark valid_pointer_extends':
+  forall m1 m2, Mem.extends' m1 m2 ->
+  forall b1 ofs b2 delta,
+  Some(b1, 0) = Some(b2, delta) ->
+  Mem.valid_pointer m1 b1 (Ptrofs.unsigned ofs) = true ->
+  Mem.valid_pointer m2 b2 (Ptrofs.unsigned (Ptrofs.add ofs (Ptrofs.repr delta))) = true.
+Proof.
+  intros. inv H0. rewrite Ptrofs.add_zero. eapply Mem.valid_pointer_extends'; eauto.
+Qed.
+
 Remark valid_pointer_extends:
   forall m1 m2, Mem.extends m1 m2 ->
   forall b1 ofs b2 delta,
@@ -1176,6 +1186,16 @@ Remark valid_pointer_extends:
   Mem.valid_pointer m2 b2 (Ptrofs.unsigned (Ptrofs.add ofs (Ptrofs.repr delta))) = true.
 Proof.
   intros. inv H0. rewrite Ptrofs.add_zero. eapply Mem.valid_pointer_extends; eauto.
+Qed.
+
+Remark weak_valid_pointer_extends':
+  forall m1 m2, Mem.extends' m1 m2 ->
+  forall b1 ofs b2 delta,
+  Some(b1, 0) = Some(b2, delta) ->
+  Mem.weak_valid_pointer m1 b1 (Ptrofs.unsigned ofs) = true ->
+  Mem.weak_valid_pointer m2 b2 (Ptrofs.unsigned (Ptrofs.add ofs (Ptrofs.repr delta))) = true.
+Proof.
+  intros. inv H0. rewrite Ptrofs.add_zero. eapply Mem.weak_valid_pointer_extends'; eauto.
 Qed.
 
 Remark weak_valid_pointer_extends:
@@ -1213,13 +1233,13 @@ Qed.
 Lemma eval_condition_lessdef:
   forall cond vl1 vl2 b m1 m2,
   Val.lessdef_list vl1 vl2 ->
-  Mem.extends m1 m2 ->
+  Mem.extends' m1 m2 ->
   eval_condition cond vl1 m1 = Some b ->
   eval_condition cond vl2 m2 = Some b.
 Proof.
   intros. eapply eval_condition_inj with (f := fun b => Some(b, 0)) (m1 := m1).
-  apply valid_pointer_extends; auto.
-  apply weak_valid_pointer_extends; auto.
+  apply valid_pointer_extends'; auto.
+  apply weak_valid_pointer_extends'; auto.
   apply weak_valid_pointer_no_overflow_extends.
   apply valid_different_pointers_extends; auto.
   rewrite <- val_inject_list_lessdef. eauto. auto.
@@ -1228,7 +1248,7 @@ Qed.
 Lemma eval_operation_lessdef:
   forall sp op vl1 vl2 v1 m1 m2,
   Val.lessdef_list vl1 vl2 ->
-  Mem.extends m1 m2 ->
+  Mem.extends' m1 m2 ->
   eval_operation genv sp op vl1 m1 = Some v1 ->
   exists v2, eval_operation genv sp op vl2 m2 = Some v2 /\ Val.lessdef v1 v2.
 Proof.
@@ -1237,8 +1257,8 @@ Proof.
           eval_operation genv sp op vl2 m2 = Some v2
           /\ Val.inject (fun b => Some(b, 0)) v1 v2).
   eapply eval_operation_inj with (m1 := m1) (sp1 := sp).
-  apply valid_pointer_extends; auto.
-  apply weak_valid_pointer_extends; auto.
+  apply valid_pointer_extends'; auto.
+  apply weak_valid_pointer_extends'; auto.
   apply weak_valid_pointer_no_overflow_extends.
   apply valid_different_pointers_extends; auto.
   intros. apply val_inject_lessdef. auto.
@@ -1266,6 +1286,91 @@ Proof.
 Qed.
 
 End EVAL_LESSDEF.
+
+Section EVAL_IFF.
+
+Variable F V: Type.
+Variable genv: Genv.t F V.
+
+Lemma valid_pointer_memiff : forall m1 m2 b ofs,
+    Mem.iff m1 m2 -> Mem.valid_pointer m1 b ofs = true <-> Mem.valid_pointer m2 b ofs = true.
+Proof. intros. inv H.
+       transitivity (Mem.perm m1 b ofs Cur Nonempty).
+       apply Mem.valid_pointer_nonempty_perm.
+       transitivity (Mem.perm m2 b ofs Cur Nonempty).
+       unfold Mem.perm. rewrite access_iff. reflexivity.
+       symmetry. apply Mem.valid_pointer_nonempty_perm.
+Qed.
+
+Lemma valid_pointer_memiff1 : forall m1 m2 b ofs,
+    Mem.iff m1 m2 -> Mem.valid_pointer m1 b ofs = Mem.valid_pointer m2 b ofs.
+Proof. intros.
+       destruct (Mem.valid_pointer m1 b ofs) eqn:vp1.
+       generalize (valid_pointer_memiff b ofs H). intros.
+       apply H0 in vp1. rewrite vp1. auto.
+       destruct (Mem.valid_pointer m2 b ofs) eqn:vp2.
+       eapply valid_pointer_memiff in vp2; eauto. auto.
+Qed.
+
+Lemma eval_condition_memiff:
+    forall  (m m0 : mem) (cond : condition) (vl : list val),
+      Mem.iff m m0 ->
+      eval_condition cond vl m =
+      eval_condition cond vl m0.
+Proof.
+    intros m m0 cond vl H.
+    unfold eval_condition. destruct cond; auto;
+    unfold Val.cmpu_bool; unfold Val.cmplu_bool; repeat destr;
+    try (repeat (erewrite (valid_pointer_memiff1 _ _ H) in Heqb0); eauto; congruence);
+    try (repeat (erewrite (valid_pointer_memiff1 _ _ H) in Heqb1); eauto; congruence).
+Qed.
+
+Lemma eval_operation_memiff:
+  forall sp op vl v m1 m2,
+    Mem.iff m1 m2 ->
+    eval_operation genv sp op vl m1 = Some v ->
+    eval_operation genv sp op vl m2 = Some v.
+Proof.
+  intros.
+  unfold eval_operation in *. destruct op; auto.
+  erewrite eval_condition_memiff in H0; eauto.
+Qed.
+
+End EVAL_IFF.
+
+Section EVAL_PERM.
+Variable F V: Type.
+Variable genv: Genv.t F V.
+Lemma valid_pointer_perm m m':
+  forall (PERM: forall b o k p, Mem.perm m b o k p <-> Mem.perm m' b o k p),
+    Mem.valid_pointer m = Mem.valid_pointer m'.
+Proof.
+  intros.
+  apply Axioms.extensionality.
+  intro b; apply Axioms.extensionality.
+  intro o.
+  destruct (Mem.valid_pointer m b o) eqn:?.
+  apply Mem.valid_pointer_nonempty_perm in Heqb0. rewrite PERM in Heqb0.
+  apply Mem.valid_pointer_nonempty_perm in Heqb0. auto.
+  destruct (Mem.valid_pointer m' b o) eqn:?; auto.
+  apply Mem.valid_pointer_nonempty_perm in Heqb1. rewrite <- PERM in Heqb1.
+  apply Mem.valid_pointer_nonempty_perm in Heqb1. congruence.
+Qed.
+
+Lemma eval_operation_perm:
+  forall  sp op args m m'
+    (PERM: forall b o k p, Mem.perm m b o k p <-> Mem.perm m' b o k p),
+    eval_operation genv sp op args m = eval_operation genv sp op args m'.
+Proof.
+  intros.
+  destruct (op_depends_on_memory op) eqn:?.
+  + destruct op; simpl in Heqb; try discriminate.
+    simpl in *. f_equal. f_equal.
+    destruct cond; simpl in *; try discriminate; repeat destr;
+    rewrite (valid_pointer_perm _ _ PERM); auto.
+  + eapply op_depends_on_memory_correct; eauto.
+Qed.
+End EVAL_PERM.
 
 (** Compatibility of the evaluation functions with memory injections. *)
 
@@ -1358,4 +1463,4 @@ Definition builtin_arg_ok
   match ba with
   | (BA _ | BA_splitlong (BA _) (BA _)) => true
   | _ => builtin_arg_ok_1 ba c
-  end.  
+  end.

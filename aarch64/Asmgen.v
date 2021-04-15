@@ -1052,7 +1052,7 @@ Definition storeptr (src: ireg) (base: iregsp) (ofs: ptrofs) (k: code) :=
 
 Definition make_epilogue (f: Mach.function) (k: code) :=
   loadptr XSP f.(fn_retaddr_ofs) RA
-    (Pfreeframe f.(fn_stacksize) f.(fn_link_ofs) :: k).
+    (Pfreeframe f.(Mach.fn_stacksize) f.(fn_link_ofs) :: k).
   
 (** Translation of a Mach instruction. *)
 
@@ -1141,8 +1141,19 @@ Definition transl_code' (f: Mach.function) (il: list Mach.instruction) (it1p: bo
 Definition transl_function (f: Mach.function) :=
   do c <- transl_code' f f.(Mach.fn_code) true;
   OK (mkfunction f.(Mach.fn_sig)
-        (Pallocframe f.(fn_stacksize) f.(fn_link_ofs) ::
-         storeptr RA XSP f.(fn_retaddr_ofs) c)).
+        (Pallocframe f.(Mach.fn_stacksize) f.(fn_link_ofs) ::
+         storeptr RA XSP f.(fn_retaddr_ofs) c)
+         f.(Mach.fn_stacksize)).
+
+Lemma transl_function_stacksize :
+  forall f tf,
+    transl_function f = OK tf ->
+    Mach.fn_stacksize f = fn_stacksize tf.
+Proof.
+  intros.
+  unfold transl_function in H. unfold bind in H.
+  destr_in H. inv H. simpl. auto.
+Qed.
 
 Definition transf_function (f: Mach.function) : res Asm.function :=
   do tf <- transl_function f;
