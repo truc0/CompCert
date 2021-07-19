@@ -417,7 +417,7 @@ Qed.
 
 End STREE.
 
-(* Declare Module Sup: SUP.*)
+(* Declare Module Sup: SUP. *)
 
 Module Sup <: SUP.
 
@@ -428,7 +428,13 @@ Record sup' : Type := mksup {
 
 Definition sup := sup'.
 
-Program Definition sup_empty : sup := mksup empty_stree nil.
+Definition sup_empty : sup := mksup empty_stree nil.
+
+Definition sup_cpath (s:sup) := cpath (stack s).
+
+Definition sup_npath (s:sup) := npath (stack s).
+
+Definition sup_depth (s:sup) := depth (stack s).
 
 Definition sup_In(b:block)(s:sup) : Prop :=
   match b with
@@ -506,6 +512,103 @@ Lemma sup_include_incr:
 Proof.
   intros. apply sup_incr_in2.
 Qed.
+
+(* sup_incr_frame *)
+Definition sup_incr_frame (s:sup)(id:ident):sup :=
+  let (t',p) := next_stree (stack s) id in
+  mksup t' (global s).
+
+Theorem sup_incr_frame_in : forall s b id,
+    sup_In b s <-> sup_In b (sup_incr_frame s id).
+Proof.
+  intros. unfold sup_In. destruct b.
+  - unfold sup_incr_frame.
+    destruct (next_stree (stack s)) eqn:?.
+    simpl.
+    eapply next_stree_in. eauto.
+  - unfold sup_incr_frame.
+    destruct (next_stree (stack s)).
+    reflexivity.
+Qed.
+
+(* sup_return_frame *)
+Definition sup_return_frame (s:sup) : option sup :=
+  match return_stree (stack s) with
+    |Some (t',p) => Some (mksup t' (global s))
+    |None => None
+  end.
+
+Definition is_active (s:stree) : Prop :=
+  match s with
+    |Node _ _ _ (Some _) => True
+    |_ => False
+  end.
+
+Definition sup_return_frame' (s:sup) : sup :=
+  match sup_return_frame s with
+    |Some s' => s'
+    |None => sup_empty
+  end.
+
+Lemma sup_return_refl : forall s s', is_active (stack s) ->
+    sup_return_frame s = Some s' <-> sup_return_frame' s = s'.
+Proof.
+  intros.
+  unfold sup_return_frame'. destruct (sup_return_frame s) eqn:?.
+  split;  congruence.
+  unfold sup_return_frame in Heqo.
+  destruct (return_stree (stack s)) eqn:?. destruct p.
+  inv Heqo.
+  unfold is_active in H. destruct (stack s).
+  destruct o.
+  inv Heqo0. destr_in H1. destruct p. inv H1.
+  destruct H.
+Qed.
+
+Lemma sup_return_refl' : forall s , is_active (stack s) ->
+    sup_return_frame s = Some (sup_return_frame' s).
+Proof.
+  intros. apply sup_return_refl; auto.
+Qed.
+
+Theorem sup_return_frame_in : forall s s',
+    sup_return_frame s = Some (s') ->
+    (forall b, sup_In b s <-> sup_In b s').
+Proof.
+  intros.
+  destruct b; unfold sup_return_frame in H;
+  destruct (return_stree (stack s)) eqn:?.
+  - destruct p1. inv H.
+    simpl.
+    eapply return_stree_in; eauto.
+  - inv H.
+  - destruct p. inv H. reflexivity.
+  - inv H.
+Qed.
+
+(* sup_incr_glob *)
+Definition sup_incr_glob (i:ident) (s:sup) : sup :=
+ mksup (stack s) (i::(global s)).
+
+Theorem sup_incr_glob_in :  forall i s b,
+    sup_In b (sup_incr_glob i s) <-> b = (Global i) \/ sup_In b s.
+Proof.
+  split.
+  - unfold sup_incr_glob.
+    destruct b; simpl. auto. intros [H|H]. rewrite H. auto. auto.
+  - intros [H|H]; unfold sup_incr_glob.
+    rewrite H. simpl. auto.
+    destruct b. simpl. auto. simpl. auto.
+Qed.
+
+Theorem sup_incr_glob_in1 : forall i s, sup_In (Global i) (sup_incr_glob i s).
+Proof. intros. apply sup_incr_glob_in. left. auto. Qed.
+Theorem sup_incr_glob_in2 : forall i s, sup_include s (sup_incr_glob i s).
+Proof. intros. intro. intro. apply sup_incr_glob_in. right. auto. Qed.
+
+(* sup_incr_stack *)
+
+Definition sup_incr_block := sup_incr.
 
 End Sup.
 
@@ -830,6 +933,100 @@ Proof.
 Qed.
 
 Program Definition alloc (m: mem) (lo hi: Z) :=
+  (mkmem (NMap.set _ (nextblock m)
+                   (ZMap.init Undef)
+                   m.(mem_contents))
+         (NMap.set _ (nextblock m)
+                   (fun ofs k => if zle lo ofs && zlt ofs hi then Some Freeable else None)
+                   m.(mem_access))
+         (sup_incr (m.(support)))
+         _ _ _,
+   (nextblock m)).
+Next Obligation.
+  repeat rewrite NMap.gsspec. destruct (NMap.elt_eq b (nextblock m)).
+  subst b. destruct (zle lo ofs && zlt ofs hi); red; auto with mem.
+  apply access_max.
+Qed.
+Next Obligation.
+  rewrite NMap.gsspec. destruct (NMap.elt_eq b (nextblock m)).
+  subst b. elim H. apply mem_incr_1.
+  apply nextblock_noaccess. red; intros; elim H.
+  apply mem_incr_2. auto.
+Qed.
+Next Obligation.
+  rewrite NMap.gsspec. destruct (NMap.elt_eq b (nextblock m)). auto. apply contents_default.
+Qed.
+
+Lemma mem_incr_glob1: forall i m, sup_In (Global i) (sup_incr_glob i (m.(support))).
+Proof.
+  intros. simpl. auto.
+Qed.
+
+Lemma mem_incr_glob2: forall i m b, sup_In b (m.(support)) -> sup_In b (sup_incr_glob i (m.(support))).
+Proof.
+  intros. unfold sup_incr_glob. destruct b. auto. simpl in *. auto.
+Qed.
+
+Program Definition alloc_glob(i:ident) (m:mem) (lo hi:Z) :=
+  ((mkmem (NMap.set _ (Global i)
+                  (ZMap.init Undef)
+                  m.(mem_contents))
+        (NMap.set _ (Global i)
+                  (fun ofs k => if zle lo ofs && zlt ofs hi then Some Freeable else None)
+                  m.(mem_access))
+        (sup_incr_glob i (m.(support)))
+        _ _ _), (Global i)).
+Next Obligation.
+  repeat rewrite NMap.gsspec. destruct (NMap.elt_eq b (Global i)).
+  subst b. destruct (zle lo ofs && zlt ofs hi); red; auto with mem.
+  apply access_max.
+Qed.
+Next Obligation.
+  rewrite NMap.gsspec. destruct (NMap.elt_eq b (Global i)).
+  subst b. elim H. simpl. auto.
+  apply nextblock_noaccess. red; intros; elim H.
+  apply mem_incr_glob2. auto.
+Qed.
+Next Obligation.
+  rewrite NMap.gsspec. destruct (NMap.elt_eq b (Global i)). auto. apply contents_default.
+Qed.
+
+Program Definition alloc_frame (m:mem)(id:ident) :=
+  ((mkmem (m.(mem_contents)) (m.(mem_access)) (sup_incr_frame (m.(support)) id) _ _ _), sup_npath (m.(support)) id).
+Next Obligation.
+  apply access_max.
+Qed.
+Next Obligation.
+  apply nextblock_noaccess.
+  intro. apply H.
+  eapply sup_incr_frame_in in H0. eauto.
+Qed.
+Next Obligation.
+  apply contents_default.
+Qed.
+
+Lemma is_active_dec : forall s, {is_active s} + {~ is_active s}.
+Proof. intros. destruct s. destruct o; simpl; auto. Qed.
+
+Program Definition return_frame (m:mem) : option mem :=
+  if is_active_dec (stack(support m)) then
+     Some (mkmem (m.(mem_contents))
+                 (m.(mem_access))
+                 (sup_return_frame' (support m))
+                 (m.(access_max))
+                 _
+                 (m.(contents_default))
+         )
+     else None.
+Next Obligation.
+  apply nextblock_noaccess.
+  eapply sup_return_refl' in H.
+  intro. apply H0.
+  eapply sup_return_frame_in in H.
+  apply H. auto.
+Qed.
+
+Program Definition alloc_block (m: mem) (lo hi: Z) :=
   (mkmem (NMap.set _ (nextblock m)
                    (ZMap.init Undef)
                    m.(mem_contents))
@@ -2398,6 +2595,115 @@ End ALLOC.
 
 Local Hint Resolve valid_block_alloc fresh_block_alloc valid_new_block: mem.
 Local Hint Resolve valid_access_alloc_other valid_access_alloc_same: mem.
+
+(** ** Properties related to [alloc_glob]. *)
+Section ALLOCGLOB.
+
+Variable m1: mem.
+Variables lo hi: Z.
+Variable m2: mem.
+Variable id: ident.
+Variable b: block.
+Hypothesis ALLOC: alloc_glob id m1 lo hi = (m2, b).
+
+Theorem nextblock_alloc_glob:
+  nextblock m2 = nextblock m1.
+Proof.
+  injection ALLOC; intros. rewrite <- H0; auto.
+Qed.
+
+Theorem support_alloc_glob:
+  support m2 = sup_incr_glob id(support m1).
+Proof.
+  injection ALLOC; intros. rewrite <- H0; auto.
+Qed.
+
+Theorem alloc_glob_result :
+  b = Global id.
+Proof. inv ALLOC. auto. Qed.
+
+Theorem perm_alloc_glob_1 : forall ofs k p b,
+    b <> Global id ->
+    perm m1 b ofs k p <-> perm m2 b ofs k p.
+Proof.
+  unfold perm; intros. injection ALLOC; intros. rewrite <- H1; simpl.
+  subst b. unfold NMap.get. rewrite NMap.gso. reflexivity. auto.
+Qed.
+
+Theorem perm_alloc_glob_2:
+  forall ofs k p, lo <= ofs < hi <-> perm m2 b ofs k p.
+Proof.
+  unfold perm; intros. injection ALLOC; intros. rewrite <- H0; simpl.
+  subst b. unfold NMap.get. rewrite NMap.gss. unfold proj_sumbool.
+  split; intro.
+  rewrite zle_true. rewrite zlt_true. simpl. auto with mem. lia. lia.
+  destruct (zle lo ofs); destruct (zlt ofs hi); simpl in H; try (inv H). lia. lia. lia.
+Qed.
+
+Local Hint Resolve perm_alloc_glob_1 perm_alloc_glob_2 : mem.
+
+Theorem valid_access_alloc_glob:
+  forall chunk b ofs p,
+  b <> Global id ->
+  valid_access m2 chunk b ofs p <-> valid_access m1 chunk b ofs p.
+Proof.
+  intros. inv ALLOC. unfold valid_access. simpl.
+  unfold range_perm. unfold perm. simpl.
+  unfold NMap.get. rewrite NMap.gso. reflexivity. auto.
+Qed.
+
+Theorem load_alloc_glob_unchanged:
+  forall chunk b ofs,
+  b <> Global id ->
+  load chunk m2 b ofs = load chunk m1 b ofs.
+Proof.
+  intros. unfold load.
+  eapply valid_access_alloc_glob in H as H1; eauto.
+  repeat destr. inv ALLOC. simpl. unfold NMap.get. rewrite NMap.gso.
+  reflexivity. auto.
+  apply H1 in v. congruence.
+  apply H1 in v. congruence.
+Qed.
+
+Theorem load_alloc_glob_same:
+  forall chunk ofs v,
+  load chunk m2 b ofs = Some v ->
+  v = Vundef.
+Proof.
+  intros. exploit load_result; eauto. intro. rewrite H0.
+  injection ALLOC; intros. rewrite <- H2; simpl. rewrite <- H1.
+  setoid_rewrite NMap.gss. destruct (size_chunk_nat_pos chunk) as [n E]. rewrite E. simpl.
+  rewrite ZMap.gi. apply decode_val_undef.
+Qed.
+
+Theorem loadbytes_alloc_glob_same:
+  forall n ofs bytes byte,
+  loadbytes m2 b ofs n = Some bytes ->
+  In byte bytes -> byte = Undef.
+Proof.
+  unfold loadbytes; intros. destruct (range_perm_dec m2 b ofs (ofs + n) Cur Readable); inv H.
+  revert H0.
+  injection ALLOC; intros A B. rewrite <- A; rewrite <- B; simpl. setoid_rewrite NMap.gss.
+  generalize (Z.to_nat n) ofs. induction n0; simpl; intros.
+  contradiction.
+  rewrite ZMap.gi in H. destruct H; eauto.
+Qed.
+
+Theorem loadbytes_alloc_glob_unchanged:
+  forall b' ofs n,
+  b' <> Global id ->
+  loadbytes m2 b' ofs n = loadbytes m1 b' ofs n.
+Proof.
+  intros. unfold loadbytes.
+  destruct (range_perm_dec m1 b' ofs (ofs + n) Cur Readable).
+  rewrite pred_dec_true.
+  inv ALLOC. simpl. unfold NMap.get. rewrite NMap.gso.
+  reflexivity. auto. red; intros. eapply perm_alloc_glob_1; eauto.
+  rewrite pred_dec_false. auto.
+  red; intros; elim n0. red; intros. eapply perm_alloc_glob_1; eauto.
+Qed.
+
+End ALLOCGLOB.
 
 (** ** Properties related to [free]. *)
 
@@ -4790,6 +5096,43 @@ Proof.
   apply H1. apply sup_incr_in1.
 Qed.
 
+Theorem alloc_glob_inject_neutral:
+  forall s m lo hi b m' id,
+  alloc_glob id m lo hi = (m', b) ->
+  inject_neutral s m ->
+  sup_include (sup_incr_glob id (support m)) s ->
+  inject_neutral s m'.
+Proof.
+  intros; red.
+  constructor.
+  - intros. unfold flat_inj in H2.
+    destruct (sup_dec b1 s). inv H2.
+    replace (ofs + 0) with ofs by lia. auto. inv H2.
+  - intros. unfold flat_inj in H2.
+    destruct (sup_dec b1 s). inv H2.
+    replace (ofs + 0) with ofs by lia. apply Z.divide_0_r. inv H2.
+  - intros. unfold flat_inj in H2.
+    destruct (sup_dec b1 s). inv H2.  2: inv H2.
+    inv H0. inversion H. simpl. subst. destruct (eq_block b2 (Global id)).
+    subst.
+    setoid_rewrite NMap.gss.
+    replace (ofs + 0) with ofs by lia.
+    rewrite ZMap.gi. constructor.
+    setoid_rewrite NMap.gso; eauto.
+    assert (flat_inj s b2 = Some (b2,0)).
+    unfold flat_inj. rewrite pred_dec_true. auto. auto.
+    apply mi_memval0; auto.
+    replace (ofs) with (ofs +0) by lia.
+    eapply mi_perm0. eauto.
+    inv H. unfold perm. unfold perm in H3. simpl in H3.
+    assert ((NMap.set (Z->perm_kind -> option permission) (Global id)
+           (fun (ofs : Z) (_:perm_kind) => if zle lo ofs && zlt ofs hi then
+           Some Freeable else None) (mem_access m)) # b2 =
+            (mem_access m) # b2).
+    apply NMap.gso. auto.
+    rewrite H in H3. auto.
+Qed.
+
 Theorem store_inject_neutral:
   forall chunk m b ofs v m' s,
   store chunk m b ofs v = Some m' ->
@@ -5041,10 +5384,11 @@ Notation mem := Mem.mem.
 Notation sup := Mem.sup.
 Notation sup_In := Mem.sup_In.
 Notation sup_incr := Mem.sup_incr.
+Notation sup_incr_glob := Mem.sup_incr_glob.
 Notation sup_empty := Mem.sup_empty.
 Notation fresh_block := Mem.fresh_block.
 Notation freshness := Mem.freshness.
-Global Opaque Mem.alloc Mem.free Mem.store Mem.load Mem.storebytes Mem.loadbytes.
+Global Opaque Mem.alloc Mem.alloc_glob Mem.free Mem.store Mem.load Mem.storebytes Mem.loadbytes.
 
 Hint Resolve Mem.sup_incr_in1 Mem.sup_incr_in2 : core.
 Hint Resolve
