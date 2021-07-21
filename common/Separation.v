@@ -943,13 +943,13 @@ Proof.
 Qed.
 
 Lemma alloc_frame_rule:
-  forall j m1 m2 P m1' m2' id path1 path2,
+  forall j m1 m2 P m1' m2' id1 id2 path1 path2,
     m2 |= minjection j m1 ** P ->
-    Mem.alloc_frame m1 id = (m1',path1) ->
-    Mem.alloc_frame m2 id = (m2',path2) ->
+    Mem.alloc_frame m1 id1 = (m1',path1) ->
+    Mem.alloc_frame m2 id2 = (m2',path2) ->
     m2' |= minjection j m1' ** P.
 Proof.
-  intros j m1 m2 P m1' m2' id path1 path2 (INJ & RP & DISJ) H1 H2.
+  intros j m1 m2 P m1' m2' id1 id2 path1 path2 (INJ & RP & DISJ) H1 H2.
   split;[|split].
   - inv H1. inv H2. inv INJ. constructor; eauto.
     inv mi_inj. constructor; eauto.

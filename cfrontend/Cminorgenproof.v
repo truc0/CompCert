@@ -620,6 +620,55 @@ Proof.
   eapply BOUND0; eauto. eapply Mem.perm_max. eauto.
 Qed.
 
+Lemma match_callstack_return_frame:
+  forall f m tm m' cs,
+  Mem.inject f m tm ->
+  Mem.return_frame m = Some m' ->
+  match_callstack f m tm cs (Mem.support m) (Mem.support tm) ->
+  exists tm',
+  Mem.return_frame tm = Some tm'
+  /\ match_callstack f m' tm' cs (Mem.support m') (Mem.support tm')
+  /\ Mem.inject f m' tm'.
+Proof.
+  intros.
+  exploit Mem.return_frame_parallel_inject; eauto. admit.
+  intros (tm' & RETURN & INJ).
+  exists tm'. split. auto. split.
+  apply match_callstack_incr_bound with (Mem.support m) (Mem.support tm).
+  apply match_callstack_invariant with f m tm; auto.
+  intros. (* no need bound*)
+  rewrite Mem.perm_return_frame; eauto.
+  intros.
+  rewrite <- Mem.perm_return_frame; eauto.
+  intro. eapply Mem.support_return_frame_1 in H0. apply H0.
+  intro. eapply Mem.support_return_frame_1 in RETURN. apply RETURN.
+  auto.
+Admitted.
+
+Lemma match_callstack_alloc_frame:
+  forall f m tm m' cs id path,
+  Mem.inject f m tm ->
+  Mem.alloc_frame m id = (m',path) ->
+  match_callstack f m tm cs (Mem.support m) (Mem.support tm) ->
+  exists tm' path',  Mem.alloc_frame tm id = (tm',path')
+  /\ match_callstack f m' tm' cs (Mem.support m') (Mem.support tm')
+  /\ Mem.inject f m' tm'.
+Proof.
+  intros.
+  exploit Mem.alloc_frame_parallel_inject; eauto. intros (tm' & p2 & H3 & H4).
+  exists tm',p2.
+  split. auto. split.
+  apply match_callstack_incr_bound with (Mem.support m) (Mem.support tm).
+  apply match_callstack_invariant with f m tm; auto.
+  intros. (* no need bound*)
+  rewrite Mem.perm_alloc_frame; eauto.
+  intros.
+  rewrite <- Mem.perm_alloc_frame; eauto.
+  intro. eapply Mem.support_alloc_frame_1 in H0. apply H0.
+  intro. eapply Mem.support_alloc_frame_1 in H3. apply H3.
+  auto.
+Qed.
+
 (** Preservation of [match_callstack] by external calls. *)
 
 Lemma match_callstack_external_call:
@@ -1631,15 +1680,15 @@ Inductive match_states: Csharpminor.state -> Cminor.state -> Prop :=
       match_states (Csharpminor.State fn (Csharpminor.Sseq s1 s2) k e le m)
                    (State tfn ts1 tk (Vptr sp Ptrofs.zero) te tm)
   | match_callstate:
-      forall fd args k m tfd targs tk tm f cs cenv
+      forall fd args k m tfd targs tk tm f cs cenv id
       (TR: transl_fundef fd = OK tfd)
       (MINJ: Mem.inject f m tm)
       (MCS: match_callstack f m tm cs (Mem.support m) (Mem.support tm))
       (MK: match_cont k tk cenv nil cs)
       (ISCC: Csharpminor.is_call_cont k)
       (ARGSINJ: Val.inject_list f args targs),
-      match_states (Csharpminor.Callstate fd args k m)
-                   (Callstate tfd targs tk tm)
+      match_states (Csharpminor.Callstate fd args k m id)
+                   (Callstate tfd targs tk tm id)
   | match_returnstate:
       forall v k m tv tk tm f cs cenv
       (MINJ: Mem.inject f m tm)
@@ -1997,12 +2046,14 @@ Proof.
   exploit IHMK; eauto. intros [T2 [A B]].
   exists T2; split. eapply plus_left. constructor. apply plus_star; eauto. traceEq.
   auto.
+
 (* skip call *)
   monadInv TR. left.
   exploit match_is_call_cont; eauto. intros [tk' [A [B C]]].
   exploit match_callstack_freelist; eauto. intros [tm' [P [Q R]]].
+  exploit match_callstack_return_frame; eauto. intros [tm'' [S [T U]]].
   econstructor; split.
-  eapply plus_right. eexact A. apply step_skip_call. auto. eauto. traceEq.
+  eapply plus_right. eexact A. eapply step_skip_call. eauto. eauto. eauto. traceEq.
   econstructor; eauto.
 
 (* set *)
@@ -2034,7 +2085,7 @@ Proof.
   simpl in H1. exploit functions_translated; eauto. intros [tfd [FIND TRANS]].
   monadInv TR.
   exploit transl_expr_correct; eauto. intros [tvf [EVAL1 VINJ1]].
-  assert (tvf = vf).
+  assert (tvf = Vptr (Global id) (Ptrofs.zero)).
     exploit match_callstack_match_globalenvs; eauto. intros [bnd MG].
     eapply val_inject_function_pointer; eauto.
   subst tvf.
@@ -2158,8 +2209,9 @@ Opaque PTree.set.
 (* return none *)
   monadInv TR. left.
   exploit match_callstack_freelist; eauto. intros [tm' [A [B C]]].
+  exploit match_callstack_return_frame; eauto. intros [tm'' [D [E F]]].
   econstructor; split.
-  apply plus_one. eapply step_return_0. eauto.
+  apply plus_one. eapply step_return_0. eauto. eauto.
   econstructor; eauto. eapply match_call_cont; eauto.
   simpl; auto.
 
@@ -2167,8 +2219,9 @@ Opaque PTree.set.
   monadInv TR. left.
   exploit transl_expr_correct; eauto. intros [tv [EVAL VINJ]].
   exploit match_callstack_freelist; eauto. intros [tm' [A [B C]]].
+  exploit match_callstack_return_frame; eauto. intros [tm'' [D [E F]]].
   econstructor; split.
-  apply plus_one. eapply step_return_1. eauto. eauto.
+  apply plus_one. eapply step_return_1. eauto. eauto. eauto.
   econstructor; eauto. eapply match_call_cont; eauto.
 
 (* label *)
@@ -2196,11 +2249,13 @@ Opaque PTree.set.
                         (Csharpminor.fn_temps f)
                         sz
                         x0) in *.
-  caseEq (Mem.alloc tm 0 (fn_stackspace tf)). intros tm' sp ALLOC'.
+  exploit match_callstack_alloc_frame; eauto.
+  intros (tm' & p' & AF' & MCS1 & MINJ1).
+  caseEq (Mem.alloc tm' 0 (fn_stackspace tf)). intros tm'' sp ALLOC'.
   exploit match_callstack_function_entry; eauto. simpl; eauto. simpl; auto.
   intros [f2 [MCS2 MINJ2]].
   left; econstructor; split.
-  apply plus_one. constructor; simpl; eauto.
+  apply plus_one. econstructor; simpl; eauto.
   econstructor. eapply Mem.alloc_result. eauto.
   eexact TRBODY. eauto. eexact MINJ2. eexact MCS2.
   inv MK; simpl in ISCC; contradiction || econstructor; eauto.
@@ -2260,6 +2315,7 @@ Proof.
   eapply match_program_main; eauto.
   eexact FIND.
   rewrite <- H2. apply sig_preserved; auto.
+  replace (prog_main tprog) with (prog_main prog).
   eapply match_callstate with (f := Mem.flat_inj (Mem.support m0)) (cs := @nil frame) (cenv := PTree.empty Z).
   auto.
   eapply Genv.initmem_inject; eauto.
@@ -2268,6 +2324,8 @@ Proof.
   apply Mem.sup_include_refl.
   constructor. red; auto.
   constructor.
+  symmetry. unfold transl_program in TRANSL.
+  eapply match_program_main; eauto.
 Qed.
 
 Lemma transl_final_states:

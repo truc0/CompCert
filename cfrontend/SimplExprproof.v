@@ -1048,11 +1048,11 @@ Inductive match_states: Csem.state -> state -> Prop :=
       match_cont k tk ->
       match_states (Csem.State f s k e m)
                    (State tf ts tk e le m)
-  | match_callstates: forall fd args k m tfd tk,
+  | match_callstates: forall fd args k m tfd tk id,
       tr_fundef fd tfd ->
       match_cont k tk ->
-      match_states (Csem.Callstate fd args k m)
-                   (Callstate tfd args tk m)
+      match_states (Csem.Callstate fd args k m id)
+                   (Callstate tfd args tk m id)
   | match_returnstates: forall res k m tk,
       match_cont k tk ->
       match_states (Csem.Returnstate res k m)
@@ -1902,9 +1902,9 @@ Proof.
   auto.
 
 (* call *)
-  exploit tr_top_leftcontext; eauto. clear H12.
+  exploit tr_top_leftcontext; eauto. clear H13.
   intros [dst' [sl1 [sl2 [a' [tmp' [P [Q [R S]]]]]]]].
-  inv P. inv H5.
+  inv P. inv H.
   (* for effects *)
   exploit tr_simple_rvalue; eauto. intros [SL1 [TY1 EV1]].
   exploit tr_simple_exprlist; eauto. intros [SL2 EV2].
@@ -1931,8 +1931,8 @@ Proof.
   constructor; auto. econstructor; eauto.
   intros. apply S.
   destruct dst'; constructor.
-  auto. intros. constructor. rewrite H5; auto. apply PTree.gss.
-  auto. intros. constructor. rewrite H5; auto. apply PTree.gss.
+  auto. intros. constructor. rewrite H; auto. apply PTree.gss.
+  auto. intros. constructor. rewrite H; auto. apply PTree.gss.
   intros. apply PTree.gso. intuition congruence.
   auto.
 
@@ -2188,7 +2188,7 @@ Proof.
 
 
 (* return none *)
-  inv H7. econstructor; split.
+  inv H8. econstructor; split.
   left. apply plus_one. econstructor; eauto. rewrite blocks_of_env_preserved; eauto.
   constructor. apply match_cont_call; auto.
 (* return some 1 *)
@@ -2196,17 +2196,17 @@ Proof.
   left; eapply plus_left. constructor. apply push_seq. traceEq.
   econstructor; eauto. constructor. auto.
 (* return some 2 *)
-  inv H9. exploit tr_top_val_for_val_inv; eauto. intros [A [B C]]. subst.
+  inv H10. exploit tr_top_val_for_val_inv; eauto. intros [A [B C]]. subst.
   econstructor; split.
   left. eapply plus_two. constructor. econstructor. eauto.
   erewrite function_return_preserved; eauto. rewrite blocks_of_env_preserved; eauto.
   eauto. traceEq.
   constructor. apply match_cont_call; auto.
 (* skip return *)
-  inv H8.
-  assert (is_call_cont tk). inv H9; simpl in *; auto.
+  inv H9.
+  assert (is_call_cont tk). inv H10; simpl in *; auto.
   econstructor; split.
-  left. apply plus_one. apply step_skip_call; eauto. rewrite blocks_of_env_preserved; eauto.
+  left. apply plus_one. eapply step_skip_call; eauto. rewrite blocks_of_env_preserved; eauto.
   constructor. auto.
 
 (* switch *)
@@ -2251,17 +2251,17 @@ Proof.
   econstructor; eauto.
 
 (* internal function *)
-  inv H7. inversion H3; subst.
+  inv H9. inversion H4; subst.
   econstructor; split.
   left; apply plus_one. eapply step_internal_function. econstructor.
-  rewrite H6; rewrite H7; auto.
-  rewrite H6; rewrite H7. eapply alloc_variables_preserved; eauto.
-  rewrite H6. eapply bind_parameters_preserved; eauto.
+  rewrite H7; rewrite H8; eauto. eauto.
+  rewrite H7; rewrite H8. eapply alloc_variables_preserved; eauto.
+  rewrite H7. eapply bind_parameters_preserved; eauto.
   eauto.
   constructor; auto.
 
 (* external function *)
-  inv H5.
+  inv H6.
   econstructor; split.
   left; apply plus_one. econstructor; eauto.
   eapply external_call_symbols_preserved; eauto. apply senv_preserved.
@@ -2296,14 +2296,15 @@ Lemma transl_initial_states:
 Proof.
   intros. inv H.
   exploit function_ptr_translated; eauto. intros [tf [FIND TR]].
+  destruct TRANSL. destruct H as (A & B & C).
   econstructor; split.
   econstructor.
   eapply (Genv.init_mem_match (proj1 TRANSL)); eauto.
-  replace (prog_main tprog) with (prog_main prog).
-  rewrite symbols_preserved. eauto. 
-  destruct TRANSL. destruct H as (A & B & C). simpl in B. auto. 
+  setoid_rewrite B.
+  rewrite symbols_preserved. eauto.
   eexact FIND.
   rewrite <- H3. apply type_of_fundef_preserved. auto.
+  setoid_rewrite B.
   constructor. auto. constructor.
 Qed.
 

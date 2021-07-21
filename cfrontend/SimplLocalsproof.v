@@ -28,7 +28,7 @@ Definition match_prog (p tp: program) : Prop :=
 Lemma match_transf_program:
   forall p tp, transf_program p = OK tp -> match_prog p tp.
 Proof.
-  unfold transf_program; intros. monadInv H. 
+  unfold transf_program; intros. monadInv H.
   split; auto. apply match_transform_partial_program. rewrite EQ. destruct x; auto.
 Qed.
 
@@ -1776,15 +1776,15 @@ Inductive match_states: state -> state -> Prop :=
       match_states (State f s k e le m)
                    (State tf ts tk te tle tm)
   | match_call_state:
-      forall fd vargs k m tfd tvargs tk tm j targs tres cconv
+      forall fd vargs k m tfd tvargs tk tm j targs tres cconv id
         (TRFD: transf_fundef fd = OK tfd)
         (MCONT: forall cenv, match_cont j cenv k tk m (Mem.support m) (Mem.support tm))
         (MINJ: Mem.inject j m tm)
         (AINJ: Val.inject_list j vargs tvargs)
         (FUNTY: type_of_fundef fd = Tfunction targs tres cconv)
         (ANORM: val_casted_list vargs targs),
-      match_states (Callstate fd vargs k m)
-                   (Callstate tfd tvargs tk tm)
+      match_states (Callstate fd vargs k m id)
+                   (Callstate tfd tvargs tk tm id)
   | match_return_state:
       forall v k m tv tk tm j
         (MCONT: forall cenv, match_cont j cenv k tk m (Mem.support m) (Mem.support tm))
@@ -2068,10 +2068,16 @@ Proof.
 (* call *)
   exploit eval_simpl_expr; eauto with compat. intros [tvf [A B]].
   exploit eval_simpl_exprlist; eauto with compat. intros [CASTED [tvargs [C D]]].
-  exploit match_cont_find_funct; eauto. intros [tfd [P Q]].
+  exploit match_cont_find_funct; eauto.
+  simpl. destr. eauto.
+  intros [tfd [P Q]].
   econstructor; split.
   apply plus_one. eapply step_call with (fd := tfd).
   rewrite typeof_simpl_expr. eauto.
+
+  instantiate (1:=id).
+  instantiate (1:=tvf). admit.
+
   eauto. eauto. eauto.
   erewrite type_of_fundef_preserved; eauto.
   econstructor; eauto.
@@ -2134,26 +2140,50 @@ Proof.
 
 (* return none *)
   exploit match_envs_free_blocks; eauto. intros [tm' [P Q]].
+  exploit Mem.return_frame_parallel_inject; eauto. admit. intros [tm'' [P' Q']].
   econstructor; split. apply plus_one. econstructor; eauto.
   econstructor; eauto.
-  intros. eapply match_cont_call_cont. eapply match_cont_free_env; eauto.
+  intros. eapply match_cont_call_cont.
+  eapply match_cont_invariant.
+  eapply match_cont_incr_bounds.
+  eapply match_cont_free_env; eauto.
+  intro. eapply Mem.support_return_frame_1 in H0. apply H0.
+  intro. eapply Mem.support_return_frame_1 in P'. apply P'.
+  intros. erewrite Mem.load_return_frame; eauto.
+  eauto. eauto. eauto.
 
 (* return some *)
   exploit eval_simpl_expr; eauto with compat. intros [tv [A B]].
   exploit sem_cast_inject; eauto. intros [tv' [C D]].
   exploit match_envs_free_blocks; eauto. intros [tm' [P Q]].
+  exploit Mem.return_frame_parallel_inject; eauto. admit. intros [tm'' [P' Q']].
   econstructor; split. apply plus_one. econstructor; eauto.
   rewrite typeof_simpl_expr. monadInv TRF; simpl. eauto.
   econstructor; eauto.
-  intros. eapply match_cont_call_cont. eapply match_cont_free_env; eauto.
+  intros. eapply match_cont_call_cont.
+  eapply match_cont_invariant.
+  eapply match_cont_incr_bounds.
+  eapply match_cont_free_env; eauto.
+  intro. eapply Mem.support_return_frame_1 in H2. apply H2.
+  intro. eapply Mem.support_return_frame_1 in P'. apply P'.
+  intros. erewrite Mem.load_return_frame; eauto.
+  eauto. eauto. eauto.
 
 (* skip call *)
-  exploit match_envs_free_blocks; eauto. intros [tm' [P Q]].
+  exploit match_envs_free_blocks; eauto. intros [tm'1 [P Q]].
+  exploit Mem.return_frame_parallel_inject; eauto. admit. intros [tm'' [P' Q']].
   econstructor; split. apply plus_one. econstructor; eauto.
   eapply match_cont_is_call_cont; eauto.
   monadInv TRF; auto.
   econstructor; eauto.
-  intros. apply match_cont_change_cenv with (cenv_for f); auto. eapply match_cont_free_env; eauto.
+  intros. apply match_cont_change_cenv with (cenv_for f); auto.
+  eapply match_cont_invariant.
+  eapply match_cont_incr_bounds.
+  eapply match_cont_free_env; eauto.
+  intro. eapply Mem.support_return_frame_1 in H1. apply H1.
+  intro. eapply Mem.support_return_frame_1 in P'. apply P'.
+  intros. erewrite Mem.load_return_frame; eauto.
+  eauto. eauto. eauto.
 
 (* switch *)
   exploit eval_simpl_expr; eauto with compat. intros [tv [A B]].
@@ -2197,11 +2227,13 @@ Proof.
   generalize EQ; intro EQ'; monadInv EQ'.
   assert (list_norepet (var_names (fn_params f ++ fn_vars f))).
     unfold var_names. rewrite map_app. auto.
+  exploit Mem.alloc_frame_parallel_inject; eauto.
+  intros (tm' & p' & ALL & INJ).
   exploit match_envs_alloc_variables; eauto.
     instantiate (1 := cenv_for_gen (addr_taken_stmt f.(fn_body)) (fn_params f ++ fn_vars f)).
-    intros. eapply cenv_for_gen_by_value; eauto. rewrite VSF.mem_iff. eexact H4.
-    intros. eapply cenv_for_gen_domain. rewrite VSF.mem_iff. eexact H3.
-  intros [j' [te [tm0 [A [B [C [D [E [F G]]]]]]]]].
+    intros. eapply cenv_for_gen_by_value; eauto. rewrite VSF.mem_iff. eexact H5.
+    intros. eapply cenv_for_gen_domain. rewrite VSF.mem_iff. eexact H4.
+  intros [j' [te [tm'' [A [B [C [D [E [F G]]]]]]]]].
   assert (K: list_forall2 val_casted vargs (map snd (fn_params f))).
   { apply val_casted_list_params. unfold type_of_function in FUNTY. congruence. }
   exploit store_params_correct.
@@ -2210,9 +2242,9 @@ Proof.
     eexact K.
     apply val_inject_list_incr with j'; eauto.
     eexact B. eexact C.
-    intros. apply (create_undef_temps_lifted id f). auto.
-    intros. destruct (create_undef_temps (fn_temps f))!id as [v|] eqn:?; auto.
-    exploit create_undef_temps_inv; eauto. intros [P Q]. elim (l id id); auto.
+    intros. apply (create_undef_temps_lifted id0 f). auto.
+    intros. destruct (create_undef_temps (fn_temps f))!id0 as [v|] eqn:?; auto.
+    exploit create_undef_temps_inv; eauto. intros [P Q]. elim (l id0 id0); auto.
   intros [tel [tm1 [P [Q [R [S T]]]]]].
   change (cenv_for_gen (addr_taken_stmt (fn_body f)) (fn_params f ++ fn_vars f))
     with (cenv_for f) in *.
@@ -2220,22 +2252,26 @@ Proof.
   intros [X [Y Z]]. auto. auto.
   econstructor; split.
   eapply plus_left. econstructor.
-  econstructor. exact Y. exact X. exact Z. simpl. eexact A. simpl. eexact Q.
+  econstructor. exact Y. exact X. exact Z. eauto. simpl. eexact A. simpl. eexact Q.
   simpl. eapply star_trans. eapply step_add_debug_params. auto. eapply forall2_val_casted_inject; eauto. eexact Q.
   eapply star_trans. eexact P. eapply step_add_debug_vars.
-  unfold remove_lifted; intros. rewrite List.filter_In in H3. destruct H3.
-  apply negb_true_iff in H4. eauto.
+  unfold remove_lifted; intros. rewrite List.filter_In in H4. destruct H4.
+  apply negb_true_iff in H5. eauto.
   reflexivity. reflexivity. traceEq.
   econstructor; eauto.
-  eapply match_cont_invariant; eauto.
-  intros. transitivity (Mem.load chunk m0 b 0).
+  eapply match_cont_invariant with (m:= m); eauto.
+  eapply match_cont_incr_bounds; eauto.
+  intro. eapply Mem.support_alloc_frame_1 in H1. apply H1.
+  intro. eapply Mem.support_alloc_frame_1 in ALL. apply ALL.
+  intros. transitivity (Mem.load chunk m2 b 0).
   eapply bind_parameters_load; eauto. intros.
-  exploit alloc_variables_range. eexact H1. eauto.
+  exploit alloc_variables_range. eexact H2. eauto.
   unfold empty_env. rewrite PTree.gempty. intros [?|?]. congruence.
-  red; intros; subst b'. destruct H7. congruence.
+  red; intros; subst b'. destruct H8. congruence.
   eapply alloc_variables_load; eauto.
+  erewrite Mem.load_alloc_frame; eauto.
   apply compat_cenv_for.
-rewrite (bind_parameters_support _ _ _ _ _ _ H2). apply Mem.sup_include_refl.
+  rewrite (bind_parameters_support _ _ _ _ _ _ H3). apply Mem.sup_include_refl.
   rewrite T; auto. apply Mem.sup_include_refl.
 
 (* external function *)
@@ -2258,7 +2294,7 @@ rewrite (bind_parameters_support _ _ _ _ _ _ H2). apply Mem.sup_include_refl.
   apply plus_one. econstructor.
   econstructor; eauto with compat.
   eapply match_envs_set_opttemp; eauto.
-Qed.
+Admitted.
 
 Lemma initial_states_simulation:
   forall S, initial_state prog S ->
@@ -2274,6 +2310,7 @@ Proof.
   generalize (match_program_main (proj1 TRANSF)). simpl; auto.
   eauto.
   rewrite <- H3; apply type_of_fundef_preserved; auto.
+  replace (prog_main tprog) with (prog_main prog).
   econstructor; eauto.
   intros. instantiate (1 := Mem.flat_inj (Mem.support m0)).
   econstructor. instantiate (1 := Mem.support m0).
@@ -2286,6 +2323,7 @@ Proof.
   apply Mem.sup_include_refl. apply Mem.sup_include_refl.
   eapply Genv.initmem_inject; eauto.
   constructor.
+  generalize (match_program_main (proj1 TRANSF)). simpl; auto.
 Qed.
 
 Lemma final_states_simulation:

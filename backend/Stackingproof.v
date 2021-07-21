@@ -1048,7 +1048,7 @@ Lemma function_prologue_correct:
   Val.has_type parent Tptr -> Val.has_type ra Tptr ->
   m0' |= minjection j m0 ** globalenv_inject ge j ** P ->
   exists j', exists rs',exists path', exists m1', exists m2', exists sp', exists m3', exists m4', exists m5',
-     Mem.alloc_frame m0' id = (m1',path')
+     Mem.alloc_frame m0' 1%positive = (m1',path')
   /\ Mem.alloc m1' 0 tf.(fn_stacksize) = (m2', sp')
   /\ store_stack m2' (Vptr sp' Ptrofs.zero) Tptr tf.(fn_link_ofs) parent = Some m3'
   /\ store_stack m3' (Vptr sp' Ptrofs.zero) Tptr tf.(fn_retaddr_ofs) ra = Some m4'
@@ -1069,7 +1069,7 @@ Local Opaque b fe.
   generalize (frame_env_range b) (frame_env_aligned b). replace (make_env b) with fe by auto. simpl.
   intros LAYOUT1 LAYOUT2.
   (* Allocation step *)
-  destruct (Mem.alloc_frame m0' id) as [m1' path'] eqn:ALLOCF'.
+  destruct (Mem.alloc_frame m0' 1%positive) as [m1' path'] eqn:ALLOCF'.
   exploit alloc_frame_rule. eexact SEP. eauto. eexact ALLOCF'.
   clear SEP. intro SEP.
   destruct (Mem.alloc m1' 0 (fe_size fe)) as [m2' sp'] eqn:ALLOC'.
@@ -1796,7 +1796,7 @@ Inductive match_states: Linear.state -> Mach.state -> Prop :=
                  ** minjection j m
                  ** globalenv_inject ge j),
       match_states (Linear.Callstate cs f ls m id)
-                   (Mach.Callstate cs' fb rs m' id)
+                   (Mach.Callstate cs' fb rs m')
   | match_states_return:
       forall cs ls m cs' rs m' j sg
         (STACKS: match_stacks j cs cs' sg)
@@ -2126,7 +2126,6 @@ Proof.
   rewrite (match_program_main TRANSF).
   rewrite symbols_preserved. eauto.
   set (j := Mem.flat_inj (Mem.support m0)).
-  rewrite (match_program_main TRANSF).
   eapply match_states_call with (j := j); eauto.
   constructor. red; intros. rewrite H3, loc_arguments_main in H. contradiction.
   red; simpl; auto.
