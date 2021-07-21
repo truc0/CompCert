@@ -332,12 +332,12 @@ Inductive match_states: state -> state -> Prop :=
       match_states (State s f (Vptr sp Ptrofs.zero) pc rs m)
                    (State s' (transf_function f) (Vptr sp Ptrofs.zero) pc rs' m')
   | match_states_call:
-      forall s f args m s' args' m',
+      forall s f args m s' args' m' id,
       match_stackframes s s' ->
       Val.lessdef_list args args' ->
       Mem.extends m m' ->
-      match_states (Callstate s f args m)
-                   (Callstate s' (transf_fundef f) args' m')
+      match_states (Callstate s f args m id)
+                   (Callstate s' (transf_fundef f) args' m' id)
   | match_states_return:
       forall s v m s' v' m',
       match_stackframes s s' ->
@@ -375,7 +375,7 @@ Inductive match_states: state -> state -> Prop :=
 Definition measure (st: state) : nat :=
   match st with
   | State s f sp pc rs m => (List.length s * (niter + 2) + return_measure f.(fn_code) pc + 1)%nat
-  | Callstate s f args m => 0%nat
+  | Callstate s f args m id => 0%nat
   | Returnstate s v m => (List.length s * (niter + 2))%nat
   end.
 
@@ -454,12 +454,21 @@ Proof.
   TransfInstr.
 + (* call turned tailcall *)
   assert ({ m'' | Mem.free m' sp0 0 (fn_stacksize (transf_function f)) = Some m''}).
-    apply Mem.range_perm_free. rewrite stacksize_preserved. rewrite H7.
+    apply Mem.range_perm_free. rewrite stacksize_preserved. rewrite H8.
     red; intros; extlia.
   destruct X as [m'' FREE].
-  left. exists (Callstate s' (transf_fundef fd) (rs'##args) m''); split.
-  eapply exec_Itailcall; eauto. apply sig_preserved.
+  assert ({ m''' | Mem.return_frame m'' = Some m'''}).
+  apply Mem.active_return_frame.
+  destruct X as [m''' RETURN].
+  left. exists (Callstate s' (transf_fundef fd) (rs'##args) m''' id); split.
+  eapply exec_Itailcall; eauto.
+  {
+    destruct ros; simpl in *; auto.
+    generalize (RLD r). intro. inv H2; congruence.
+  }
+  apply sig_preserved.
   constructor. eapply match_stackframes_tail; eauto. apply regs_lessdef_regs; auto.
+  eapply Mem.return_frame_right_extend; eauto.
   eapply Mem.free_right_extends; eauto.
   rewrite stacksize_preserved. rewrite H7. intros. extlia.
 + (* call that remains a call *)

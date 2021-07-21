@@ -2372,6 +2372,250 @@ Proof.
   exploit store_valid_access_3. eexact H2. intros [P Q]. exact Q.
 Qed.
 
+(** ** Properties related to [alloc_frame]. *)
+
+Section ALLOC_FRAME.
+Variable m1: mem.
+Variable m2: mem.
+Variable id: ident.
+Variable path: path.
+Hypothesis ALLOC_FRAME: alloc_frame m1 id = (m2,path).
+
+Lemma support_alloc_frame :
+    support m2 = sup_incr_frame (support m1) id.
+Proof.
+  intros. inv ALLOC_FRAME. reflexivity. Qed.
+
+Lemma support_alloc_frame_1 :
+  forall b, sup_In b (support m1) <-> sup_In b (support m2).
+Proof.
+  generalize support_alloc_frame. intro.
+  rewrite H. intro.
+  apply sup_incr_frame_in.
+Qed.
+
+Lemma stack_alloc_frame :
+    (stack(support m2), path) = next_stree (stack (support m1)) id.
+Proof.
+  intros. inv ALLOC_FRAME. simpl.
+  unfold sup_incr_frame. unfold sup_npath. unfold npath.
+  destruct (next_stree (stack (support m1))).
+  reflexivity.
+Qed.
+
+Lemma path_alloc_frame:
+    path = sup_npath (support m1) id.
+Proof.
+  intros. inv ALLOC_FRAME. reflexivity. Qed.
+
+Lemma cpath_alloc_frame:
+   path = cpath (stack (support m2)).
+Proof.
+  exploit next_stree_cpath; eauto.
+  rewrite stack_alloc_frame. eauto.
+Qed.
+
+(*
+Theorem nextblock_alloc_frame:
+  nextblock m2 = (Stack (Some id) path 1).
+Proof.
+  Admitted.
+*)
+
+Theorem valid_block_alloc_frame_1:
+  forall b, valid_block m1 b -> valid_block m2 b.
+Proof.
+  unfold valid_block. rewrite support_alloc_frame.
+  intro. eapply sup_incr_frame_in.
+Qed.
+
+Theorem valid_block_alloc_frame_2:
+  forall b, valid_block m2 b -> valid_block m1 b.
+Proof.
+  unfold valid_block. rewrite support_alloc_frame.
+  intro. eapply sup_incr_frame_in.
+Qed.
+
+Local Hint Resolve valid_block_alloc_frame_1 valid_block_alloc_frame_2: mem.
+
+Theorem perm_alloc_frame:
+  forall b ofs k p,
+  perm m1 b ofs k p <->
+  perm m2 b ofs k p.
+Proof.
+  inv ALLOC_FRAME. simpl. unfold perm. simpl.
+  reflexivity.
+Qed.
+
+Theorem valid_access_alloc_frame:
+  forall chunk b ofs p,
+  valid_access m1 chunk b ofs p <->
+  valid_access m2 chunk b ofs p.
+Proof.
+  inv ALLOC_FRAME. unfold valid_access. unfold range_perm.
+  unfold perm. simpl. reflexivity.
+Qed.
+
+Theorem load_alloc_frame:
+  forall chunk b ofs,
+  load chunk m2 b ofs = load chunk m1 b ofs.
+Proof.
+  intros. unfold load.
+  destruct (valid_access_dec m2 chunk b ofs Readable).
+  rewrite pred_dec_true.
+  inv ALLOC_FRAME. simpl. reflexivity.
+  apply valid_access_alloc_frame. auto.
+  rewrite pred_dec_false; auto.
+  red; intro; elim n. eapply valid_access_alloc_frame; eauto.
+Qed.
+
+Theorem load_alloc_frame_2:
+  forall chunk b ofs v,
+  load chunk m2 b ofs = Some v -> load chunk m1 b ofs = Some v.
+Proof.
+  intros.
+  unfold load. rewrite pred_dec_true.
+  rewrite (load_result _ _ _ _ _ H).
+  inv ALLOC_FRAME. reflexivity.
+  apply valid_access_alloc_frame. eauto with mem.
+Qed.
+
+Theorem loadbytes_alloc_frame:
+  forall b ofs n,
+  loadbytes m2 b ofs n = loadbytes m1 b ofs n.
+Proof.
+  intros. unfold loadbytes.
+  destruct (range_perm_dec m2 b ofs (ofs + n) Cur Readable).
+  rewrite pred_dec_true.
+  inv ALLOC_FRAME. reflexivity.
+  red; intros. eapply perm_alloc_frame; eauto.
+  rewrite pred_dec_false; auto.
+  red; intros. elim n0; red; intros.
+  eapply perm_alloc_frame; eauto.
+Qed.
+
+End ALLOC_FRAME.
+
+(** ** Properties related to [return_frame]. *)
+
+Lemma active_return_frame : forall m,
+    is_active(stack (support m)) -> {m'|return_frame m = Some m'}.
+Proof.
+  intros; unfold return_frame.
+  destruct (is_active_dec (stack(support m))).
+  econstructor; eauto.
+  congruence.
+Qed.
+
+Section RETURN_FRAME.
+
+Variable m1: mem.
+Variable m2: mem.
+Hypothesis RETURN_FRAME: return_frame m1 = Some m2.
+
+Lemma return_frame_active : forall m m',
+    return_frame m = Some m' ->
+    is_active (stack (support m)).
+Proof.
+  intros. unfold return_frame in H.
+  destr_in H.
+Qed.
+
+Lemma support_return_frame :
+    sup_return_frame (support m1) = Some (support m2).
+Proof.
+  unfold return_frame in RETURN_FRAME.
+  destr_in RETURN_FRAME. inv RETURN_FRAME.
+  simpl.
+  apply sup_return_refl'. auto.
+Qed.
+
+Lemma support_return_frame_1:
+  forall b, (sup_In b (support m1)) <-> (sup_In b (support m2)).
+Proof.
+  intros. generalize support_return_frame. intro.
+  apply sup_return_frame_in. eauto.
+Qed.
+
+Lemma stack_return_frame:
+  exists path,
+  return_stree (stack(support m1)) = Some (stack (support m2),path).
+Proof.
+  intros.
+  generalize support_return_frame.
+  intro. unfold sup_return_frame in H.
+  destr_in H. destruct p. inv H. eauto.
+Qed.
+
+Lemma sup_include_return_frame :
+  sup_include (support m1) (support m2).
+Proof.
+  unfold sup_include. apply support_return_frame_1.
+Qed.
+
+Theorem valid_block_return_frame_1:
+  forall b, valid_block m1 b -> valid_block m2 b.
+Proof.
+  unfold valid_block. apply support_return_frame_1.
+Qed.
+
+Theorem valid_block_return_frame_2:
+  forall b, valid_block m2 b -> valid_block m1 b.
+Proof.
+    unfold valid_block. apply support_return_frame_1.
+Qed.
+
+Local Hint Resolve valid_block_return_frame_1 valid_block_return_frame_2: mem.
+
+Theorem perm_return_frame:
+  forall b ofs k p,
+  perm m1 b ofs k p <->
+  perm m2 b ofs k p.
+Proof.
+  inv RETURN_FRAME.
+  unfold return_frame in H0. destr_in H0.
+  inv H0. intros.
+  reflexivity.
+Qed.
+
+Theorem valid_access_return_frame:
+  forall chunk b ofs p,
+  valid_access m1 chunk b ofs p <->
+  valid_access m2 chunk b ofs p.
+Proof.
+  split.
+  intros. inv H. constructor; auto with mem.
+  red; intros. eapply perm_return_frame; eauto.
+  intros. inv H. constructor; auto with mem.
+  red; intros. eapply perm_return_frame; eauto.
+Qed.
+
+Theorem load_return_frame:
+  forall chunk b ofs,
+  load chunk m2 b ofs = load chunk m1 b ofs.
+Proof.
+  inv RETURN_FRAME.
+  unfold return_frame in H0. destr_in H0.
+  inv H0. intros.
+  reflexivity.
+Qed.
+
+Theorem loadbytes_return_frame:
+  forall b ofs n,
+  loadbytes m2 b ofs n = loadbytes m1 b ofs n.
+Proof.
+  inv RETURN_FRAME.
+  unfold return_frame in H0. destr_in H0.
+  inv H0. intros.
+  reflexivity.
+Qed.
+
+End RETURN_FRAME.
+
+Local Hint Resolve valid_block_return_frame_1 valid_block_return_frame_2
+             perm_return_frame
+             valid_access_return_frame: mem.
+
 (** ** Properties related to [alloc]. *)
 
 Section ALLOC.
@@ -3457,6 +3701,45 @@ Proof.
   destruct (NMap.elt_eq b0 b1); destruct (NMap.elt_eq b3 b2); subst; eapply mi_memval0; eauto.
 Qed.
 
+(*
+Lemma alloc_frame_left_inj:
+  forall f m1 m2 m1' id path,
+  mem_inj f m1 m2 ->
+  alloc_frame m1 id = (m1',path) ->
+  mem_inj f m1' m2.
+Proof.
+  intros. inversion H. constructor; inv H0; eauto.
+Qed.
+
+Lemma alloc_frame_right_inj:
+  forall f m1 m2 m2' id path,
+  mem_inj f m1 m2 ->
+  alloc_frame m2 id= (m2',path) ->
+  mem_inj f m1 m2'.
+Proof.
+  intros. inversion H. constructor; inv H0; eauto.
+Qed.
+
+Lemma return_frame_left_inj:
+  forall f m1 m2 m1',
+  mem_inj f m1 m2 ->
+  return_frame m1 = Some m1' ->
+  mem_inj f m1' m2.
+Proof.
+  intros. unfold return_frame in H0. destr_in H0.
+  inversion H. constructor; inv H0; eauto.
+Qed.
+
+Lemma return_frame_right_inj:
+  forall f m1 m2 m2',
+  mem_inj f m1 m2 ->
+  return_frame m2 = Some m2' ->
+  mem_inj f m1 m2'.
+Proof.
+  intros. unfold return_frame in H0. destr_in H0.
+  inversion H. constructor; inv H0; eauto.
+Qed.
+*)
 (** Preservation of allocations *)
 
 Lemma alloc_right_inj:
@@ -3839,6 +4122,47 @@ Proof.
   eapply storebytes_outside_inj; eauto.
   unfold inject_id; intros. inv H2. eapply H1; eauto. lia.
   intros. eauto using perm_storebytes_2.
+Qed.
+
+Theorem alloc_frame_extends:
+  forall m1 m2 m1' id path,
+    extends m1 m2 ->
+    alloc_frame m1 id = (m1',path) ->
+    exists m2',
+      alloc_frame m2 id = (m2',path)
+      /\ extends m1' m2'.
+Proof.
+  intros. inv H.
+  case_eq (alloc_frame m2 id). intros m2' p H1.
+  exists m2'. split.
+  apply path_alloc_frame in H0.
+  apply path_alloc_frame in H1.
+  subst. congruence.
+  inv H0. inv H1.
+  constructor; eauto.
+  - simpl. congruence.
+  - inv mext_inj0. constructor;auto.
+Qed.
+
+Theorem return_frame_parallel_extends:
+  forall m1 m2 m1',
+    extends m1 m2 ->
+    return_frame m1 = Some m1' ->
+    exists m2',
+      return_frame m2 = Some m2'
+      /\extends m1' m2'.
+Proof.
+  intros. inv H.
+  apply return_frame_active in H0 as H1.
+  rewrite mext_sup0 in H1.
+  apply active_return_frame in H1. destruct H1 as (m2' & H1).
+  exists m2'. split. auto.
+  unfold return_frame in *. destr_in H0. destr_in H1.
+  inv H0. inv H1.
+  constructor; simpl.
+  - congruence.
+  - inv mext_inj0. constructor; eauto.
+  - eauto.
 Qed.
 
 Theorem alloc_extends:
@@ -4695,6 +5019,50 @@ Proof.
   split. unfold f'; apply dec_eq_true.
 (* image of others *)
   intros. unfold f'; apply dec_eq_false; auto.
+Qed.
+
+Theorem alloc_frame_parallel_inject :
+  forall f m1 m2 id m1' p1,
+    inject f m1 m2 ->
+    alloc_frame m1 id = (m1',p1) ->
+    exists m2' p2, alloc_frame m2 id = (m2',p2) /\
+    inject f m1' m2'.
+Proof.
+  intros. case_eq (alloc_frame m2 id). intros. exists m,p.
+  split. auto.
+  inv H0. inv H1. inv H.
+  constructor; eauto.
+  - inv mi_inj0. constructor; eauto.
+  - unfold valid_block. simpl. intros.
+    apply mi_freeblocks0. intro. apply H.
+    apply sup_incr_frame_in. auto.
+  - unfold valid_block in *. simpl.
+    intros. exploit mi_mappedblocks0; eauto.
+    apply sup_incr_frame_in.
+Qed.
+
+Theorem return_frame_parallel_inject :
+  forall f m1 m2 m1',
+    inject f m1 m2 ->
+    return_frame m1 = Some m1' ->
+    is_active (stack(support m2)) ->
+    exists m2',
+      return_frame m2 = Some m2' /\ inject f m1' m2'.
+Proof.
+  intros.
+  apply active_return_frame in H1. destruct H1 as [m2' H1].
+  exists m2'. split. auto. unfold return_frame in *.
+  destr_in H0. inv H0. destr_in H1. inv H1.
+  inv H. constructor; eauto.
+  - inv mi_inj0. constructor; eauto.
+  - unfold valid_block. simpl. intros.
+    apply mi_freeblocks0. intro. apply H.
+    apply sup_return_frame_in with (s := support m1); eauto.
+    apply sup_return_refl'. auto.
+  - unfold valid_block in *. simpl.
+    intros. exploit mi_mappedblocks0; eauto.
+    apply sup_return_frame_in with (s := support m2); eauto.
+    apply sup_return_refl'. auto.
 Qed.
 
 Theorem alloc_parallel_inject:
