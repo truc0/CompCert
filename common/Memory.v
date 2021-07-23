@@ -415,6 +415,167 @@ Proof.
   - inv H0.
 Qed.
 
+Inductive struct_eq : stree -> stree -> Prop :=
+  |struct_eq_leaf : forall fi bl1 bl2,
+      struct_eq (Node fi bl1 nil None) (Node fi bl2 nil None)
+  |struct_eq_dead_node :
+     forall fi bl1 bl2 tl1 tl2,
+       list_forall2 struct_eq tl1 tl2 ->
+       struct_eq (Node fi bl1 tl1 None) (Node fi bl2 tl2 None)
+  |struct_eq_active_node :
+     forall fi bl1 bl2 tl1 tl2 head1 head2,
+       list_forall2 struct_eq tl1 tl2 ->
+       struct_eq head1 head2 ->
+       struct_eq (Node fi bl1 tl1 (Some head1)) (Node fi bl2 tl2 (Some head2)).
+
+
+Theorem struct_eq_refl : forall s , struct_eq s s.
+Proof.
+  induction s using stree_ind.
+  intros. destruct s.
+  destruct o; destruct l0.
+  - apply struct_eq_active_node. constructor.
+    apply H. simpl. left. auto.
+  - apply struct_eq_active_node.
+    {
+      constructor. apply H. simpl. auto.
+      induction l0. constructor.
+      constructor. apply H. simpl. auto.
+      apply IHl0. intros. apply H.
+      simpl in H0. simpl. inv H0. auto. inv H1; auto.
+    }
+    apply H. simpl. auto.
+  - constructor.
+  - apply struct_eq_dead_node.
+    constructor. apply H. simpl. auto.
+    induction l0. constructor.
+    constructor. apply H. simpl. auto.
+    apply IHl0. intros.
+    apply H. simpl. simpl in H0.
+    destruct H0. inv H0. destruct H0; auto.
+Qed.
+
+Lemma list_forall2_struct_eq_refl : forall l,
+    list_forall2 struct_eq l l.
+Proof.
+  induction l; constructor.
+  apply struct_eq_refl. auto.
+Qed.
+
+Theorem struct_eq_comm : forall s1 s2, struct_eq s1 s2 -> struct_eq s2 s1.
+Proof.
+  induction s1 using stree_ind.
+  intros. inv H0.
+  constructor.
+  constructor.
+   eapply list_forall2_ind with (P:= fun t1 t2 => In t1 tl1 /\ struct_eq t1 t2) (P0:= fun l1 l2 => list_forall2 struct_eq l2 l1 ).
+   constructor.
+   intros. inv H0. constructor; auto. apply H. simpl. auto. auto.
+   eapply list_forall2_imply; eauto.
+  constructor.
+   eapply list_forall2_ind with (P:= fun t1 t2 => In t1 tl1 /\ struct_eq t1 t2) (P0:= fun l1 l2 => list_forall2 struct_eq l2 l1 ).
+   constructor.
+   intros. inv H0. constructor; auto. apply H. simpl. auto. auto.
+   eapply list_forall2_imply; eauto.
+   apply H. simpl. auto. auto.
+Qed.
+
+Theorem list_forall2_trans : forall {A:Type} (l2 l1 l3 : list A) (P: A -> A -> Prop),
+    (forall a1 a2 a3, In a1 l1 -> P a1 a2 -> P a2 a3 -> P a1 a3) ->
+    list_forall2 P l1 l2 ->
+    list_forall2 P l2 l3 ->
+    list_forall2 P l1 l3.
+Proof.
+  induction l2; intros; inv H0; inv H1; constructor.
+  eapply H. left. auto. all: eauto.
+  eapply IHl2. intros. exploit H. right. eauto. all: eauto.
+Qed.
+
+Theorem struct_eq_trans : forall s1 s2 s3, struct_eq s1 s2 -> struct_eq s2 s3 -> struct_eq s1 s3.
+Proof.
+  induction s1 using stree_ind.
+  intros. inv H0. inv H1.
+  - constructor.
+  - inv H5. constructor.
+  - destruct s3. inv H1. inv H2. constructor.
+    constructor.
+    eapply list_forall2_trans.
+    intros. eapply H. simpl. auto. all : eauto.
+  - destruct s3. inv H1. inv H2. constructor. inv H5. constructor.
+    eapply H; eauto. simpl. auto.
+    constructor. inv H5. constructor. eapply H; eauto. simpl. auto.
+    eapply list_forall2_trans.
+    intros. eapply H. simpl. auto. all : eauto.
+    eapply H; eauto. simpl. auto.
+Qed.
+
+Lemma next_block_stree_struct_eq: forall s path s' f pos,
+    next_block_stree s = (f,pos,path,s') -> struct_eq s s'.
+Proof.
+  induction s. intros. destruct s. destruct s'.
+  inv H0. destr_in H2.
+  destruct (next_block_stree s) eqn:?.
+  destruct p. inv H2.
+  constructor. apply list_forall2_struct_eq_refl.
+  eapply H; eauto. simpl. auto.
+  inv H2. constructor. apply list_forall2_struct_eq_refl.
+Qed.
+
+
+Definition is_active (s:stree) : Prop :=
+  match s with
+    |Node _ _ _ (Some _) => True
+    |_ => False
+  end.
+
+Lemma active_struct_eq : forall s1 s2,
+    struct_eq s1 s2 ->
+    is_active s1 <-> is_active s2.
+Proof.
+  intros. inv H; reflexivity.
+Qed.
+
+Lemma next_stree_struct_eq: forall s1 s2 id p1 p2 s1' s2',
+    struct_eq s1 s2 ->
+    next_stree s1 id = (s1',p1) ->
+    next_stree s2 id = (s2',p2) ->
+    p1 = p2 /\ struct_eq s1' s2'.
+Proof.
+  induction s1. intros.
+  destruct s1; destruct s2. inv H0.
+  - inv H1. inv H2. split. auto. constructor. constructor. constructor.
+  - inv H1. inv H2. split.
+    apply list_forall2_length in H4. congruence.
+    constructor. auto. constructor.
+  - inv H1. inv H2. destr_in H3. destr_in H1.
+    inv H3. inv H1.
+    apply list_forall2_length in H5 as H6.
+    exploit H; eauto. simpl. auto. intros [H1 H2].
+    split. congruence. constructor. auto. auto.
+Qed.
+
+Lemma return_stree_struct_eq: forall s1 s2 s1' p,
+    struct_eq s1 s2 ->
+    return_stree s1 = Some (s1',p) ->
+    exists s2',
+    return_stree s2 = Some (s2',p) /\
+    struct_eq s1' s2'.
+Proof.
+  induction s1. intros.
+  destruct s1; destruct s2. inv H0; inv H1.
+  repeat destr_in H2.
+  + exploit H; eauto. simpl. auto. intros (head2' & H5 & H6).
+    exists (Node f0 l1 l2 (Some head2')). split. simpl. rewrite H5.
+    apply list_forall2_length in H4 as H7. rewrite H7. auto.
+    constructor. auto. auto.
+  + exists (Node f0 l1 (l2++[head2]) None). split.
+    simpl. destruct head1. inv Heqo. repeat destr_in H1.
+    inv H11. simpl. apply list_forall2_length in H4 as H7. rewrite H7. auto.
+    simpl. apply list_forall2_length in H4 as H7. rewrite H7. auto.
+    constructor. apply list_forall2_app. auto.
+    constructor. auto. constructor.
+Qed.
+
 End STREE.
 
 (* Declare Module Sup: SUP. *)
@@ -538,12 +699,6 @@ Definition sup_return_frame (s:sup) : option sup :=
     |None => None
   end.
 
-Definition is_active (s:stree) : Prop :=
-  match s with
-    |Node _ _ _ (Some _) => True
-    |_ => False
-  end.
-
 Definition sup_return_frame' (s:sup) : sup :=
   match sup_return_frame s with
     |Some s' => s'
@@ -646,6 +801,29 @@ Record mem' : Type := mkmem {
 Definition mem := mem'.
 
 Definition nextblock (m:mem) := fresh_block (support m).
+
+Lemma nextblock_stack : forall m, exists f path pos,
+      nextblock m = Stack f path pos.
+Proof.
+  intros. unfold nextblock. unfold fresh_block.
+  destruct (next_block_stree (stack (support m))).
+  destruct p. destruct p.
+  eauto.
+Qed.
+
+Lemma stackeq_nextblock : forall m1 m2,
+    stack(support m1) = stack(support m2) ->
+    nextblock m1 = nextblock m2.
+Proof.
+  intros. unfold nextblock. unfold fresh_block.
+  rewrite H. simpl. reflexivity.
+Qed.
+
+Definition empty_stack (m:mem) : Prop :=
+  match stack (support m) with
+    |Node _ _ _ None => True
+    |_ => False
+  end.
 
 Lemma mkmem_ext:
  forall cont1 cont2 acc1 acc2 sup1 sup2 a1 a2 b1 b2 c1 c2,
@@ -2415,12 +2593,12 @@ Proof.
   rewrite stack_alloc_frame. eauto.
 Qed.
 
-(*
+
 Theorem nextblock_alloc_frame:
   nextblock m2 = (Stack (Some id) path 1).
 Proof.
   Admitted.
-*)
+
 
 Theorem valid_block_alloc_frame_1:
   forall b, valid_block m1 b -> valid_block m2 b.
@@ -4311,6 +4489,85 @@ Proof.
   intros []; eauto using valid_pointer_extends.
 Qed.
 
+(** * Stack Structure Equality *)
+
+Definition stackseq (m1 m2:mem) :Prop :=
+  struct_eq (m1.(support).(stack)) (m2.(support).(stack)).
+
+Theorem alloc_stackseq : forall m1 lo hi b m1',
+    alloc m1 lo hi = (m1',b) ->
+    stackseq m1 m1'.
+Proof.
+  intros. inv H. unfold stackseq. simpl.
+  unfold sup_incr. destruct (next_block_stree (stack(support m1))) eqn:?.
+  destruct p. destruct p.
+  apply next_block_stree_struct_eq in Heqp. auto.
+Qed.
+
+Theorem store_stackseq : forall chunk m1 b ofs v m2,
+    store chunk m1 b ofs v = (Some m2) ->
+    stackseq m1 m2.
+Proof.
+  intros. unfold stackseq.
+  rewrite (support_store _ _ _ _ _ _ H).
+  apply struct_eq_refl.
+Qed.
+
+Theorem alloc_parallel_stackseq :
+  forall m1 m2 lo1 hi1 lo2 hi2 b1 b2 m1' m2',
+    alloc m1 lo1 hi1 = (m1',b1) ->
+    alloc m2 lo2 hi2 = (m2',b2) ->
+    stackseq m1 m2 ->
+    stackseq m1' m2'.
+Proof.
+  intros.
+  apply alloc_stackseq in H.
+  apply alloc_stackseq in H0.
+  eapply struct_eq_trans; eauto.
+  eapply struct_eq_trans; eauto.
+  eapply struct_eq_comm; eauto.
+Qed.
+
+Theorem alloc_frame_parallel_stackseq :
+  forall m1 m2 m1' m2' id p1 p2,
+    stackseq m1 m2 ->
+    alloc_frame m1 id = (m1',p1) ->
+    alloc_frame m2 id = (m2',p2) ->
+    p1 = p2 /\
+    stackseq m1'  m2'.
+Proof.
+  intros.
+  apply support_alloc_frame in H0 as H2.
+  apply support_alloc_frame in H1 as H3.
+  unfold sup_incr_frame in *. destr_in H2. destr_in H3.
+  exploit next_stree_struct_eq; eauto.
+  intros [A B]. split.
+  - rewrite (path_alloc_frame _ _ _ _ H0).
+    rewrite (path_alloc_frame _ _ _ _ H1).
+    unfold sup_npath. unfold npath. repeat destr.
+  - unfold stackseq. rewrite H2. rewrite H3. simpl. auto.
+Qed.
+
+Theorem return_frame_parallel_stackseq :
+  forall m1 m2 m1',
+    stackseq m1 m2 ->
+    return_frame m1 = Some m1' ->
+    exists m2',
+    return_frame m2 = Some m2' /\
+    stackseq m1' m2'.
+Proof.
+  intros.
+  apply support_return_frame in H0 as H1. unfold sup_return_frame in H1.
+  repeat destr_in H1. exploit return_stree_struct_eq; eauto.
+  intros (s2' & A & B).
+  unfold return_frame. apply return_frame_active in H0.
+  apply active_struct_eq in H. apply H in H0.
+  destr. eexists. split. eauto. unfold stackseq.
+  simpl. unfold sup_return_frame'. unfold sup_return_frame.
+  rewrite A. inv H3. simpl. auto.
+Qed.
+
+
 (** * Memory injections *)
 
 (** A memory state [m1] injects into another memory state [m2] via the
@@ -5065,6 +5322,57 @@ Proof.
     apply sup_return_refl'. auto.
 Qed.
 
+Theorem alloc_parallel_stackeq :
+  forall m1 m2 lo1 hi1 lo2 hi2 b1 b2 m1' m2',
+    alloc m1 lo1 hi1 = (m1',b1) ->
+    alloc m2 lo2 hi2 = (m2',b2) ->
+    stack(support m1) = stack(support m2) ->
+    stack(support m1') = stack (support m2')
+    /\ b1 = b2.
+Proof.
+  intros. inv H. inv H0.
+  simpl. unfold sup_incr. rewrite H1. simpl. split.
+  destruct (next_block_stree (stack(support m2))).
+  reflexivity. apply stackeq_nextblock.
+  auto.
+Qed.
+
+Theorem alloc_frame_parallel_stackeq :
+  forall m1 m2 id m1' m2' p1 p2,
+    stack (support m1) = stack (support m2) ->
+    alloc_frame m1 id = (m1',p1) ->
+    alloc_frame m2 id = (m2',p2) ->
+    p1 = p2 /\
+    stack (support m1') = stack (support m2').
+Proof.
+  intros. split.
+  rewrite (path_alloc_frame _ _ _ _ H0).
+  rewrite (path_alloc_frame _ _ _ _ H1).
+  unfold sup_npath. unfold npath. rewrite H. reflexivity.
+  rewrite (support_alloc_frame _ _ _ _ H0).
+  rewrite (support_alloc_frame _ _ _ _ H1).
+  unfold sup_incr_frame.
+  rewrite H. destruct (next_stree (stack (support m2))).
+  reflexivity.
+Qed.
+
+Theorem return_frame_parallel_stackeq :
+  forall m1 m2 m1' m2',
+    return_frame m1 = Some m1' ->
+    return_frame m2 = Some m2' ->
+    stack (support m1) = stack (support m2) ->
+    stack (support m1') = stack (support m2').
+Proof.
+  intros.
+  apply support_return_frame in H.
+  apply support_return_frame in H0.
+  unfold sup_return_frame in *.
+  rewrite H1 in H.
+  destruct (return_stree (stack(support m2))).
+  destruct p. inv H. inv H0. reflexivity.
+  inv H.
+Qed.
+
 Theorem alloc_parallel_inject:
   forall f m1 m2 lo1 hi1 m1' b1 lo2 hi2,
   inject f m1 m2 ->
@@ -5217,6 +5525,8 @@ Proof.
   eapply free_range_perm; eauto. lia.
   intros [A|A]. congruence. lia.
 Qed.
+
+
 
 Lemma drop_outside_inject: forall f m1 m2 b lo hi p m2',
   inject f m1 m2 ->
