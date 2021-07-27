@@ -1955,7 +1955,10 @@ Proof.
   econstructor; split.
   apply plus_one. econstructor; eauto.
   destruct ros; simpl in *. generalize (AGREGS m0).
-  intro. inv H1; (try congruence). admit. eauto.
+  intro. inv H1; (try congruence).
+  repeat destr_in A.
+  admit. (* AGREG as eq, about vinj*)
+  eauto.
   econstructor; eauto.
   econstructor; eauto with coqlib.
   apply Val.Vptr_has_type.

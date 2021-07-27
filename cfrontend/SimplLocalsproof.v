@@ -584,6 +584,30 @@ Hint Resolve compat_cenv_union_l compat_cenv_union_r compat_cenv_empty: compat.
 
 (** Allocation and initialization of parameters *)
 
+Lemma alloc_variables_stackseq:
+  forall ge e m vars e' m',
+  alloc_variables ge e m vars e' m' ->
+  Mem.stackseq m m'.
+Proof.
+  induction 1.
+  apply struct_eq_refl. eapply struct_eq_trans.
+  eapply Mem.alloc_stackseq; eauto. eauto.
+Qed.
+
+Lemma alloc_variables_parallel_stackseq :
+  forall ge1 e1 m1 vars1 e1' m1' ge2 e2 m2 vars2 e2' m2',
+  alloc_variables ge1 e1 m1 vars1 e1' m1' ->
+  alloc_variables ge2 e2 m2 vars2 e2' m2' ->
+  Mem.stackseq m1 m2 ->
+  Mem.stackseq m1' m2'.
+Proof.
+  intros.
+  apply alloc_variables_stackseq in H.
+  apply alloc_variables_stackseq in H0.
+  eapply struct_eq_trans. eapply struct_eq_comm; eauto.
+  eapply struct_eq_trans; eauto.
+Qed.
+
 Lemma alloc_variables_support:
   forall ge e m vars e' m',
   alloc_variables ge e m vars e' m' -> Mem.sup_include (Mem.support m) (Mem.support m').
@@ -1770,6 +1794,7 @@ Inductive match_states: state -> state -> Prop :=
         (MENV: match_envs j (cenv_for f) e le m lo hi te tle tlo thi)
         (MCONT: match_cont j (cenv_for f) k tk m lo tlo)
         (MINJ: Mem.inject j m tm)
+        (MSTK: Mem.stackseq m tm)
         (COMPAT: compat_cenv (addr_taken_stmt s) (cenv_for f))
         (BOUND: Mem.sup_include hi (Mem.support m))
         (TBOUND: Mem.sup_include thi (Mem.support tm)),
@@ -1780,6 +1805,7 @@ Inductive match_states: state -> state -> Prop :=
         (TRFD: transf_fundef fd = OK tfd)
         (MCONT: forall cenv, match_cont j cenv k tk m (Mem.support m) (Mem.support tm))
         (MINJ: Mem.inject j m tm)
+        (MSTK: Mem.stackseq m tm)
         (AINJ: Val.inject_list j vargs tvargs)
         (FUNTY: type_of_fundef fd = Tfunction targs tres cconv)
         (ANORM: val_casted_list vargs targs),
@@ -1789,6 +1815,7 @@ Inductive match_states: state -> state -> Prop :=
       forall v k m tv tk tm j
         (MCONT: forall cenv, match_cont j cenv k tk m (Mem.support m) (Mem.support tm))
         (MINJ: Mem.inject j m tm)
+        (MSTK: Mem.stackseq m tm)
         (RINJ: Val.inject j v tv),
       match_states (Returnstate v k m)
                    (Returnstate tv tk tm).
@@ -2040,6 +2067,7 @@ Proof.
   eapply match_cont_assign_loc; eauto. exploit me_range; eauto. intros [E F]. auto.
   inv MV; try congruence. inv H2; try congruence. unfold Mem.storev in H3.
   eapply Mem.store_unmapped_inject; eauto. congruence.
+  unfold Mem.stackseq in *. erewrite assign_loc_support; eauto.
   erewrite assign_loc_support; eauto.
   (* global variable *)
   inv MV; congruence.
@@ -2047,7 +2075,7 @@ Proof.
   intros P.
   exploit eval_simpl_lvalue; eauto with compat. intros [tb [tofs [E F]]].
   exploit eval_simpl_expr; eauto with compat. intros [tv2 [A B]].
-  exploit sem_cast_inject; eauto. intros [tv [C D]].
+   exploit sem_cast_inject; eauto. intros [tv [C D]].
   exploit assign_loc_inject; eauto. intros [tm' [X [Y Z]]].
   econstructor; split.
   apply plus_one. econstructor. eexact E. eexact A. repeat rewrite typeof_simpl_expr. eexact C.
@@ -2055,6 +2083,9 @@ Proof.
   econstructor; eauto with compat.
   eapply match_envs_invariant; eauto.
   eapply match_cont_invariant; eauto.
+  unfold Mem.stackseq in *.
+  erewrite assign_loc_support; eauto.
+  rewrite (assign_loc_support _ _ _ _ _ _ _ X); eauto.
   erewrite assign_loc_support; eauto.
   erewrite assign_loc_support; eauto.
 
@@ -2074,10 +2105,9 @@ Proof.
   econstructor; split.
   apply plus_one. eapply step_call with (fd := tfd).
   rewrite typeof_simpl_expr. eauto.
-
   instantiate (1:=id).
-  instantiate (1:=tvf). admit.
-
+  instantiate (1:=tvf).
+  admit. (*about sinj*)
   eauto. eauto. eauto.
   erewrite type_of_fundef_preserved; eauto.
   econstructor; eauto.
@@ -2095,6 +2125,7 @@ Proof.
   eapply match_cont_extcall; eauto.
   inv MENV. eapply Mem.sup_include_trans. eauto. eauto.
   inv MENV; eapply Mem.sup_include_trans. eauto. eauto.
+  admit. (*About external func*)
   eapply Mem.sup_include_trans; eauto. eapply external_call_support; eauto.
   eapply Mem.sup_include_trans; eauto. eapply external_call_support; eauto.
 
@@ -2140,7 +2171,11 @@ Proof.
 
 (* return none *)
   exploit match_envs_free_blocks; eauto. intros [tm' [P Q]].
-  exploit Mem.return_frame_parallel_inject; eauto. admit. intros [tm'' [P' Q']].
+  assert (Mem.stackseq m' tm'). unfold Mem.stackseq in *.
+  rewrite (free_list_support _ _ _ H).
+  rewrite (free_list_support _ _ _ P). auto.
+  exploit Mem.return_frame_parallel_stackseq; eauto.  intros [tm'' [P' Q']].
+  exploit Mem.return_frame_inject; eauto. intro.
   econstructor; split. apply plus_one. econstructor; eauto.
   econstructor; eauto.
   intros. eapply match_cont_call_cont.
@@ -2156,7 +2191,11 @@ Proof.
   exploit eval_simpl_expr; eauto with compat. intros [tv [A B]].
   exploit sem_cast_inject; eauto. intros [tv' [C D]].
   exploit match_envs_free_blocks; eauto. intros [tm' [P Q]].
-  exploit Mem.return_frame_parallel_inject; eauto. admit. intros [tm'' [P' Q']].
+  assert (Mem.stackseq m' tm'). unfold Mem.stackseq in *.
+  rewrite (free_list_support _ _ _ H1).
+  rewrite (free_list_support _ _ _ P). auto.
+  exploit Mem.return_frame_parallel_stackseq; eauto.  intros [tm'' [P' Q']].
+  exploit Mem.return_frame_inject; eauto. intro.
   econstructor; split. apply plus_one. econstructor; eauto.
   rewrite typeof_simpl_expr. monadInv TRF; simpl. eauto.
   econstructor; eauto.
@@ -2171,7 +2210,11 @@ Proof.
 
 (* skip call *)
   exploit match_envs_free_blocks; eauto. intros [tm'1 [P Q]].
-  exploit Mem.return_frame_parallel_inject; eauto. admit. intros [tm'' [P' Q']].
+  assert (Mem.stackseq m' tm'1). unfold Mem.stackseq in *.
+  rewrite (free_list_support _ _ _ H0).
+  rewrite (free_list_support _ _ _ P). auto.
+  exploit Mem.return_frame_parallel_stackseq; eauto.  intros [tm'' [P' Q']].
+  exploit Mem.return_frame_inject; eauto. intro.
   econstructor; split. apply plus_one. econstructor; eauto.
   eapply match_cont_is_call_cont; eauto.
   monadInv TRF; auto.
@@ -2270,6 +2313,10 @@ Proof.
   red; intros; subst b'. destruct H8. congruence.
   eapply alloc_variables_load; eauto.
   erewrite Mem.load_alloc_frame; eauto.
+  unfold Mem.stackseq in *. rewrite T.
+  erewrite bind_parameters_support; eauto.
+  eapply alloc_variables_parallel_stackseq; eauto.
+  eapply Mem.alloc_frame_parallel_stackseq; eauto.
   apply compat_cenv_for.
   rewrite (bind_parameters_support _ _ _ _ _ _ H3). apply Mem.sup_include_refl.
   rewrite T; auto. apply Mem.sup_include_refl.
@@ -2287,7 +2334,7 @@ Proof.
   apply Mem.sup_include_refl. apply Mem.sup_include_refl.
   eapply external_call_support; eauto.
   eapply external_call_support; eauto.
-
+  admit.  (*About external func*)
 (* return *)
   specialize (MCONT (cenv_for f)). inv MCONT.
   econstructor; split.
@@ -2322,6 +2369,7 @@ Proof.
   eapply Genv.find_var_info_not_fresh; eauto.
   apply Mem.sup_include_refl. apply Mem.sup_include_refl.
   eapply Genv.initmem_inject; eauto.
+  apply struct_eq_refl.
   constructor.
   generalize (match_program_main (proj1 TRANSF)). simpl; auto.
 Qed.

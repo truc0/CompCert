@@ -984,7 +984,7 @@ Lemma return_frame_parallel_rule:
   forall m1 m1' m2 j P,
     m2 |= minjection j m1 ** P ->
     Mem.return_frame m1 = Some m1' ->
-    Mem.is_active (Mem.stack(Mem.support m2)) ->
+    Memory.is_active (Mem.stack(Mem.support m2)) ->
     exists m2', Mem.return_frame m2 = Some m2' /\
     m2' |= minjection j m1' ** P.
 Proof.

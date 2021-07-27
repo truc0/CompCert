@@ -4513,6 +4513,19 @@ Proof.
   apply struct_eq_refl.
 Qed.
 
+Theorem store_parallel_stackseq :
+  forall chunk1 m1 b1 ofs1 v1 m1' chunk2 m2 b2 ofs2 v2 m2',
+    store chunk1 m1 b1 ofs1 v1 = Some m1' ->
+    store chunk2 m2 b2 ofs2 v2 = Some m2' ->
+    stackseq m1 m2 ->
+    stackseq m1' m2'.
+Proof.
+  intros. unfold stackseq in *.
+  rewrite (support_store _ _ _ _ _ _ H).
+  rewrite (support_store _ _ _ _ _ _ H0).
+  congruence.
+Qed.
+
 Theorem alloc_parallel_stackseq :
   forall m1 m2 lo1 hi1 lo2 hi2 b1 b2 m1' m2',
     alloc m1 lo1 hi1 = (m1',b1) ->
@@ -5296,6 +5309,26 @@ Proof.
   - unfold valid_block in *. simpl.
     intros. exploit mi_mappedblocks0; eauto.
     apply sup_incr_frame_in.
+Qed.
+
+Theorem return_frame_inject :
+  forall f m1 m2 m1' m2',
+    inject f m1 m2 ->
+    return_frame m1 = Some m1' ->
+    return_frame m2 = Some m2' ->
+    inject f m1' m2'.
+Proof.
+  intros. unfold return_frame in *.
+  destr_in H0. inv H0. destr_in H1. inv H1.
+  inv H. inv mi_inj0.
+  constructor; eauto.
+  constructor; eauto.
+  unfold valid_block in *. simpl in *. eauto. intros. eapply mi_freeblocks0.
+  intro. apply H. apply sup_return_frame_in with (s := support m1); eauto.
+  apply sup_return_refl'. auto.
+  unfold valid_block in *. simpl in *. eauto. intros. exploit mi_mappedblocks0.
+  apply H. apply sup_return_frame_in with (s := support m2); eauto.
+  apply sup_return_refl'. auto.
 Qed.
 
 Theorem return_frame_parallel_inject :
