@@ -1017,8 +1017,7 @@ Lemma alloc_frame_alloc : forall m m1 m2 id path lo hi sp,
     sp = Stack (Some id) path 1.
 Proof. Admitted.
 
-Definition right_sublist {A:Type} (l1 l2 : list A) :=
-  exists l, l2 = l1 ++ l.
+
 (*
 Lemma match_callstack_alloc_variables_rec':
   forall tm sp sps tf cenv le te bes cs,
@@ -1127,10 +1126,16 @@ Definition match_meminj_vars_blocks
       (forall ofs, (f b = Some (sp,ofs) <->
                  (exists id sz n, nth_error vars n = Some (id,sz) /\ nth_error blocks n = Some b /\ cenv ! id = Some ofs))).
 
+Definition match_meminj_vars_blocks'
+  (f:meminj) (vars:list (ident * Z)) (blocks : list block)(sp:block)(cenv:compilenv): Prop :=
+  forall b, In b blocks ->
+       exists id sz n ofs, f b = Some (sp, ofs)
+                      /\ nth_error vars n = Some (id,sz)
+                      /\ nth_error blocks n = Some b
+                      /\ cenv ! id = Some ofs.
 
 Lemma match_callstack_alloc_variables_rec'':
-  forall tm sp tf cenv le te bes cs tm'0 tm'1 fid path,
-  Mem.alloc_frame tm'0 fid = (tm'1,path) ->
+  forall tm sp tf cenv le te bes cs tm'1,
   Mem.alloc tm'1 0 (fn_stackspace tf) = (tm,sp) ->
   fn_stackspace tf <= Ptrofs.max_unsigned ->
   (forall ofs k p, Mem.perm tm sp ofs k p -> 0 <= ofs < fn_stackspace tf) ->
@@ -1155,13 +1160,13 @@ Lemma match_callstack_alloc_variables_rec'':
   /\ Mem.inject f2 m2 tm
   /\ inject_incr f1 f2
   /\ (forall b, ~ In b blocks -> f2 b = f1 b)
-  /\ match_meminj_vars_blocks f2 vars blocks sp cenv.
+  /\ match_meminj_vars_blocks' f2 vars blocks sp cenv.
 Proof.
-  intros until path; intros ALLOCF ALLOC REPRES STKSIZE STKPERMS.
+  intros until tm'1; intros ALLOC REPRES STKSIZE STKPERMS.
   induction 1; intros f1 NOREPET NOREPET' COMPAT SEP1 SEP2 UNBOUND MCS MINJ.
   (* base case *)
   simpl in MCS. exists f1; auto. split. auto. split. auto. split.
-  auto. split. auto. unfold match_meminj_vars_blocks.
+  auto. split. auto. unfold match_meminj_vars_blocks'.
   intros. inv H.
   (* inductive case *)
   simpl in NOREPET. inv NOREPET.
@@ -1201,6 +1206,14 @@ Proof.
     split. intros. rewrite <- D. rewrite I. auto.
     intro. apply H1. right. auto.
     intro. apply H1. left. auto.
+    unfold match_meminj_vars_blocks' in *. intros. inv H1.
+    + exists id,sz,O,ofs. split. rewrite I; auto. split. auto.
+      auto.
+    + generalize (J b H2). intros (id0 & sz0 & n & ofs0 & A' & B' & C' & D').
+      exists id0,sz0,(S n),ofs0. split. auto. split. auto. auto.
+Qed.
+(*
+
     unfold match_meminj_vars_blocks in *. intros. inv H1.
     +
     apply G in C. split. intro. rewrite C in H1. inv H1.
@@ -1219,8 +1232,8 @@ Proof.
         destruct n'. inv A'. inv B'. rewrite CENV in C'. inv C'.
         rewrite I. auto. auto.
         simpl in *. apply H1.
-        exists id',sz', n'. split. auto. split. auto. auto.
-Qed.
+        exists id',sz', n'. split. auto. split. auto. auto. 
+Qed.*) 
 
 Lemma alloc_vars_fresh' : forall e1 m1 vars blocks e2 m2 b ,
     alloc_variables' e1 m1 vars blocks e2 m2 ->
@@ -1245,10 +1258,25 @@ Proof.
   apply A. eapply Mem.valid_new_block; eauto.
 Qed.
 
+Lemma empty_frame_alloc_variables': forall m0 m1 fid path,
+    Mem.alloc_frame m0 fid = (m1,path) ->
+    forall m2 vars blocks e,
+    alloc_variables' empty_env m1 vars blocks e m2 ->
+   (forall n b, nth_error blocks n = Some b ->
+    b = Stack (Some fid) path (Pos.of_succ_nat n) ).
+Proof.
+  Admitted. (*Quite hard*)
+
+
 Lemma match_callstack_alloc_variables:
-  forall tm1 sp tm2 m1 vars e m2 cenv f1 cs fn le te,
+  forall tm0 fid path tm1 sp tm2 m0 m1 vars e m2 cenv f1 cs fn le te f,
+  Mem.alloc_frame tm0 fid = (tm1,path) ->
+  Genv.find_funct_ptr ge (Global fid) = Some (Internal f) ->
+  build_compilenv f = (cenv, fn_stackspace fn) ->
+  vars = Csharpminor.fn_vars f ->
   Mem.alloc tm1 0 (fn_stackspace fn) = (tm2, sp) ->
   fn_stackspace fn <= Ptrofs.max_unsigned ->
+  Mem.alloc_frame m0 fid = (m1,path) ->
   alloc_variables empty_env m1 vars e m2 ->
   list_norepet (map fst vars) ->
   cenv_compat cenv vars (fn_stackspace fn) ->
@@ -1265,9 +1293,8 @@ Lemma match_callstack_alloc_variables:
   /\ f2 = struct_meminj (Mem.support m2).
 Proof.
   intros.
+  exploit alloc_var_var'; eauto. intros (blocks & H15 & H16).
   exploit match_callstack_alloc_variables_rec''; eauto.
-  eapply Mem.alloc_result in H as H9; eauto.
-(*  eapply Mem.valid_new_block; eauto. *)
   intros. eapply Mem.perm_alloc_3; eauto.
   intros. apply Mem.perm_implies with Freeable; auto with mem. eapply Mem.perm_alloc_2; eauto.
   red; intros. eelim Mem.fresh_block_alloc; eauto.
@@ -1279,7 +1306,33 @@ Proof.
   rewrite cenv_remove_gso; auto.
   destruct (cenv!id) as [ofs|] eqn:?; auto. elim n; eauto.
   eapply Mem.alloc_right_inject; eauto.
-Qed.
+  intros (f2 & A & B & C & D & E).
+  exists f2. split. auto. split. auto.
+  apply functional_extensionality.
+  intro b.
+  destruct (In_dec eq_block b blocks).
+  - unfold match_meminj_vars_blocks in E. generalize (E b i). intro.
+    clear E. unfold struct_meminj. destr.
+    unfold unchecked_meminj.
+    apply In_nth_error in i as E. destruct E.
+    exploit empty_frame_alloc_variables'; eauto.
+    intro. rewrite H19.
+    unfold find_frame_offset. rewrite H0.
+    rewrite H1.
+    destruct H17 as (id & sz & n & ofs & E & F & G & I). subst.
+    rewrite E.
+    assert (n = x). admit. (*norepet bloks*)
+    subst.
+    Search Pos.to_nat.
+    rewrite SuccNat2Pos.id_succ. simpl.
+    replace (x - 0)%nat with (x). 2: lia.
+    rewrite F. rewrite I.
+    exploit alloc_frame_alloc. apply H. apply H3.
+    intro. subst. auto.
+    admit. (*ok*)
+  - rewrite D. rewrite H12. unfold struct_meminj.
+    admit. (*OK*)
+Admitted.
 
 (** Properties of the compilation environment produced by [build_compilenv] *)
 
