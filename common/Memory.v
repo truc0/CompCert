@@ -296,6 +296,35 @@ Proof.
     unfold cpath. simpl. auto.
 Qed.
 
+Lemma next_stree_next_block_stree :
+  forall t t' t'' id p f pos path,
+    next_stree t id = (t',p) ->
+    next_block_stree t' = (f,pos,path,t'') ->
+    f = Some id /\ pos = 1%positive /\ path = p.
+Proof.
+  induction t using stree_ind. intros. destruct t. destruct o.
+  - simpl in H0. destruct (next_stree s id) eqn:?. inv H0. simpl in H1.
+    destruct (next_block_stree s0) eqn:?. destruct p. destruct p.
+    exploit H. instantiate (1:=s). simpl. auto. eauto. eauto. inv H1.
+    intros [A [B C]]. split. auto. split. auto. congruence.
+  - simpl in H0. inv H0. simpl in H1. inv H1. auto.
+Qed.
+
+Lemma next_block_stree_next_block : forall s1 s2 s3 fid1 fid2 pos1 pos2 path1 path2,
+      next_block_stree s1 = (fid1,pos1,path1,s2) ->
+      next_block_stree s2 = (fid2,pos2,path2,s3) ->
+      fid1 = fid2 /\ path1 = path2 /\ pos2 = Pos.succ pos1.
+Proof.
+  induction s1 using stree_ind. intros. destruct s1. destruct o.
+  - simpl in H0. destruct (next_block_stree s) eqn:?. destruct p. destruct p.
+    inv H0. simpl in H1.
+    destruct (next_block_stree s0) eqn:?. destruct p. destruct p. inv H1.
+    exploit H. instantiate (1:=s). simpl. auto. eauto. eauto.
+    intros [A [B C]]. split. auto. split. rewrite B. auto. auto.
+  - simpl in H0. inv H0. simpl in H1. inv H1. split. auto.
+    split. auto. rewrite pred_dec_false. lia. extlia.
+Qed.
+
 Definition stree_Indec :forall tree f path p , {stree_In f path p tree}+{~stree_In f path p tree}.
 Proof.
   induction tree using (well_founded_induction substree_wf ); intros.
@@ -2593,12 +2622,12 @@ Proof.
   rewrite stack_alloc_frame. eauto.
 Qed.
 
-
+(*
 Theorem nextblock_alloc_frame:
   nextblock m2 = (Stack (Some id) path 1).
 Proof.
   Admitted.
-
+*)
 
 Theorem valid_block_alloc_frame_1:
   forall b, valid_block m1 b -> valid_block m2 b.
@@ -3017,6 +3046,113 @@ End ALLOC.
 
 Local Hint Resolve valid_block_alloc fresh_block_alloc valid_new_block: mem.
 Local Hint Resolve valid_access_alloc_other valid_access_alloc_same: mem.
+
+Section ALLOCF_ALLOC.
+Local Set Elimination Schemes.
+Local Set Analysis Schemes.
+Inductive alloc_vars_left : mem -> list block -> mem -> Prop :=
+  |avl_nil : forall m, alloc_vars_left m nil m
+  |avl_cons : forall m m1 m2 blocks b sz,
+      alloc_vars_left m blocks m1 ->
+      Mem.alloc m1 0 sz = (m2,b) ->
+      alloc_vars_left m (blocks++(b::nil)) m2.
+
+Fixpoint well_blocks (id:ident) (p:path) (len:nat) : list block :=
+  match len with
+    |O => nil
+    |S n => (well_blocks id p n) ++ ((Stack (Some id) p (Pos.of_nat len))::nil)
+  end.
+
+Definition well_nth_error (l:list block) (id:ident) (p:path) : Prop :=
+  let len := length l in
+  forall n0, (n0 < len)%nat -> nth_error l n0 = Some (Stack (Some id) p (Pos.of_succ_nat n0)).
+
+Lemma well_blocks_len : forall id p n,
+  length (well_blocks id p n) = n.
+Proof.
+  induction n. auto. simpl. rewrite app_length. simpl. lia.
+Qed.
+
+Lemma well_blocks_nth_error : forall id p n,
+    well_nth_error (well_blocks id p n) id p.
+Proof.
+  induction n; intros.
+  - unfold well_nth_error. intros. inv H.
+  - unfold well_nth_error in *.
+    intros. simpl in H. rewrite app_length in H. simpl in H.
+    rewrite well_blocks_len in H.
+    destruct (nat_eq n0 n).
+    + subst. simpl. rewrite nth_error_app2. rewrite well_blocks_len.
+      rewrite Nat.sub_diag. simpl. destruct n; auto.
+      Search Pos.of_succ_nat. rewrite Pos.succ_of_nat. auto. auto.
+      rewrite well_blocks_len. lia.
+    + simpl. rewrite nth_error_app1. eapply IHn.
+      rewrite well_blocks_len. lia.
+      rewrite well_blocks_len. lia.
+Qed.
+
+Lemma alloc_frame_alloc : forall m m1 m2 id path lo hi sp,
+    alloc_frame m id = (m1,path) ->
+    alloc m1 lo hi = (m2,sp) ->
+    sp = Stack (Some id) path 1.
+Proof.
+  intros. unfold alloc in H0. inv H0.
+  inv H. unfold nextblock. simpl. unfold sup_incr_frame.
+  destruct (next_stree (stack (support m))id) eqn:?. unfold fresh_block. simpl.
+  destruct (next_block_stree s) eqn:?. destruct p0. destruct p0.
+  unfold sup_npath. unfold npath. rewrite Heqp.
+  exploit next_stree_next_block_stree; eauto. intros (A & B & C).
+  congruence.
+Qed.
+
+Lemma alloc_alloc : forall m1 m2 m3 lo1 hi1 lo2 hi2 b1 b2 fid path pos,
+    alloc m1 lo1 hi1 = (m2,b1) ->
+    alloc m2 lo2 hi2 = (m3,b2) ->
+    b1 = Stack fid path pos ->
+    b2 = Stack fid path (Pos.succ pos).
+Proof.
+  intros. inv H. inv H0. unfold nextblock in *.
+  simpl in *. unfold sup_incr.
+  unfold fresh_block in *.
+  destruct (next_block_stree (stack (support m1))) eqn:?.
+  destruct p. destruct p.
+  simpl.
+  destruct (next_block_stree s) eqn:?.
+  destruct p1. destruct p1.
+  inv H4.
+  exploit next_block_stree_next_block. apply Heqp. eauto.
+  intros [A [B C]]. subst. auto.
+Qed.
+
+Lemma alloc_frame_alloc_vars :
+  forall m m1 m2 id path blocks,
+    alloc_frame m id = (m1,path) ->
+    alloc_vars_left m1 blocks m2 ->
+    blocks = well_blocks id path (length blocks).
+Proof.
+  intros. induction H0.
+  - reflexivity.
+  - exploit IHalloc_vars_left; eauto. intro.
+    rewrite app_length. simpl.
+    assert (Datatypes.length blocks +1 = S (Datatypes.length blocks))%nat.
+    lia. rewrite H3. simpl.
+    rewrite <- H2.
+    inv H0.
+    + simpl. exploit alloc_frame_alloc; eauto.
+      intro. subst. auto.
+    + simpl. rewrite app_length.
+      rewrite Nat.add_1_r.
+      generalize (well_blocks_nth_error id path (Datatypes.length (blocks0 ++ b0 :: nil))).
+      intros. rewrite <- H2 in H0.
+      unfold well_nth_error in H0.
+      generalize (H0 (Datatypes.length (blocks0))).
+      intros. exploit H6. rewrite app_length. simpl. lia. intro.
+      rewrite nth_error_app2 in H7. rewrite Nat.sub_diag in H7.
+      simpl in H7. inv H7. 2:lia.
+      exploit alloc_alloc; eauto.
+      intro. subst. rewrite Pos.of_nat_succ. reflexivity.
+Qed.
+End ALLOCF_ALLOC.
 
 (** ** Properties related to [alloc_glob]. *)
 Section ALLOCGLOB.
