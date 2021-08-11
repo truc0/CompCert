@@ -443,7 +443,10 @@ Proof.
     reflexivity.
   - inv H0.
 Qed.
-
+(*
+Local Set Elimination Schemes.
+Local Set Case Analysis Schemes.
+*)
 Inductive struct_eq : stree -> stree -> Prop :=
   |struct_eq_leaf : forall fi bl1 bl2,
       struct_eq (Node fi bl1 nil None) (Node fi bl2 nil None)
@@ -456,7 +459,6 @@ Inductive struct_eq : stree -> stree -> Prop :=
        list_forall2 struct_eq tl1 tl2 ->
        struct_eq head1 head2 ->
        struct_eq (Node fi bl1 tl1 (Some head1)) (Node fi bl2 tl2 (Some head2)).
-
 
 Theorem struct_eq_refl : forall s , struct_eq s s.
 Proof.
@@ -603,6 +605,21 @@ Proof.
     simpl. apply list_forall2_length in H4 as H7. rewrite H7. auto.
     constructor. apply list_forall2_app. auto.
     constructor. auto. constructor.
+Qed.
+
+Lemma struct_eq_next_block_stree : forall s1 s2 fid1 fid2 p1 p2 pos1 pos2 s1' s2',
+    struct_eq s1 s2 ->
+    next_block_stree s1 = (fid1,pos1,p1,s1') ->
+    next_block_stree s2 = (fid2,pos2,p2,s2') ->
+    fid1=fid2 /\ p1 = p2.
+Proof.
+  induction s1. intros.
+  destruct s1. destruct s2. inv H0.
+  - inv H1. inv H2. auto.
+  - inv H1. inv H2. auto.
+  - inv H1. inv H2.  repeat destr_in H3.  repeat destr_in H1.
+    exploit H; eauto. simpl. auto. intros [X Y].
+    split. auto. subst. erewrite list_forall2_length; eauto.
 Qed.
 
 End STREE.
@@ -2622,13 +2639,6 @@ Proof.
   rewrite stack_alloc_frame. eauto.
 Qed.
 
-(*
-Theorem nextblock_alloc_frame:
-  nextblock m2 = (Stack (Some id) path 1).
-Proof.
-  Admitted.
-*)
-
 Theorem valid_block_alloc_frame_1:
   forall b, valid_block m1 b -> valid_block m2 b.
 Proof.
@@ -3084,7 +3094,7 @@ Proof.
     destruct (nat_eq n0 n).
     + subst. simpl. rewrite nth_error_app2. rewrite well_blocks_len.
       rewrite Nat.sub_diag. simpl. destruct n; auto.
-      Search Pos.of_succ_nat. rewrite Pos.succ_of_nat. auto. auto.
+      rewrite Pos.succ_of_nat. auto. auto.
       rewrite well_blocks_len. lia.
     + simpl. rewrite nth_error_app1. eapply IHn.
       rewrite well_blocks_len. lia.
@@ -3103,6 +3113,15 @@ Proof.
   unfold sup_npath. unfold npath. rewrite Heqp.
   exploit next_stree_next_block_stree; eauto. intros (A & B & C).
   congruence.
+Qed.
+
+Lemma alloc_frame_nextblock : forall m m1 id path,
+    alloc_frame m id = (m1,path) ->
+    nextblock m1 = Stack (Some id) path 1.
+Proof.
+  intros. caseEq (alloc m1 0 0). intros.
+  apply alloc_result in H0 as H1. subst.
+  eapply alloc_frame_alloc; eauto.
 Qed.
 
 Lemma alloc_alloc : forall m1 m2 m3 lo1 hi1 lo2 hi2 b1 b2 fid path pos,
@@ -4716,6 +4735,19 @@ Proof.
   rewrite A. inv H3. simpl. auto.
 Qed.
 
+Lemma stackseq_id_path : forall m1 m2 fid1 p1 pos1 fid2 p2 pos2,
+    stackseq m1 m2 ->
+    nextblock m1 = Stack fid1 p1 pos1 ->
+    nextblock m2 = Stack fid2 p2 pos2 ->
+    fid1 = fid2 /\ p1 = p2.
+Proof.
+  intros. unfold nextblock in *. unfold fresh_block in *.
+  destruct (next_block_stree (stack (support m1))) eqn:?.
+  destruct p. destruct p. inv H0.
+  destruct (next_block_stree (stack (support m2))) eqn:?.
+  destruct p. destruct p. inv H1.
+  exploit struct_eq_next_block_stree; eauto.
+Qed.
 
 (** * Memory injections *)
 

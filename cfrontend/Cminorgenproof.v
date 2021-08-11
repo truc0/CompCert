@@ -1017,13 +1017,7 @@ Inductive alloc_variables' : Csharpminor.env -> mem -> list (ident * Z) -> list 
       Mem.alloc m 0 sz = (m1,b1) ->
       alloc_variables' (PTree.set id (b1,sz) e) m1 vars blocks e2 m2 ->
       alloc_variables' e m ((id,sz)::vars) (b1::blocks) e2 m2.
-(*
-Definition match_meminj_vars_blocks
-  (f:meminj) (vars:list (ident * Z)) (blocks : list block)(sp:block)(cenv:compilenv): Prop :=
-  forall b, In b blocks ->
-      (forall ofs, (f b = Some (sp,ofs) <->
-                 (exists id sz n, nth_error vars n = Some (id,sz) /\ nth_error blocks n = Some b /\ cenv ! id = Some ofs))).
-*)
+
 Definition match_meminj_vars_blocks'
   (f:meminj) (vars:list (ident * Z)) (blocks : list block)(sp:block)(cenv:compilenv): Prop :=
   forall b, In b blocks ->
@@ -1110,6 +1104,7 @@ Proof.
     + generalize (J b H2). intros (id0 & sz0 & n & ofs0 & A' & B' & C' & D').
       exists id0,sz0,(S n),ofs0. split. auto. split. auto. auto.
 Qed.
+
 
 Lemma alloc_vars_fresh' : forall e1 m1 vars blocks e2 m2 b ,
     alloc_variables' e1 m1 vars blocks e2 m2 ->
