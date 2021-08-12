@@ -2354,14 +2354,14 @@ Proof.
   eapply star_right. eexact A1. econstructor; eauto.
   {
     destruct ros, ros'; simpl in *; auto.
-    - eapply add_equations_args_satisf in B1; eauto.
+    - destruct (is_callee_save m0). discriminate.
+      eapply add_equations_args_satisf in B1; eauto.
       red in B1.
-      generalize (B1 (Eq Full r (R m0))). simpl.
+      generalize (B1 (Eq Full r (Locations.R m0))). simpl.
       inv Heqo. simpl.
       rewrite ESF.add_iff. simpl.
       intros A. rewrite H0 in A.
-      specialize (A (or_introl eq_refl)). inversion A.
-      eauto.
+      specialize (A (or_introl eq_refl)). inversion A. subst. eauto.
     - congruence.
     - congruence.
     - destr_in Heqo.

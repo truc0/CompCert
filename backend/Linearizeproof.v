@@ -627,6 +627,8 @@ Proof.
   exploit find_function_translated; eauto. intros [tfd [A B]].
   left; econstructor; split. simpl.
   apply plus_one. econstructor; eauto.
+  destruct ros; simpl in *; eauto.
+  rewrite (match_parent_locset _ _ STACKS). eauto.
   rewrite (match_parent_locset _ _ STACKS). eauto.
   symmetry; eapply sig_preserved; eauto.
   rewrite (stacksize_preserved _ _ TRF); eauto.

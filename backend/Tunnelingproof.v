@@ -503,7 +503,7 @@ Proof.
   intros; red; intros. destruct l; simpl.
 - destruct (Conventions1.is_callee_save r); auto.
 - destruct sl; auto.
-Qed. 
+Qed.
 
 (** To preserve non-terminating behaviours, we show that the transformed
   code cannot take an infinity of "zero transition" cases.
@@ -528,6 +528,18 @@ Proof.
   induction 1; simpl.
 - red; auto.
 - inv H; auto.
+Qed.
+
+Lemma ros_is_ident_translated:
+  forall ros rs tls i,
+    ros_is_ident ros rs i ->
+    locmap_lessdef rs tls ->
+    ros_is_ident ros tls i.
+Proof.
+  destruct ros; simpl; intros.
+  unfold locmap_lessdef in H0.
+  generalize (H0 (R m)). intro. rewrite H in H1. inv H.
+  inv H1. eauto. eauto.
 Qed.
 
 Lemma tunnel_step_correct:
@@ -610,8 +622,9 @@ Proof.
   exploit Mem.return_frame_parallel_extends; eauto. intros (tm'' & RET & MEM'').
   left; simpl; econstructor; split.
   eapply exec_Ltailcall with (fd := tunnel_fundef fd); eauto.
-  destruct ros; simpl in *. generalize (LS (R m0)).
-  intro. inv H. eauto. congruence. auto.
+  eapply ros_is_ident_translated; eauto.
+  eapply return_regs_lessdef; eauto.
+  eapply match_parent_locset; eauto.
   eapply find_function_translated; eauto using return_regs_lessdef, match_parent_locset.
   apply sig_preserved.
   econstructor; eauto using return_regs_lessdef, match_parent_locset.
@@ -620,7 +633,7 @@ Proof.
   exploit external_call_mem_extends; eauto. intros (tvres & tm' & A & B & C & D).
   left; simpl; econstructor; split.
   eapply exec_Lbuiltin; eauto.
-  eapply eval_builtin_args_preserved with (ge1 := ge); eauto. exact symbols_preserved. 
+  eapply eval_builtin_args_preserved with (ge1 := ge); eauto. exact symbols_preserved.
   eapply external_call_symbols_preserved. apply senv_preserved. eauto.
   econstructor; eauto using locmap_setres_lessdef, locmap_undef_regs_lessdef.
 - (* Lbranch (preserved) *)
