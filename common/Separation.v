@@ -896,7 +896,8 @@ Lemma alloc_parallel_rule_2:
   exists j',
      m2' |= range b2 0 lo ** range b2 hi sz2 ** minjection j' m1' ** globalenv_inject ge j' ** P
   /\ inject_incr j j'
-  /\ j' b1 = Some(b2, delta).
+  /\ j' b1 = Some(b2, delta)
+  /\ (forall b, b <> b1 -> j' b = j b).
 Proof.
   intros.
   set (j1 := fun b => if eq_block b b1 then Some(b2, delta) else j b).
