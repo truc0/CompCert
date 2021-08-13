@@ -387,6 +387,7 @@ Inductive match_states: Mach.state -> Asm.state -> Prop :=
         (STACKS: match_stack ge s)
         (MEXT: Mem.extends m m')
         (AG: agree ms (parent_sp s) rs)
+        (FB: fb = Global id)
         (ATPC: rs PC = Vptr fb Ptrofs.zero)
         (ATLR: rs RA = parent_ra s),
       match_states (Mach.Callstate s fb ms m id)
@@ -635,10 +636,11 @@ Opaque loadind.
   exploit Mem.return_frame_parallel_extends; eauto. intros [m2'' [G I]].
   destruct ros as [rf|fid]; simpl in H; monadInv H8.
 + (* Indirect call *)
-  assert (rs rf = Vptr f' Ptrofs.zero).
+  assert (rs rf = Vptr (Global id) Ptrofs.zero).
+    simpl in H0.
     destruct (rs rf); try discriminate.
-    revert H; predSpec Ptrofs.eq Ptrofs.eq_spec i Ptrofs.zero; intros; congruence.
-  assert (rs0 x0 = Vptr f' Ptrofs.zero).
+    revert H0; predSpec Ptrofs.eq Ptrofs.eq_spec i Ptrofs.zero; intros; congruence.
+  assert (rs0 x0 = Vptr (Global id) Ptrofs.zero).
     exploit ireg_val; eauto. rewrite H8; intros LD; inv LD; auto.
   generalize (code_tail_next_int _ _ _ _ NOOV H9). intro CT1.
   left; econstructor; split.
@@ -647,7 +649,8 @@ Opaque loadind.
   simpl. replace (chunk_of_type Tptr) with Mptr in * by (unfold Tptr, Mptr; destruct Archi.ptr64; auto).
   rewrite C. rewrite A. rewrite <- (sp_val _ _ _ AG). rewrite E. eauto. rewrite G. eauto.
   apply star_one. eapply exec_step_internal.
-  transitivity (Val.offset_ptr rs0#PC Ptrofs.one). auto. rewrite <- H5. simpl. eauto.
+  transitivity (Val.offset_ptr rs0#PC Ptrofs.one). auto.
+  rewrite <- H. simpl. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
   simpl. eauto. traceEq.
   econstructor; eauto.
@@ -663,13 +666,14 @@ Opaque loadind.
   simpl. replace (chunk_of_type Tptr) with Mptr in * by (unfold Tptr, Mptr; destruct Archi.ptr64; auto).
   rewrite C. rewrite A. rewrite <- (sp_val _ _ _ AG). rewrite E. eauto. rewrite G. eauto.
   apply star_one. eapply exec_step_internal.
-  transitivity (Val.offset_ptr rs0#PC Ptrofs.one). auto. rewrite <- H5. simpl. eauto.
+  transitivity (Val.offset_ptr rs0#PC Ptrofs.one). auto. rewrite <- H. simpl. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
   simpl. eauto. traceEq.
   econstructor; eauto.
   apply agree_set_other; auto. apply agree_nextinstr. apply agree_set_other; auto.
   eapply agree_change_sp; eauto. eapply parent_sp_def; eauto.
-  rewrite Pregmap.gss. unfold Genv.symbol_address. rewrite symbols_preserved. rewrite H. auto.
+  rewrite Pregmap.gss. unfold Genv.symbol_address. rewrite symbols_preserved.
+  repeat destr_in H0. rewrite H10. auto.
 
 - (* Mbuiltin *)
   inv AT. monadInv H4.
@@ -849,7 +853,7 @@ Transparent destroyed_by_jumptable.
   apply plus_one. econstructor; eauto.
   simpl. rewrite Ptrofs.unsigned_zero. simpl. eauto.
   Opaque Mem.alloc_frame.
-  simpl. rewrite A'. rewrite C. simpl in F, P.
+  simpl. rewrite ATPC. rewrite A'. rewrite C. simpl in F, P.
   replace (chunk_of_type Tptr) with Mptr in F, P by (unfold Tptr, Mptr; destruct Archi.ptr64; auto).
   rewrite (sp_val _ _ _ AG) in F. rewrite F.
   rewrite ATLR. rewrite P. eauto.
@@ -901,6 +905,7 @@ Proof.
   split. reflexivity. simpl.
   unfold Vnullptr; destruct Archi.ptr64; congruence.
   intros. rewrite Regmap.gi. auto.
+  apply Genv.genv_vars_eq in H1 as H1'. auto.
   unfold Genv.symbol_address.
   rewrite (match_program_main TRANSF).
   rewrite symbols_preserved.
