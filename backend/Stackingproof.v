@@ -2132,7 +2132,8 @@ Proof.
   intros [vargs' [P Q]].
   rewrite <- sep_assoc, sep_comm, sep_assoc in SEP.
   exploit external_call_parallel_rule; eauto.
-  clear SEP; intros (j' & res' & m1' & EC & RES & SEP & INCR &  ISEP).
+  clear SEP;
+  intros (j' & res' & m1' & EC & RES & SEP & SUP' & INCR & ISEP & EXT & INJ).
   rewrite <- sep_assoc, sep_comm, sep_assoc in SEP.
   econstructor; split.
   apply plus_one. econstructor; eauto.
@@ -2142,7 +2143,22 @@ Proof.
   eapply match_stacks_change_meminj; eauto.
   apply agree_regs_set_res; auto. apply agree_regs_undef_regs; auto. eapply agree_regs_inject_incr; eauto.
   apply agree_locs_set_res; auto. apply agree_locs_undef_regs; auto.
-  admit. (*exter*) admit.
+{
+  apply functional_extensionality. intro b0.
+  destruct (Mem.sup_dec b0 (Mem.support m)).
+  -
+  destruct (struct_meminj (Mem.support m) b0) eqn:?. destruct p.
+  apply INCR in Heqo as H'. rewrite H'.
+  unfold struct_meminj in *. destr_in Heqo. exploit external_call_support.
+  apply H0. eauto. intro. destr.
+  destruct (j' b0) eqn:?. destruct p.
+  exploit ISEP; eauto. intros. inv H1. apply H2 in s0. inv s0.
+  unfold struct_meminj in *. destr. destr_in Heqo.
+  - unfold struct_meminj. destr.
+  + exploit EXT; eauto. intros [X Y]. rewrite Y.
+    destruct b0. destruct f0. inv X. auto. auto.
+  + inv INJ. eapply mi_freeblocks; eauto.
+}
   apply frame_set_res. apply frame_undef_regs. eapply frame_contents_incr; eauto.
   rewrite sep_swap2. eapply stack_contents_change_meminj; eauto. rewrite sep_swap2.
   exact SEP.
@@ -2238,7 +2254,7 @@ Proof.
   exploit transl_external_arguments; eauto. apply sep_proj1 in SEP; eauto. intros [vl [ARGS VINJ]].
   rewrite sep_comm, sep_assoc in SEP.
   exploit external_call_parallel_rule; eauto.
-  intros (j' & res' & m1' & A & B & C & D & E).
+  intros (j' & res' & m1' & A & B & C & D & E & F & G & I).
   econstructor; split.
   apply plus_one. eapply exec_function_external; eauto.
   eapply external_call_symbols_preserved; eauto. apply senv_preserved.
@@ -2246,7 +2262,23 @@ Proof.
   eapply match_stacks_change_meminj; eauto.
   apply agree_regs_set_pair. apply agree_regs_undef_caller_save_regs.
   apply agree_regs_inject_incr with (struct_meminj (Mem.support m)); auto.
-  auto. admit. admit.
+  auto. auto.
+{
+  apply functional_extensionality. intro b0.
+  destruct (Mem.sup_dec b0 (Mem.support m)).
+  -
+  destruct (struct_meminj (Mem.support m) b0) eqn:?. destruct p.
+  apply E in Heqo as H'. rewrite H'.
+  unfold struct_meminj in *. destr_in Heqo. exploit external_call_support.
+  apply H0. eauto. intro. destr.
+  destruct (j' b0) eqn:?. destruct p.
+  exploit F; eauto. intros [X Y]. exfalso. eauto.
+  unfold struct_meminj in *. destr. destr_in Heqo.
+  - unfold struct_meminj. destr.
+  + exploit G; eauto. intros [X Y]. rewrite Y.
+    destruct b0. destruct f. inv X. auto. auto.
+  + inv I. eapply mi_freeblocks; eauto.
+}
   apply stack_contents_change_meminj with (struct_meminj (Mem.support m)); auto.
   rewrite sep_comm, sep_assoc; auto.
 
@@ -2260,7 +2292,7 @@ Proof.
   apply frame_contents_exten with rs0 (parent_locset s); auto.
   intros; apply Val.lessdef_same; apply AGCS; red; congruence.
   intros; rewrite (OUTU ty ofs); auto.
-Admitted.
+Qed.
 
 Lemma transf_initial_states:
   forall st1, Linear.initial_state prog st1 ->

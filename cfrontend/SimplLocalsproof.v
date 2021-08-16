@@ -2303,6 +2303,19 @@ Qed.
 End FIND_LABEL.
 
 
+Lemma sinj_external_call :
+  forall m m' tm tm' f f' vargs tvargs vres tvres ef ge t,
+    Mem.inject f m tm ->
+    Mem.stackseq m tm ->
+    external_call ef ge vargs m t vres m' ->
+    external_call ef ge tvargs tm t tvres tm' ->
+    Val.inject_list f vargs tvargs ->
+    Mem.inject f' m' tm' ->
+    f = struct_meminj (Mem.support m) ->
+    Mem.stackseq m' tm' /\
+    f' = struct_meminj (Mem.support m').
+Admitted.
+
 Lemma step_simulation:
   forall S1 t S2, step1 ge S1 t S2 ->
   forall S1' (MS: match_states S1 S1'), exists S2', plus step2 tge S1' t S2' /\ match_states S2 S2'.
@@ -2380,6 +2393,7 @@ Proof.
   exploit eval_simpl_exprlist; eauto with compat. intros [CASTED [tvargs [C D]]].
   exploit external_call_mem_inject; eauto. apply match_globalenvs_preserves_globals; eauto with compat.
   intros [j' [tvres [tm' [P [Q [R [S [T [U V]]]]]]]]].
+  exploit sinj_external_call. apply MINJ. all: eauto. intros [X Y].
   econstructor; split.
   apply plus_one. econstructor; eauto. eapply external_call_symbols_preserved; eauto. apply senv_preserved.
   econstructor; eauto with compat.
@@ -2388,7 +2402,6 @@ Proof.
   eapply match_cont_extcall; eauto.
   inv MENV. eapply Mem.sup_include_trans. eauto. eauto.
   inv MENV; eapply Mem.sup_include_trans. eauto. eauto.
-  admit. admit. (*About external func*)
   eapply Mem.sup_include_trans; eauto. eapply external_call_support; eauto.
   eapply Mem.sup_include_trans; eauto. eapply external_call_support; eauto.
 
@@ -2626,6 +2639,7 @@ Proof.
   exploit external_call_mem_inject; eauto. apply match_globalenvs_preserves_globals.
   eapply match_cont_globalenv. eexact (MCONT VSet.empty).
   intros [j' [tvres [tm' [P [Q [R [S [T [U V]]]]]]]]].
+  exploit sinj_external_call. apply MINJ. all: eauto. intros [X Y].
   econstructor; split.
   apply plus_one. econstructor; eauto. eapply external_call_symbols_preserved; eauto. apply senv_preserved.
   econstructor; eauto.
@@ -2634,14 +2648,13 @@ Proof.
   apply Mem.sup_include_refl. apply Mem.sup_include_refl.
   eapply external_call_support; eauto.
   eapply external_call_support; eauto.
-  admit. admit.  (*About external func*)
 (* return *)
   specialize (MCONT (cenv_for f)). inv MCONT.
   econstructor; split.
   apply plus_one. econstructor.
   econstructor; eauto with compat.
   eapply match_envs_set_opttemp; eauto.
-Admitted.
+Qed.
 
 Lemma initial_states_simulation:
   forall S, initial_state prog S ->
