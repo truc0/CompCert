@@ -14,7 +14,7 @@ Require Import FunInd.
 Require Import Coqlib Maps Integers Floats Lattice Kildall.
 Require Import Compopts AST Linking.
 Require Import Values Memory Globalenvs Builtins Events.
-Require Import Registers Op RTL.
+Require Import Registers Op RTL RTLmach.
 Require Import ValueDomain ValueAOp Liveness.
 
 (** * The dataflow analysis *)
@@ -1220,6 +1220,34 @@ Proof.
   eapply Mem.loadbytes_free_2; eauto.
 Qed.
 
+Lemma sound_stack_pop_stage:
+  forall m m' bc stk support,
+  Mem.pop_stage m = Some m' ->
+  sound_stack bc stk m support ->
+  sound_stack bc stk m' support.
+Proof.
+  intros. eapply sound_stack_ext; eauto. intros.
+  erewrite <- Mem.loadbytes_pop_stage; eauto.
+Qed.
+
+Lemma sound_stack_record_frame:
+  forall m m' b bc stk support,
+  Mem.record_frame m b = Some m' ->
+  sound_stack bc stk m support ->
+  sound_stack bc stk m' support.
+Proof.
+  intros. eapply sound_stack_ext; eauto. intros.
+  erewrite <- Mem.loadbytes_record_frame; eauto.
+Qed.
+
+Lemma sound_stack_push_stage:
+  forall m bc stk support,
+  sound_stack bc stk m support ->
+  sound_stack bc stk (Mem.push_stage m) (support).
+Proof.
+  intros. eapply sound_stack_ext; eauto.
+Qed.
+
 Lemma sound_stack_new_bound:
   forall bc stk m bound bound',
   sound_stack bc stk m bound ->
@@ -1274,8 +1302,52 @@ Proof.
   econstructor; eauto.
 Qed.
 
+Lemma sound_state_base_push_stage:
+  forall s fd args m sz,
+    sound_state_base (Callstate s fd args m sz) ->
+    sound_state_base (Callstate s fd args (Mem.push_stage m) sz).
+Proof.
+  inversion 1; econstructor; eauto.
+  apply sound_stack_push_stage; auto.
+  eapply sound_stack_new_bound; eauto.
+  unfold Mem.sup_include. unfold Mem.sup_In. auto.
+  apply mmatch_push_stage; auto.
+Qed.
+
+Lemma sound_state_base_pop_stage:
+  forall s f sp pc e m m',
+    sound_state_base (State s f sp pc e m) ->
+    Mem.pop_stage m = Some m' ->
+    sound_state_base (State s f sp pc e m').
+Proof.
+  inversion 1; subst; econstructor; eauto.
+  unfold Mem.sup_include in *. unfold Mem.sup_In in *.
+  erewrite <- Mem.stack_pop_stage; eauto.
+  erewrite <- Mem.global_pop_stage; eauto.
+  eapply sound_stack_pop_stage; eauto.
+  eapply romatch_pop_stage; eauto.
+  eapply mmatch_pop_stage; eauto.
+Qed.
+
+
+Lemma sound_state_base_push_stage_state:
+  forall s f sp pc e m,
+    sound_state_base (State s f sp pc e m) ->
+    sound_state_base (State s f sp pc e (Mem.push_stage m)).
+Proof.
+  inversion 1; subst; econstructor; eauto.
+  eapply sound_stack_push_stage; eauto.
+  eapply mmatch_push_stage; eauto.
+Qed.
+
+Hint Resolve mmatch_push_stage mmatch_pop_stage :core.
+Hint Resolve romatch_push_stage romatch_pop_stage : core.
+Hint Resolve sound_stack_push_stage sound_stack_pop_stage : core.
+Hint Resolve sound_state_base_push_stage sound_state_base_push_stage_state sound_state_base_pop_stage : core.
+
+Variable fn_stack_requirements: ident -> Z.
 Theorem sound_step_base:
-  forall st t st', RTL.step ge st t st' -> sound_state_base st -> sound_state_base st'.
+  forall st t st', step fn_stack_requirements ge st t st' -> sound_state_base st -> sound_state_base st'.
 Proof.
   induction 1; intros SOUND; inv SOUND.
 
@@ -1305,7 +1377,7 @@ Proof.
 
 - (* call *)
   assert (TR: transfer f rm pc ae am = transfer_call ae am args res).
-  { unfold transfer; rewrite H; auto. }
+  { unfold transfer; rewrite H0; auto. }
   unfold transfer_call, analyze_call in TR.
   destruct (pincl (am_nonstack am) Nonstack &&
             forallb (fun av => vpincl av Nonstack) (aregs ae args)) eqn:NOLEAK.
@@ -1316,7 +1388,7 @@ Proof.
   intros (bc' & A & B & C & D & E & F & G).
   apply sound_call_state with bc'; auto.
   * eapply sound_stack_private_call with (bound' := Mem.support m) (bc' := bc); eauto.
-    eauto. apply Mem.sup_include_refl.
+    apply Mem.sup_include_refl; eauto.
     eapply mmatch_below; eauto.
     eapply mmatch_stack; eauto.
   * intros. exploit list_in_map_inv; eauto. intros (r & P & Q). subst v.
@@ -1329,7 +1401,7 @@ Proof.
   exploit anonymize_stack; eauto. intros (bc' & A & B & C & D & E & F & G).
   apply sound_call_state with bc'; auto.
   * eapply sound_stack_public_call with (bound' := Mem.support m) (bc' := bc); eauto.
-    apply Mem.sup_include_refl.
+    apply Mem.sup_include_refl; eauto.
     eapply mmatch_below; eauto.
   * intros. exploit list_in_map_inv; eauto. intros (r & P & Q). subst v.
     apply D with (areg ae r). auto with va.
@@ -1342,7 +1414,8 @@ Proof.
   apply sound_stack_ext with m. auto.
   intros.
   erewrite Mem.loadbytes_free_2; eauto.
-  erewrite <- Mem.loadbytes_return_frame; eauto.
+  erewrite <- Mem.loadbytes_return_frame. 2: eauto.
+  erewrite <- Mem.loadbytes_pop_stage; eauto.
   intros. apply C. intro. eapply freshness.
   subst. eauto.
   eapply Mem.sup_include_trans; eauto.
@@ -1350,12 +1423,15 @@ Proof.
   rewrite <- (Mem.support_free _ _ _ _ _ H3).
   intro.
   apply Mem.support_return_frame_1 with (b:=b) in H4.
-  apply H4.
+  intro. eapply Mem.sup_include_pop_stage; eauto.
+  apply H4. auto.
 (*  eapply mmatch_below; eauto. congruence. *)
   intros. exploit list_in_map_inv; eauto. intros (r & P & Q). subst v.
   apply D with (areg ae r). auto with va.
+  eapply romatch_pop_stage; eauto.
   eapply romatch_return_frame; eauto.
   eapply romatch_free; eauto.
+  eapply mmatch_pop_stage; eauto.
   eapply mmatch_return_frame; eauto.
   eapply mmatch_free; eauto.
 - (* builtin *)
@@ -1392,7 +1468,8 @@ Proof.
   eauto. eauto. eauto. eauto. eauto.
   intros (bc3 & U & V & W & X & Y & Z & AA).
   eapply sound_succ_state with (bc := bc3); eauto. simpl; auto.
-  eapply Mem.sup_include_trans. eauto. eapply external_call_support. eauto.
+  eapply Mem.sup_include_trans. eauto.
+  eapply external_call_support; eauto.
   apply set_builtin_res_sound; auto.
   apply sound_stack_exten with bc.
   apply sound_stack_inv with m. auto.
@@ -1415,7 +1492,7 @@ Proof.
   eauto. eauto. eauto. eauto. eauto.
   intros (bc3 & U & V & W & X & Y & Z & AA).
   eapply sound_succ_state with (bc := bc3); eauto. simpl; auto.
-  eapply Mem.sup_include_trans. eauto. eapply external_call_support. eauto.
+  eapply Mem.sup_include_trans. eauto. eapply external_call_support; eauto.
   apply set_builtin_res_sound; auto.
   apply sound_stack_exten with bc.
   apply sound_stack_inv with m. auto.
@@ -1504,15 +1581,19 @@ Proof.
   apply sound_stack_exten with bc.
   apply sound_stack_ext with m. auto.
   intros. erewrite Mem.loadbytes_free_2; eauto.
-  erewrite <- Mem.loadbytes_return_frame; eauto.
+  erewrite <- Mem.loadbytes_return_frame. 2: eauto.
+  erewrite <- Mem.loadbytes_pop_stage; eauto.
   intros. apply C. intro. eapply freshness.
   subst. eauto.
   eapply Mem.sup_include_trans; eauto.
   eapply Mem.sup_include_trans; eauto.
   rewrite <- (Mem.support_free _ _ _ _ _ H0).
-  intro. apply Mem.support_return_frame_1 with (b:=b) in H1. apply H1.
+  intro. apply Mem.support_return_frame_1 with (b:=b) in H1.
+  intro. eapply Mem.sup_include_pop_stage; eauto. apply H1. auto.
   destruct or; simpl. eapply D; eauto. constructor.
+  eapply romatch_pop_stage; eauto.
   eapply romatch_return_frame; eauto. eapply romatch_free; eauto.
+  eapply mmatch_pop_stage; eauto.
   eapply mmatch_return_frame; eauto. eapply mmatch_free; eauto.
 
 - (* internal function *)
@@ -1524,8 +1605,10 @@ Proof.
   intros (ae & am & AN & EM & MM').
   econstructor; eauto.
   eapply Mem.alloc_result. eauto.
+  eapply Mem.sup_include_trans. 2: eapply Mem.sup_include_record_frame; eauto.
+  simpl.
   rewrite Mem.support_alloc with m' 0 (fn_stacksize f) m'' stk.
-  eapply Mem.sup_include_refl.
+  admit.
   eauto.
   apply sound_stack_exten with bc; auto.
   apply sound_stack_inv with m; auto.
@@ -1533,7 +1616,11 @@ Proof.
   intro. eapply Mem.support_alloc_frame_1 in H. apply H.
   intros.
   erewrite <- (Mem.loadbytes_alloc_frame _ _ _ _ H).
+  erewrite Mem.loadbytes_record_frame. 2: eauto.
+  erewrite Mem.loadbytes_push_stage. 2: eauto.
   eapply Mem.loadbytes_alloc_unchanged; eauto.
+  eapply romatch_record_frame; eauto.
+  eapply mmatch_record_frame; eauto.
 
 - (* external function *)
   exploit external_call_match; eauto with va.
@@ -1566,7 +1653,7 @@ Proof.
    apply sound_stack_exten with bc'; auto.
    intros. apply G. apply SINCR. apply Mem.sup_incr_in2. auto.
    eapply ematch_ge; eauto. apply ematch_update. auto. auto.
-Qed.
+Admitted.
 
 End SOUNDNESS.
 
@@ -1586,8 +1673,10 @@ Inductive sound_state: state -> Prop :=
       (forall cunit, linkorder cunit prog -> sound_state_base cunit ge st) ->
       sound_state st.
 
+Variable fn_stack_requirements: ident -> Z.
+
 Theorem sound_step:
-  forall st t st', RTL.step ge st t st' -> sound_state st -> sound_state st'.
+  forall st t st', step fn_stack_requirements ge st t st' -> sound_state st -> sound_state st'.
 Proof.
   intros. inv H0. constructor; intros. eapply sound_step_base; eauto.
 Qed.

@@ -1437,6 +1437,12 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma init_mem_astack:
+  forall (p:AST.program F V) m,
+    init_mem p = Some m ->
+    Mem.astack (Mem.support m) = nil.
+Admitted.
+
 Lemma init_mem_genv_sup: forall p m,
   init_mem p = Some m ->
   genv_sup (globalenv p) = Mem.support m.

@@ -921,8 +921,10 @@ Hypothesis wt_p: wt_program p.
 
 Let ge := Genv.globalenv p.
 
+Variable fn_stack_requirements : ident -> Z.
+
 Lemma subject_reduction:
-  forall st1 t st2, step ge st1 t st2 ->
+  forall st1 t st2, step fn_stack_requirements ge st1 t st2 ->
   forall (WT: wt_state st1), wt_state st2.
 Proof.
   induction 1; intros; inv WT;
@@ -958,7 +960,7 @@ Proof.
     discriminate.
   econstructor; eauto.
   inv WTI. apply wt_stackframes_change_sig with (fn_sig f); auto.
-  inv WTI. rewrite <- H9. apply wt_regset_list. auto.
+  inv WTI. rewrite <- H10. apply wt_regset_list. auto.
   (* Ibuiltin *)
   econstructor; eauto. eapply wt_exec_Ibuiltin; eauto.
   (* Icond *)
@@ -967,17 +969,17 @@ Proof.
   econstructor; eauto.
   (* Ireturn *)
   econstructor; eauto.
-  inv WTI; simpl. auto. rewrite <- H4. auto.
+  inv WTI; simpl. auto. rewrite <- H5. auto.
   (* internal function *)
-  simpl in *. inv H7.
+  simpl in *. inv H8.
   econstructor; eauto.
-  inv H2. apply wt_init_regs; auto. rewrite wt_params0. auto.
+  inv H3. apply wt_init_regs; auto. rewrite wt_params0. auto.
   (* external function *)
   econstructor; eauto.
   eapply external_call_well_typed; eauto.
   (* return *)
-  inv H1. econstructor; eauto.
-  apply wt_regset_assign; auto. rewrite H10; auto.
+  inv H2. econstructor; eauto.
+  apply wt_regset_assign; auto. rewrite H11; auto.
 Qed.
 
 Lemma wt_initial_state:

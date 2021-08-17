@@ -1594,6 +1594,20 @@ Proof.
   exploit external_call_valid_block. eauto. apply H0.
   auto.
 Qed.
+
+Lemma external_call_mem_astack:
+  forall ef ge vargs m1 t vres m2,
+    external_call ef ge vargs m1 t vres m2 ->
+    Mem.astack(Mem.support m1) = Mem.astack (Mem.support m2).
+Admitted.
+
+Lemma external_call_mem_iff:
+  forall ef ge vargs m1 t vres m2 m1',
+    Mem.iff m1 m2 ->
+    external_call ef ge vargs m1 t vres m1' ->
+    exists m2', external_call ef ge vargs m2 t vres m2' /\ Mem.iff m1' m2'.
+Admitted.
+
 (** Special case of [external_call_mem_inject_gen] (for backward compatibility) *)
 
 Definition meminj_preserves_globals (F V: Type) (ge: Genv.t F V) (f: block -> option (block * Z)) : Prop :=
