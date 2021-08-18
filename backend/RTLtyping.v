@@ -24,7 +24,7 @@ Require Import Values.
 Require Import Integers.
 Require Import Memory.
 Require Import Events.
-Require Import RTL.
+Require Import RTL RTLmach.
 Require Import Conventions.
 
 (** * The type system *)
@@ -938,6 +938,7 @@ Proof.
   (* Istore *)
   econstructor; eauto.
   (* Icall *)
+  try (generalize (wt_instrs _ _ WT_FN pc _ H0); intros WTI).
   assert (wt_fundef fd).
     destruct ros; simpl in H1.
     pattern fd. apply Genv.find_funct_prop with fundef unit p (rs#r).
@@ -950,6 +951,7 @@ Proof.
   econstructor; eauto. inv WTI; auto.
   inv WTI. rewrite <- H9. apply wt_regset_list. auto.
   (* Itailcall *)
+  try (generalize (wt_instrs _ _ WT_FN pc _ H0); intros WTI).
   assert (wt_fundef fd).
     destruct ros; simpl in H1.
     pattern fd. apply Genv.find_funct_prop with fundef unit p (rs#r).
@@ -978,8 +980,8 @@ Proof.
   econstructor; eauto.
   eapply external_call_well_typed; eauto.
   (* return *)
-  inv H2. econstructor; eauto.
-  apply wt_regset_assign; auto. rewrite H11; auto.
+  inv H1. econstructor; eauto.
+  apply wt_regset_assign; auto. rewrite H10; auto.
 Qed.
 
 Lemma wt_initial_state:

@@ -3468,6 +3468,13 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma support_push_stage_1 :
+  forall b, sup_In b (support m1) <-> sup_In b (support m2).
+Proof.
+  rewrite support_push_stage. unfold sup_push_stage.
+  destruct b; reflexivity.
+Qed.
+
 Theorem nextblock_push_stage:
   nextblock m2 = nextblock m1.
 Proof.
@@ -3567,6 +3574,13 @@ Lemma support_pop_stage :
 Proof.
   intros.  unfold pop_stage in POP_STAGE. destruct (astack(support m1)) eqn:H0; auto.
   discriminate. inv POP_STAGE. unfold sup_pop_stage. simpl. rewrite H0. auto.
+Qed.
+
+Lemma support_pop_stage_1 :
+  forall b, sup_In b (support m1) <-> sup_In b (support m2).
+Proof.
+  generalize support_pop_stage. intro. unfold sup_pop_stage in H.
+  destr_in H. inv H.  destruct b; reflexivity.
 Qed.
 
 Lemma astack_pop_stage:
@@ -3708,6 +3722,13 @@ Proof.
   intros. unfold record_frame in RECORD_FRAME.
   repeat destr_in RECORD_FRAME. unfold sup_record_frame. rewrite Heqs.
   reflexivity.
+Qed.
+
+Lemma support_record_frame_1:
+  forall b, sup_In b (support m1) <-> sup_In b (support m2).
+Proof.
+  intros. generalize support_record_frame. unfold sup_record_frame.
+  destr. intro. inv H. destruct b; reflexivity.
 Qed.
 
 Lemma astack_record_frame : exists hd tl,
@@ -6279,6 +6300,17 @@ Proof.
   auto.
 Qed.
 
+Theorem alloc_parallel_astackeq:
+  forall m1 m2 lo1 hi1 lo2 hi2 b1 b2 m1' m2',
+    alloc m1 lo1 hi1 = (m1',b1) ->
+    alloc m2 lo2 hi2 = (m2',b2) ->
+    astack(support m1) = astack(support m2) ->
+    astack(support m1') = astack (support m2').
+Proof.
+  intros. inv H; inv H0. simpl. unfold sup_incr. simpl.
+  destr; destr; reflexivity.
+Qed.
+
 Theorem alloc_frame_parallel_stackeq :
   forall m1 m2 id m1' m2' p1 p2,
     stack (support m1) = stack (support m2) ->
@@ -6313,6 +6345,32 @@ Proof.
   destruct (return_stree (stack(support m2))).
   destruct p. inv H. inv H0. reflexivity.
   inv H.
+Qed.
+
+Theorem alloc_frame_parallel_astackeq :
+  forall m1 m2 id m1' m2' p1 p2,
+    astack (support m1) = astack (support m2) ->
+    alloc_frame m1 id = (m1',p1) ->
+    alloc_frame m2 id = (m2',p2) ->
+    astack (support m1') = astack (support m2').
+Proof.
+  intros. inv H0; inv H1; simpl. unfold sup_incr_frame.
+  destr; destr; reflexivity.
+Qed.
+
+Theorem return_frame_parallel_astackeq :
+  forall m1 m2 m1' m2',
+    return_frame m1 = Some m1' ->
+    return_frame m2 = Some m2' ->
+    astack (support m1) = astack (support m2) ->
+    astack (support m1') = astack (support m2').
+Proof.
+  intros.
+  apply support_return_frame in H.
+  apply support_return_frame in H0.
+  unfold sup_return_frame in *.
+  repeat destr_in H. repeat destr_in H0. simpl in *.
+  congruence.
 Qed.
 
 Theorem alloc_parallel_inject:

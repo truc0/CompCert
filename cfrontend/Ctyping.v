@@ -1929,6 +1929,7 @@ End WT_SWITCH.
 
 Section PRESERVATION.
 
+Variable fn_stack_requirements: ident -> Z.
 Variable prog: program.
 Hypothesis WTPROG: wt_program prog.
 Let ge := globalenv prog.
@@ -2148,7 +2149,7 @@ Proof.
 Qed.
 
 Lemma preservation_sstep:
-  forall S t S', sstep ge S t S' -> wt_state S -> wt_state S'.
+  forall S t S', sstep fn_stack_requirements ge S t S' -> wt_state S -> wt_state S'.
 Proof.
   induction 1; intros WT; inv WT.
 - inv WTS; eauto with ty.
@@ -2189,7 +2190,7 @@ Proof.
 - inv WTS; eauto with ty.
 - exploit wt_find_label. eexact WTB. eauto. eapply call_cont_wt'; eauto.
   intros [A B]. eauto with ty.
-- inv WTFD. inv H4. econstructor; eauto. apply wt_call_cont_stmt_cont; auto.
+- inv WTFD. inv H5. econstructor; eauto. apply wt_call_cont_stmt_cont; auto.
 - inv WTFD. econstructor; eauto.
   apply has_rettype_wt_val. simpl; rewrite <- H1.
   eapply external_call_well_typed_gen; eauto.
@@ -2197,7 +2198,7 @@ Proof.
 Qed.
 
 Theorem preservation:
-  forall S t S', step ge S t S' -> wt_state S -> wt_state S'.
+  forall S t S', step fn_stack_requirements ge S t S' -> wt_state S -> wt_state S'.
 Proof.
   intros. destruct H. eapply preservation_estep; eauto. eapply preservation_sstep; eauto.
 Qed.

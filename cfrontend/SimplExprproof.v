@@ -30,14 +30,15 @@ Lemma transf_program_match:
 Proof.
   unfold transl_program; intros. monadInv H. split; auto.
   unfold program_of_program; simpl. destruct x; simpl.
-  eapply match_transform_partial_program_contextual. eexact EQ. 
-  intros. apply transl_fundef_spec; auto. 
+  eapply match_transform_partial_program_contextual. eexact EQ.
+  intros. apply transl_fundef_spec; auto.
 Qed.
 
 (** ** Semantic preservation *)
 
 Section PRESERVATION.
 
+Variable fn_stack_requirements: ident -> Z.
 Variable prog: Csyntax.program.
 Variable tprog: Clight.program.
 Hypothesis TRANSL: match_prog prog tprog.
@@ -809,7 +810,7 @@ Lemma static_bool_val_sound:
 Proof.
   assert (A: forall b ofs, Mem.weak_valid_pointer Mem.empty b ofs = false).
   { unfold Mem.weak_valid_pointer, Mem.valid_pointer, proj_sumbool; intros.
-    rewrite ! pred_dec_false by (apply Mem.perm_empty). auto. }  
+    rewrite ! pred_dec_false by (apply Mem.perm_empty). auto. }
   intros until b; unfold bool_val.
   destruct (classify_bool t); destruct v; destruct Archi.ptr64 eqn:SF; auto.
 - rewrite A; congruence.
@@ -820,7 +821,7 @@ Lemma step_makeif:
   forall f a s1 s2 k e le m v1 b,
   eval_expr tge e le m a v1 ->
   bool_val v1 (typeof a) m = Some b ->
-  star step1 tge (State f (makeif a s1 s2) k e le m)
+  star (step1 fn_stack_requirements) tge (State f (makeif a s1 s2) k e le m)
              E0 (State f (if b then s1 else s2) k e le m).
 Proof.
   intros. functional induction (makeif a s1 s2).
@@ -839,7 +840,7 @@ Lemma step_make_set:
   Csem.deref_loc ge ty m b ofs t v ->
   eval_lvalue tge e le m a b ofs ->
   typeof a = ty ->
-  step1 tge (State f (make_set id a) k e le m)
+  step1 fn_stack_requirements tge (State f (make_set id a) k e le m)
           t (State f Sskip k e (PTree.set id v le) m).
 Proof.
   intros. exploit deref_loc_translated; eauto. rewrite <- H1.
@@ -860,7 +861,7 @@ Lemma step_make_assign:
   eval_expr tge e le m a2 v2 ->
   sem_cast v2 (typeof a2) ty m = Some v ->
   typeof a1 = ty ->
-  step1 tge (State f (make_assign a1 a2) k e le m)
+  step1 fn_stack_requirements tge (State f (make_assign a1 a2) k e le m)
           t (State f Sskip k e le m').
 Proof.
   intros. exploit assign_loc_translated; eauto. rewrite <- H3.
@@ -890,7 +891,7 @@ Qed.
 
 Lemma push_seq:
   forall f sl k e le m,
-  star step1 tge (State f (makeseq sl) k e le m)
+  star (step1 fn_stack_requirements) tge (State f (makeseq sl) k e le m)
               E0 (State f Sskip (Kseqlist sl k) e le m).
 Proof.
   intros. unfold makeseq. generalize Sskip. revert sl k.
@@ -906,7 +907,7 @@ Lemma step_tr_rvalof:
   tr_rvalof ty a sl a' tmp ->
   typeof a = ty ->
   exists le',
-    star step1 tge (State f Sskip (Kseqlist sl k) e le m)
+    star (step1 fn_stack_requirements) tge (State f Sskip (Kseqlist sl k) e le m)
                  t (State f Sskip k e le' m)
   /\ eval_expr tge e le' m a' v
   /\ typeof a' = typeof a
@@ -1437,8 +1438,8 @@ Lemma estep_simulation:
   forall S1 t S2, Cstrategy.estep ge S1 t S2 ->
   forall S1' (MS: match_states S1 S1'),
   exists S2',
-     (plus step1 tge S1' t S2' \/
-       (star step1 tge S1' t S2' /\ measure S2 < measure S1)%nat)
+     (plus (step1 fn_stack_requirements) tge S1' t S2' \/
+       (star (step1 fn_stack_requirements) tge S1' t S2' /\ measure S2 < measure S1)%nat)
   /\ match_states S2 S2'.
 Proof.
   induction 1; intros; inv MS.
@@ -2003,11 +2004,11 @@ Proof.
 Qed.
 
 Lemma sstep_simulation:
-  forall S1 t S2, Csem.sstep ge S1 t S2 ->
+  forall S1 t S2, Csem.sstep fn_stack_requirements ge S1 t S2 ->
   forall S1' (MS: match_states S1 S1'),
   exists S2',
-     (plus step1 tge S1' t S2' \/
-       (star step1 tge S1' t S2' /\ measure S2 < measure S1)%nat)
+     (plus (step1 fn_stack_requirements) tge S1' t S2' \/
+       (star (step1 fn_stack_requirements) tge S1' t S2' /\ measure S2 < measure S1)%nat)
   /\ match_states S2 S2'.
 Proof.
   induction 1; intros; inv MS.
@@ -2188,7 +2189,7 @@ Proof.
 
 
 (* return none *)
-  inv H8. econstructor; split.
+  inv H9. econstructor; split.
   left. apply plus_one. econstructor; eauto. rewrite blocks_of_env_preserved; eauto.
   constructor. apply match_cont_call; auto.
 (* return some 1 *)
@@ -2196,15 +2197,15 @@ Proof.
   left; eapply plus_left. constructor. apply push_seq. traceEq.
   econstructor; eauto. constructor. auto.
 (* return some 2 *)
-  inv H10. exploit tr_top_val_for_val_inv; eauto. intros [A [B C]]. subst.
+  inv H11. exploit tr_top_val_for_val_inv; eauto. intros [A [B C]]. subst.
   econstructor; split.
   left. eapply plus_two. constructor. econstructor. eauto.
   erewrite function_return_preserved; eauto. rewrite blocks_of_env_preserved; eauto.
-  eauto. traceEq.
+  eauto. eauto. traceEq.
   constructor. apply match_cont_call; auto.
 (* skip return *)
-  inv H9.
-  assert (is_call_cont tk). inv H10; simpl in *; auto.
+  inv H10.
+  assert (is_call_cont tk). inv H11; simpl in *; auto.
   econstructor; split.
   left. apply plus_one. eapply step_skip_call; eauto. rewrite blocks_of_env_preserved; eauto.
   constructor. auto.
@@ -2251,12 +2252,12 @@ Proof.
   econstructor; eauto.
 
 (* internal function *)
-  inv H9. inversion H4; subst.
+  inv H10. inversion H5; subst.
   econstructor; split.
   left; apply plus_one. eapply step_internal_function. econstructor.
-  rewrite H7; rewrite H8; eauto. eauto.
-  rewrite H7; rewrite H8. eapply alloc_variables_preserved; eauto.
-  rewrite H7. eapply bind_parameters_preserved; eauto.
+  rewrite H8; rewrite H9; eauto. eauto.
+  rewrite H8; rewrite H9. eapply alloc_variables_preserved; eauto. eauto.
+  rewrite H8. eapply bind_parameters_preserved; eauto.
   eauto.
   constructor; auto.
 
@@ -2277,11 +2278,11 @@ Qed.
 (** Semantic preservation *)
 
 Theorem simulation:
-  forall S1 t S2, Cstrategy.step ge S1 t S2 ->
+  forall S1 t S2, Cstrategy.step fn_stack_requirements ge S1 t S2 ->
   forall S1' (MS: match_states S1 S1'),
   exists S2',
-     (plus step1 tge S1' t S2' \/
-       (star step1 tge S1' t S2' /\ measure S2 < measure S1)%nat)
+     (plus (step1 fn_stack_requirements) tge S1' t S2' \/
+       (star (step1 fn_stack_requirements) tge S1' t S2' /\ measure S2 < measure S1)%nat)
   /\ match_states S2 S2'.
 Proof.
   intros S1 t S2 STEP. destruct STEP.
@@ -2316,7 +2317,7 @@ Proof.
 Qed.
 
 Theorem transl_program_correct:
-  forward_simulation (Cstrategy.semantics prog) (Clight.semantics1 tprog).
+  forward_simulation (Cstrategy.semantics fn_stack_requirements prog) (Clight.semantics1 fn_stack_requirements tprog).
 Proof.
   eapply forward_simulation_star_wf with (order := ltof _ measure).
   eapply senv_preserved.
