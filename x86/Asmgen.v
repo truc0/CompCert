@@ -709,10 +709,10 @@ Definition transl_instr (f: Mach.function) (i: Mach.instruction)
       OK (Pcall_s symb sig :: k)
   | Mtailcall sig (inl reg) =>
       do r <- ireg_of reg;
-      OK (Pfreeframe f.(fn_stacksize) f.(fn_retaddr_ofs) f.(fn_link_ofs) ::
+      OK (Pfreeframe f.(Mach.fn_stacksize) f.(fn_retaddr_ofs) f.(fn_link_ofs) ::
           Pjmp_r r sig :: k)
   | Mtailcall sig (inr symb) =>
-      OK (Pfreeframe f.(fn_stacksize) f.(fn_retaddr_ofs) f.(fn_link_ofs) ::
+      OK (Pfreeframe f.(Mach.fn_stacksize) f.(fn_retaddr_ofs) f.(fn_link_ofs) ::
           Pjmp_s symb sig :: k)
   | Mlabel lbl =>
       OK(Plabel lbl :: k)
@@ -723,7 +723,7 @@ Definition transl_instr (f: Mach.function) (i: Mach.instruction)
   | Mjumptable arg tbl =>
       do r <- ireg_of arg; OK (Pjmptbl r tbl :: k)
   | Mreturn =>
-      OK (Pfreeframe f.(fn_stacksize) f.(fn_retaddr_ofs) f.(fn_link_ofs) ::
+      OK (Pfreeframe f.(Mach.fn_stacksize) f.(fn_retaddr_ofs) f.(fn_link_ofs) ::
           Pret :: k)
   | Mbuiltin ef args res =>
       OK (Pbuiltin ef (List.map (map_builtin_arg preg_of) args) (map_builtin_res preg_of res) :: k)
@@ -772,13 +772,23 @@ Definition transl_code' (f: Mach.function) (il: list Mach.instruction) (axp: boo
 Definition transl_function (f: Mach.function) :=
   do c <- transl_code' f f.(Mach.fn_code) true;
   OK (mkfunction f.(Mach.fn_sig)
-        (Pallocframe f.(fn_stacksize) f.(fn_retaddr_ofs) f.(fn_link_ofs) :: c)).
+        (Pallocframe f.(Mach.fn_stacksize) f.(fn_retaddr_ofs) f.(fn_link_ofs) :: c) f.(Mach.fn_stacksize)).
 
 Definition transf_function (f: Mach.function) : res Asm.function :=
   do tf <- transl_function f;
   if zlt Ptrofs.max_unsigned (list_length_z tf.(fn_code))
   then Error (msg "code size exceeded")
   else OK tf.
+
+Lemma transl_function_stacksize :
+  forall f tf,
+    transl_function f = OK tf ->
+    Mach.fn_stacksize f = fn_stacksize tf.
+Proof.
+  intros.
+  unfold transl_function in H. unfold bind in H.
+  destr_in H. inv H. simpl. auto.
+Qed.
 
 Definition transf_fundef (f: Mach.fundef) : res Asm.fundef :=
   transf_partial_fundef transf_function f.

@@ -213,6 +213,7 @@ Qed.
 
 Section CONSTRUCTORS.
 
+Variables fn_stack_requirements: ident -> Z.
 Variables cunit prog: Clight.program.
 Hypothesis LINK: linkorder cunit prog.
 Variable ge: genv.
@@ -964,7 +965,7 @@ Lemma make_memcpy_correct:
   assign_loc prog.(prog_comp_env) ty m b ofs v m' ->
   access_mode ty = By_copy ->
   make_memcpy cunit.(prog_comp_env) dst src ty = OK s ->
-  step ge (State f s k e le m) E0 (State f Sskip k e le m').
+  step fn_stack_requirements ge (State f s k e le m) E0 (State f Sskip k e le m').
 Proof.
   intros. inv H1; try congruence.
   monadInv H3.
@@ -984,7 +985,7 @@ Lemma make_store_correct:
   eval_expr ge e le m addr (Vptr b ofs) ->
   eval_expr ge e le m rhs v ->
   assign_loc prog.(prog_comp_env) ty m b ofs v m' ->
-  step ge (State f code k e le m) E0 (State f Sskip k e le m').
+  step fn_stack_requirements ge (State f code k e le m) E0 (State f Sskip k e le m').
 Proof.
   unfold make_store. intros until k; intros MKSTORE EV1 EV2 ASSIGN.
   inversion ASSIGN; subst.
@@ -1022,6 +1023,7 @@ End CONSTRUCTORS.
 
 Section CORRECTNESS.
 
+Variables fn_stack_requirements: ident -> Z.
 Variable prog: Clight.program.
 Variable tprog: Csharpminor.program.
 Hypothesis TRANSL: match_prog prog tprog.
@@ -1338,7 +1340,7 @@ Inductive match_transl: stmt -> cont -> stmt -> cont -> Prop :=
 Lemma match_transl_step:
   forall ts tk ts' tk' f te le m,
   match_transl (Sblock ts) tk ts' tk' ->
-  star step tge (State f ts' tk' te le m) E0 (State f ts (Kblock tk) te le m).
+  star (step fn_stack_requirements)  tge (State f ts' tk' te le m) E0 (State f ts (Kblock tk) te le m).
 Proof.
   intros. inv H.
   apply star_one. constructor.
@@ -1557,9 +1559,9 @@ Qed.
 (** The simulation proof *)
 
 Lemma transl_step:
-  forall S1 t S2, Clight.step2 ge S1 t S2 ->
+  forall S1 t S2, Clight.step2 fn_stack_requirements ge S1 t S2 ->
   forall T1, match_states S1 T1 ->
-  exists T2, plus step tge T1 t T2 /\ match_states S2 T2.
+  exists T2, plus (step fn_stack_requirements) tge T1 t T2 /\ match_states S2 T2.
 Proof.
   induction 1; intros T1 MST; inv MST.
 
@@ -1734,7 +1736,7 @@ Proof.
   exploit match_cont_is_call_cont; eauto. intros [A B].
   econstructor; split.
   apply plus_one. eapply step_skip_call. eauto.
-  eapply match_env_free_blocks; eauto. eauto.
+  eapply match_env_free_blocks; eauto. eauto. eauto.
   eapply match_returnstate with (ce := prog_comp_env cu); eauto.
   constructor.
 
@@ -1785,7 +1787,7 @@ Proof.
   econstructor; eauto. constructor.
 
 - (* internal function *)
-  inv H. inv TR. monadInv H6.
+  inv H. inv TR. monadInv H7.
   exploit match_cont_is_call_cont; eauto. intros [A B].
   exploit match_env_alloc_variables; eauto.
   apply match_env_empty.
@@ -1802,7 +1804,7 @@ Proof.
   unfold transl_function. rewrite EQ; simpl. rewrite EQ1; simpl. auto.
   constructor.
   replace (fn_return f) with tres. eassumption.
-  simpl in TY. unfold type_of_function in TY. congruence. 
+  simpl in TY. unfold type_of_function in TY. congruence.
 
 - (* external function *)
   inv TR.
@@ -1811,7 +1813,7 @@ Proof.
   apply plus_one. constructor.
   eapply external_call_symbols_preserved; eauto. apply senv_preserved.
   eapply match_returnstate with (ce := ce); eauto.
-  apply has_rettype_wt_val. 
+  apply has_rettype_wt_val.
   replace (rettype_of_type tres0) with (sig_res (ef_sig ef)).
   eapply external_call_well_typed_gen; eauto.
   rewrite H5. simpl. simpl in TY. congruence.
@@ -1854,7 +1856,8 @@ Proof.
 Qed.
 
 Theorem transl_program_correct:
-  forward_simulation (Clight.semantics2 prog) (Csharpminor.semantics tprog).
+  forward_simulation (Clight.semantics2 fn_stack_requirements prog)
+                     (Csharpminor.semantics fn_stack_requirements tprog).
 Proof.
   eapply forward_simulation_plus.
   apply senv_preserved.

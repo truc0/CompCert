@@ -443,7 +443,7 @@ Inductive step: state -> trace -> state -> Prop :=
       Mem.return_frame m' = Some m'' ->
       Mem.pop_stage m'' = Some m''' ->
       step (State f (Sreturn None) k e le m)
-        E0 (Returnstate Vundef (call_cont k) m'')
+        E0 (Returnstate Vundef (call_cont k) m''')
   | step_return_1: forall f a k e le m v m' m'' m''',
       eval_expr e le m a v ->
       Mem.free_list m (blocks_of_env e) = Some m' ->

@@ -612,6 +612,29 @@ Proof.
   eapply struct_eq_trans; eauto.
 Qed.
 
+Lemma alloc_variables_astackeq:
+  forall ge e m vars e' m',
+  alloc_variables ge e m vars e' m' ->
+  Mem.astack (Mem.support m) = Mem.astack (Mem.support m').
+Proof.
+  induction 1. congruence.
+  apply Mem.support_alloc in H. unfold sup_incr in H. destr_in H.
+  rewrite <- IHalloc_variables. rewrite H. simpl. auto.
+Qed.
+
+Lemma alloc_variables_parallel_astackeq :
+  forall ge1 e1 m1 vars1 e1' m1' ge2 e2 m2 vars2 e2' m2',
+  alloc_variables ge1 e1 m1 vars1 e1' m1' ->
+  alloc_variables ge2 e2 m2 vars2 e2' m2' ->
+  Mem.astack (Mem.support m1) = Mem.astack (Mem.support m2) ->
+  Mem.astack (Mem.support m1') = Mem.astack (Mem.support m2').
+Proof.
+  intros.
+  apply alloc_variables_astackeq in H.
+  apply alloc_variables_astackeq in H0.
+  congruence.
+Qed.
+
 Lemma alloc_variables_support:
   forall ge e m vars e' m',
   alloc_variables ge e m vars e' m' -> Mem.sup_include (Mem.support m) (Mem.support m').
@@ -2488,7 +2511,8 @@ Proof.
   eapply Mem.support_return_frame_1 in H0. apply H0.
   eapply Mem.support_pop_stage_1; eauto.
   unfold Mem.stackseq in *. congruence.
-  admit.
+  apply Mem.astack_pop_stage in H1. apply Mem.astack_pop_stage in P''.
+  destruct H1 as [a b]. destruct P'' as [c d]. congruence.
 
 (* return some *)
   exploit eval_simpl_expr; eauto with compat. intros [tv [A B]].
@@ -2529,7 +2553,8 @@ Proof.
   eapply Mem.support_return_frame_1 in H2. apply H2.
   eapply Mem.support_pop_stage_1; eauto.
   unfold Mem.stackseq in *. congruence.
-  admit.
+  apply Mem.astack_pop_stage in H3. apply Mem.astack_pop_stage in P''.
+  destruct H3 as [a' b]. destruct P'' as [c d]. congruence.
 
 (* skip call *)
   exploit match_envs_free_blocks; eauto. intros [tm'1 [P Q]].
@@ -2569,7 +2594,8 @@ Proof.
   eapply Mem.support_return_frame_1 in H1. apply H1.
   eapply Mem.support_pop_stage_1; eauto.
   unfold Mem.stackseq in *. congruence.
-  admit.
+  apply Mem.astack_pop_stage in H2. apply Mem.astack_pop_stage in P''.
+  destruct H2. destruct P''. congruence.
 
 (* switch *)
   exploit eval_simpl_expr; eauto with compat. intros [tv [A B]].
@@ -2614,20 +2640,22 @@ Proof.
   assert (list_norepet (var_names (fn_params f ++ fn_vars f))).
     unfold var_names. rewrite map_app. auto.
   exploit Mem.alloc_frame_parallel_inject; eauto.
-  intros (tm' & p' & ALL & INJ).
+  intros (tm1 & p' & ALL & INJ).
   exploit alloc_var_var'; eauto. intros (blocks & VARS' & H5).
   exploit nextblock_pos_1. apply H1. intro.
   exploit nextblock_pos_1; eauto. intro.
   exploit Mem.alloc_frame_parallel_stackseq; eauto. intro. inv H8.
+  exploit Mem.alloc_frame_parallel_astackeq; eauto. intro.
   exploit match_envs_alloc_variables; eauto.
     instantiate (1 := cenv_for_gen (addr_taken_stmt f.(fn_body)) (fn_params f ++ fn_vars f)).
-    intros. eapply cenv_for_gen_by_value; eauto. rewrite VSF.mem_iff. eexact H9.
-    intros. eapply cenv_for_gen_domain. rewrite VSF.mem_iff. eexact H8.
-  intros [j' [te [tm'' [A [B [C [D [E [F [G I]]]]]]]]]].
+    intros. eapply cenv_for_gen_by_value; eauto. rewrite VSF.mem_iff. eexact H11.
+    intros. eapply cenv_for_gen_domain. rewrite VSF.mem_iff. eexact H9.
+  intros [j' [te [tm2 [A [B [C [D [E [F [G I]]]]]]]]]].
+  exploit alloc_variables_parallel_astackeq. apply H2. apply A. eauto. intro.
   exploit Mem.push_stage_inject; eauto. intro.
   exploit Mem.record_frame_parallel_inject; eauto. simpl. congruence.
-  admit.
-  intros (tm''' & L & M).
+  simpl. rewrite H9. lia.
+  intros (tm3 & L & M).
   assert (K: list_forall2 val_casted vargs (map snd (fn_params f))).
   { apply val_casted_list_params. unfold type_of_function in FUNTY. congruence. }
   exploit store_params_correct.
@@ -2642,7 +2670,7 @@ Proof.
     intros. apply (create_undef_temps_lifted id0 f). auto.
     intros. destruct (create_undef_temps (fn_temps f))!id0 as [v|] eqn:?; auto.
     exploit create_undef_temps_inv; eauto. intros [P Q]. elim (l id0 id0); auto.
-  intros [tel [tm1 [P [Q [R [S T]]]]]].
+  intros [tel [tm4 [P [Q [R [S T]]]]]].
   change (cenv_for_gen (addr_taken_stmt (fn_body f)) (fn_params f ++ fn_vars f))
     with (cenv_for f) in *.
   generalize (vars_and_temps_properties (cenv_for f) (fn_params f) (fn_vars f) (fn_temps f)).
@@ -2653,23 +2681,22 @@ Proof.
   eexact Q.
   simpl. eapply star_trans. eapply step_add_debug_params. auto. eapply forall2_val_casted_inject; eauto. eexact Q.
   eapply star_trans. eexact P. eapply step_add_debug_vars.
-  unfold remove_lifted; intros. rewrite List.filter_In in H9. destruct H9.
-  apply negb_true_iff in H11. eauto.
+  unfold remove_lifted; intros. rewrite List.filter_In in H12. destruct H12.
+  apply negb_true_iff in H13. eauto.
   reflexivity. reflexivity. traceEq.
   econstructor; eauto.
   eapply match_cont_invariant with (m:= m); eauto.
   eapply match_cont_incr_bounds; eauto.
   intro. eapply Mem.support_alloc_frame_1 in H1. apply H1.
   intro. eapply Mem.support_alloc_frame_1 in ALL. apply ALL.
-
   intros. erewrite bind_parameters_load. 3: eauto.
   rewrite (Mem.load_record_frame _ _ _ H3).
-  rewrite <- (Mem.load_alloc_frame _ _ _ _ H1) in H12.
-  eapply alloc_variables_load in H12. 2: eauto. eauto.
+  rewrite <- (Mem.load_alloc_frame _ _ _ _ H1) in H14.
+  eapply alloc_variables_load in H14. 2: eauto. eauto.
   intros.
   exploit alloc_variables_range. eexact H2. eauto.
   unfold empty_env. rewrite PTree.gempty. intros [?|?]. congruence.
-  red; intros; subst b'. destruct H14. congruence.
+  red; intros; subst b'. destruct H16. congruence.
 {
   apply functional_extensionality. intro b0.
   destruct (Mem.sup_dec b0 (Mem.support m0)).
@@ -2677,34 +2704,43 @@ Proof.
     eapply Mem.support_alloc_frame_1 in H1 as SUP1.
     apply SUP1 in s as s1.
     eapply alloc_variables_support in s as s2; eauto.
-    erewrite <- bind_parameters_support in s2; eauto.
-    destr; destr; try congruence. auto.
+    erewrite (bind_parameters_support _ _ _ _ _ _ H4).
+    destr; destr; try congruence. exfalso. apply n.
+    eapply Mem.support_record_frame_1 in H3. apply H3. eauto. auto.
   - destruct (Mem.sup_dec b0 (Mem.support m1)).
     + unfold struct_meminj. destr.
       erewrite bind_parameters_support in s; eauto.
+      eapply Mem.support_record_frame_1 in H3. apply H3 in s.
       unfold unchecked_meminj.
-      exploit alloc_vars_inv'. apply VARS'. intro. apply H7 in s.
+      exploit alloc_vars_inv'. apply VARS'. intro. apply H12 in s.
       destruct s; try congruence.
       assert (Mem.nextblock m0 = Stack (Some id) p' 1%positive).
       eapply Mem.alloc_frame_nextblock; eauto.
       exploit nextblock_alloc_vars; eauto.
       intros (p'0 & X' & Y').
-      destruct H10. subst. unfold find_func_pos.
+      subst. unfold find_func_pos.
       rewrite FIND.
       exploit I. eauto. intro.
-      destruct H10 as (id0 & path0 & pos & X1 & Y1).
+      destruct H15 as (id0 & path0 & pos & X1 & Y1).
       rewrite Y1. inv X1. auto.
     + inv C. rewrite mi_freeblocks; eauto. unfold struct_meminj.
       destr; try congruence.
-      erewrite bind_parameters_support in n0; eauto.
+      erewrite bind_parameters_support in n0. 2: eauto.
+      eapply Mem.support_record_frame_1 in H3. intro. apply n0. apply H3. eauto.
 }
   unfold Mem.stackseq in *. rewrite T.
   erewrite bind_parameters_support; eauto.
+  erewrite <- Mem.stack_record_frame; eauto.
+  erewrite <- (Mem.stack_record_frame _ _ _ L). simpl.
   eapply alloc_variables_parallel_stackseq; eauto.
+  rewrite T. rewrite (bind_parameters_support _ _ _ _ _ _ H4).
+  apply Mem.astack_record_frame in H3. apply Mem.astack_record_frame in L.
+  destruct H3 as [a [b [c d]]]. destruct L as [h [i [j k']]]. simpl in *.
+  congruence.
   apply compat_cenv_for.
-  rewrite (bind_parameters_support _ _ _ _ _ _ H3). apply Mem.sup_include_refl.
-  rewrite T; auto. apply Mem.sup_include_refl.
-
+  rewrite (bind_parameters_support _ _ _ _ _ _ H4).
+  intro. eapply Mem.support_record_frame_1 in H3. apply H3. rewrite T.
+  intro. eapply Mem.support_record_frame_1 in L. apply L.
 (* external function *)
   monadInv TRFD. inv FUNTY.
   exploit external_call_mem_inject; eauto. apply match_globalenvs_preserves_globals.
@@ -2719,6 +2755,8 @@ Proof.
   apply Mem.sup_include_refl. apply Mem.sup_include_refl.
   eapply external_call_support; eauto.
   eapply external_call_support; eauto.
+  eapply external_call_mem_astack in H.
+  eapply external_call_mem_astack in P. congruence.
 (* return *)
   specialize (MCONT (cenv_for f)). inv MCONT.
   econstructor; split.
@@ -2780,7 +2818,8 @@ Proof.
 Qed.
 
 Theorem transf_program_correct:
-  forward_simulation (semantics1 prog) (semantics2 tprog).
+  forward_simulation (semantics1 fn_stack_requirements prog)
+                     (semantics2 fn_stack_requirements tprog).
 Proof.
   eapply forward_simulation_plus.
   apply senv_preserved.
