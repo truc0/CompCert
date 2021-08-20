@@ -1608,7 +1608,7 @@ Proof.
   eapply Mem.sup_include_trans. 2: eapply Mem.sup_include_record_frame; eauto.
   simpl.
   rewrite Mem.support_alloc with m' 0 (fn_stacksize f) m'' stk.
-  admit.
+  intro. unfold Mem.sup_push_stage. destruct b; simpl; auto.
   eauto.
   apply sound_stack_exten with bc; auto.
   apply sound_stack_inv with m; auto.
@@ -1653,7 +1653,7 @@ Proof.
    apply sound_stack_exten with bc'; auto.
    intros. apply G. apply SINCR. apply Mem.sup_incr_in2. auto.
    eapply ematch_ge; eauto. apply ematch_update. auto. auto.
-Admitted.
+Qed.
 
 End SOUNDNESS.
 

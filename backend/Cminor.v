@@ -605,21 +605,15 @@ Proof.
   exploit external_call_receptive; eauto. intros [vres2 [m2 EC2]].
   assert ({m3:mem | Mem.pop_stage m2 = Some m3}).
     apply Mem.nonempty_pop_stage.
-    admit.
-    (*
-    eapply external_call_mem_stackeq in EC2.
-    eapply external_call_mem_stackeq in H3.
-    unfold Mem.stackeq in *.
-    rewrite <- EC2. rewrite H3. apply Mem.pop_stage_nonempty in H4.
-    auto.
-    *)
+    eapply external_call_mem_astack in EC2. rewrite <- EC2.
+    simpl. congruence.
   destruct X as [m3 POP_STAGE].
   exists (State f Sskip k sp (set_optvar optid vres2 e) m3). econstructor; eauto.
   exploit external_call_receptive; eauto. intros [vres2 [m2 EC2]].
   exists (Returnstate vres2 k m2). econstructor; eauto.
 (* trace length *)
   red; intros; inv H; simpl; try lia; eapply external_call_trace_length; eauto.
-Admitted.
+Qed.
 
 (** This semantics is determinate. *)
 

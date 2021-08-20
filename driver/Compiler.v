@@ -411,12 +411,11 @@ Proof.
   destr_in TF. unfold bind in TF. destr_in TF. inv TF.
   unfold Asmgen.transf_function in Heqr. unfold bind in Heqr.
   repeat destr_in Heqr.
-  admit.
-(*  apply Asmgen.transl_function_stacksize. apply Heqr0. *)
+  apply Asmgen.transl_function_stacksize. apply Heqr0.
   inv TF. auto.
   eapply match_program_no_more_functions in FF; eauto.
   rewrite FF. auto.
-Admitted.
+Qed.
 
 Theorem cstrategy_semantic_preservation:
   forall p tp,

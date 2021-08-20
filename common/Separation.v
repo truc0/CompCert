@@ -885,8 +885,6 @@ Proof.
   eelim C; eauto. simpl. exists b0, delta; split; auto. apply MAXPERMS; auto.
   eapply Mem.valid_block_inject_1; eauto.
 + exploit ISEP; eauto. intros (X & Y). elim Y. eapply m_valid; eauto.
-- admit.
-- admit.
 Admitted.
 
 Lemma alloc_parallel_rule_2:
