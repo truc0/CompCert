@@ -1152,9 +1152,8 @@ Local Opaque b fe.
   rewrite (Mem.support_alloc _ _ _ _ _ ALLOC').
   rewrite (Mem.support_alloc_frame _ _ _ _ ALLOCF).
   rewrite (Mem.support_alloc_frame _ _ _ _ ALLOCF').
-  rewrite SUP. lia.
-  simpl. congruence. clear SEP.
-  intros (m3' & RECORD' & SEP).
+  rewrite SUP. lia. rewrite Mem.astack_push_stage. congruence.
+  clear SEP. intros (m3' & RECORD' & SEP).
   rewrite sep_swap3 in SEP.
   (* Remember the freeable permissions using a mconj *)
   assert (SEPCONJ:

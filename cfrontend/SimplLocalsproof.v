@@ -2653,7 +2653,9 @@ Proof.
   intros [j' [te [tm2 [A [B [C [D [E [F [G I]]]]]]]]]].
   exploit alloc_variables_parallel_astackeq. apply H2. apply A. eauto. intro.
   exploit Mem.push_stage_inject; eauto. intro.
-  exploit Mem.record_frame_parallel_inject; eauto. simpl. congruence.
+  exploit Mem.record_frame_parallel_inject; eauto.
+  rewrite Mem.astack_push_stage. congruence.
+  rewrite Mem.astack_push_stage. rewrite Mem.astack_push_stage.
   simpl. rewrite H9. lia.
   intros (tm3 & L & M).
   assert (K: list_forall2 val_casted vargs (map snd (fn_params f))).
@@ -2735,8 +2737,8 @@ Proof.
   eapply alloc_variables_parallel_stackseq; eauto.
   rewrite T. rewrite (bind_parameters_support _ _ _ _ _ _ H4).
   apply Mem.astack_record_frame in H3. apply Mem.astack_record_frame in L.
-  destruct H3 as [a [b [c d]]]. destruct L as [h [i [j k']]]. simpl in *.
-  congruence.
+  destruct H3 as [a [b [c d]]]. destruct L as [h [i [j k']]].
+  rewrite Mem.astack_push_stage in *. congruence.
   apply compat_cenv_for.
   rewrite (bind_parameters_support _ _ _ _ _ _ H4).
   intro. eapply Mem.support_record_frame_1 in H3. apply H3. rewrite T.

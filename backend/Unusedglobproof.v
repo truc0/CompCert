@@ -1152,8 +1152,8 @@ Proof.
   exploit Mem.alloc_parallel_astackeq. apply H0. apply C. eauto. intro.
   exploit Mem.alloc_parallel_stackeq. apply H0. apply C. congruence. intros. destruct H5.
   exploit Mem.push_stage_inject. eauto. intro.
-  exploit Mem.record_frame_parallel_inject; eauto. simpl. congruence.
-  simpl. rewrite H3. lia.
+  exploit Mem.record_frame_parallel_inject; eauto. erewrite Mem.astack_push_stage; eauto. congruence.
+  repeat rewrite Mem.astack_push_stage. rewrite H3. lia.
   intros (tm''' & I & J).
   assert (STK: stk = Mem.nextblock m') by (eapply Mem.alloc_result; eauto).
   assert (TSTK: tstk = Mem.nextblock tm') by (eapply Mem.alloc_result; eauto).
@@ -1188,7 +1188,7 @@ Proof.
       * eapply Mem.support_alloc_frame_1 in H. apply H in s0.
         eapply Mem.valid_block_alloc in s0; eauto. simpl in *.
         erewrite <- Mem.stack_record_frame in n0. 2: eauto.
-        simpl in n0. congruence.
+        erewrite Mem.stack_push_stage in n0; eauto. congruence.
       * exfalso. apply n0.
         eapply Mem.support_record_frame_1 in H1. eapply H1 in s0.
         eapply Mem.valid_block_push_stage_2 in s0. 2: eauto.
@@ -1202,9 +1202,10 @@ Proof.
   eapply match_states_regular with (j := j'); eauto.
   apply init_regs_inject; auto. apply val_inject_list_incr with (struct_meminj (Mem.support m)); auto.
   apply Mem.stack_record_frame in H1. apply Mem.stack_record_frame in I.
-  simpl in *. congruence.
+  rewrite Mem.stack_push_stage in I. rewrite Mem.stack_push_stage in H1. congruence.
   apply Mem.astack_record_frame in H1. apply Mem.astack_record_frame in I.
-  destruct H1 as [a [b [c d]]]. destruct I as [e[f'[g h]]]. simpl in *. congruence.
+  destruct H1 as [a [b [c d]]]. destruct I as [e[f'[g h]]].
+  rewrite Mem.astack_push_stage in g. rewrite Mem.astack_push_stage in c. congruence.
   eapply Mem.sup_include_trans. 2: {intro; eapply Mem.support_record_frame_1 in H1; apply H1; eauto. } simpl.
   rewrite Mem.support_alloc with m' 0 (fn_stacksize f) m'' stk. apply Mem.sup_incr_in2. auto.
   eapply Mem.sup_include_trans. 2: {intro; eapply Mem.support_record_frame_1 in I. apply I; eauto. } simpl.

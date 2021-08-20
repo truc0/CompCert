@@ -1653,7 +1653,7 @@ Proof.
    apply sound_stack_exten with bc'; auto.
    intros. apply G. apply SINCR. apply Mem.sup_incr_in2. auto.
    eapply ematch_ge; eauto. apply ematch_update. auto. auto.
-Qed.
+Admitted.
 
 End SOUNDNESS.
 
