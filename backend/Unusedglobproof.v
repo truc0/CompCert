@@ -535,7 +535,7 @@ Definition check_block (s:sup): block -> bool :=
     |Global id => match Genv.find_symbol tge id with
                    |Some _ => true | None => false
                  end
-    |Stack _ _ _ => if Mem.sup_dec b s then true else false
+    |Stack _ _ _ _ => if Mem.sup_dec b s then true else false
                  end.
 
 Definition struct_meminj (s:sup) :=
@@ -559,8 +559,8 @@ Proof.
   intros.
   apply functional_extensionality.
   intros. destruct x; unfold struct_meminj; simpl.
-  destruct (Mem.sup_dec (Stack f p0 p1) s1);
-  destruct (Mem.sup_dec (Stack f p0 p1) s2).
+  destruct (Mem.sup_dec (Stack n f p0 p1) s1);
+  destruct (Mem.sup_dec (Stack n f p0 p1) s2).
   auto. apply H in s. congruence.
   apply H in s. congruence. auto.
   destr.
@@ -571,8 +571,8 @@ Lemma sinj_include_incr :forall s1 s2, Mem.sup_include s1 s2 ->
 Proof.
   intros. intro. intros. unfold struct_meminj in *.
   destruct b; simpl in *.
-  destruct (Mem.sup_dec (Stack f p0 p1) s1);
-  destruct (Mem.sup_dec (Stack f p0 p1) s2).
+  destruct (Mem.sup_dec (Stack n f p0 p1) s1);
+  destruct (Mem.sup_dec (Stack n f p0 p1) s2).
   auto. apply H in s. congruence. inv H0. inv H0.
   destr.
 Qed.
@@ -807,7 +807,7 @@ Inductive match_states: state -> state -> Prop :=
          (SPINJ: j sp = Some(tsp, 0))
          (REGINJ: regset_inject j rs trs)
          (MEMINJ: Mem.inject j m tm)
-         (MSTK: Mem.stack(Mem.support m) = Mem.stack(Mem.support tm))
+         (MSTK: Mem.stackeq m tm)
          (MASTK: Mem.astack (Mem.support m) = Mem.astack (Mem.support tm))
          (SUPINC: Mem.sup_include sps (Mem.support m))
          (TSUPINC: Mem.sup_include tsps (Mem.support tm)),
@@ -818,7 +818,7 @@ Inductive match_states: state -> state -> Prop :=
          (STACKS: match_stacks j s ts (Mem.support m) (Mem.support tm))
          (KEPT: forall id, ref_fundef fd id -> kept id)
          (ARGINJ: Val.inject_list j args targs)
-         (MSTK: Mem.stack(Mem.support m) = Mem.stack(Mem.support tm))
+         (MSTK: Mem.stackeq m tm)
          (MASTK: Mem.astack (Mem.support m) = Mem.astack (Mem.support tm))
          (MEMINJ: Mem.inject j m tm),
       match_states (Callstate s fd args m id)
@@ -827,7 +827,7 @@ Inductive match_states: state -> state -> Prop :=
          (SMJ: j = struct_meminj (Mem.support m))
          (STACKS: match_stacks j s ts (Mem.support m) (Mem.support tm))
          (RESINJ: Val.inject j res tres)
-         (MSTK: Mem.stack(Mem.support m) = Mem.stack(Mem.support tm))
+         (MSTK: Mem.stackeq m tm)
          (MASTK: Mem.astack (Mem.support m) = Mem.astack (Mem.support tm))
          (MEMINJ: Mem.inject j m tm),
       match_states (Returnstate s res m)
@@ -1002,7 +1002,9 @@ Proof.
   econstructor; split. eapply exec_Istore; eauto.
   econstructor;
   try (rewrite <- (Mem.support_storev _ _ _ _ _ H1)); eauto.
+  unfold Mem.stackeq in *.
   rewrite <- (Mem.support_storev _ _ _ _ _ D). auto.
+  rewrite <- (Mem.support_storev _ _ _ _ _ H1). eauto.
   rewrite <- (Mem.support_storev _ _ _ _ _ D). auto.
   erewrite <- Mem.support_storev. apply TSUPINC. eauto.
 - (* call *)
@@ -1025,19 +1027,21 @@ Proof.
   apply regs_inject; auto.
 
 - (* tailcall *)
+  inversion MSTK.
   exploit find_function_inject.
   eapply match_stacks_preserves_globals; eauto. eauto.
   destruct ros as [r|id']. eauto. apply KEPT. red. econstructor; econstructor; split; eauto. simpl; auto.
   intros (A & B).
   exploit Mem.free_parallel_inject; eauto. rewrite ! Z.add_0_r. intros (tm' & C & D).
   apply Mem.support_free in C as SUPF. apply Mem.support_free in H3 as SUPF'.
-  exploit Mem.return_frame_parallel_inject; eauto. rewrite SUPF. rewrite <- MSTK.
+  exploit Mem.return_frame_parallel_inject; eauto. rewrite SUPF.
+  rewrite <- H2.
   rewrite <- SUPF'. eapply Mem.return_frame_active. eauto.
   intros (tm'' & E & F).
-  exploit Mem.return_frame_parallel_stackeq. apply H4. apply E. congruence.
-  intro MSTK''.
-  exploit Mem.return_frame_parallel_astackeq. apply H4. apply E. congruence.
-  intro MASTK''.
+  exploit Mem.return_frame_parallel_stackeq. apply H4. apply E.
+  unfold Mem.stackeq. split; congruence. intro MSTK''.
+  exploit Mem.return_frame_parallel_astackeq. apply H4. apply E.
+  congruence.  intro MASTK''.
   exploit Mem.pop_stage_parallel_inject; eauto. rewrite <- MASTK''.
   eapply Mem.pop_stage_nonempty; eauto.
   intros (tm''' & G & I).
@@ -1045,8 +1049,8 @@ Proof.
   eapply exec_Itailcall; eauto.
   {instantiate (1:= id).
    destruct ros; simpl in *. generalize (REGINJ r).
-   intro. inv H2; (try congruence).  unfold struct_meminj in H8.
-   destr_in H8. inv H8. rewrite Ptrofs.add_zero in H7.
+   intro. inv H7; (try congruence).  unfold struct_meminj in H10.
+   destr_in H10. inv H10. rewrite Ptrofs.add_zero in H9.
    rewrite Ptrofs.add_zero. congruence. auto. }
   assert (struct_meminj (Mem.support m''') = struct_meminj (Mem.support m)).
   erewrite sinj_refl. eauto. intros.
@@ -1056,7 +1060,7 @@ Proof.
   eapply Mem.support_pop_stage_1. eauto.
   econstructor; eauto.
   apply match_stacks_bound with sps tsps; auto.
-  rewrite H2. auto.
+  rewrite H7. auto.
   eapply Mem.sup_include_trans; eauto.
   erewrite <- Mem.support_free; eauto.
   eapply Mem.sup_include_trans.
@@ -1068,19 +1072,20 @@ Proof.
   intro. eapply Mem.support_return_frame_1 in E. apply E.
   intro. eapply Mem.support_pop_stage_1 in G. apply G.
   apply regs_inject; auto.
-  rewrite H2. auto.
-  apply Mem.stack_pop_stage in H5. apply Mem.stack_pop_stage in G.
-  congruence.
+  rewrite H7. auto.
+  apply Mem.stack_pop_stage in H5 as H5'. apply Mem.stack_pop_stage in G as G'.
+  unfold Mem.stackeq in *. inversion MSTK. inversion MSTK''. split. congruence.
+  apply Mem.sid_pop_stage in H5. apply Mem.sid_pop_stage in G. congruence.
   apply Mem.astack_pop_stage in H5. destruct H5. apply Mem.astack_pop_stage in G.
   destruct G. congruence.
-  rewrite H2. auto.
+  rewrite H7. auto.
 - (* builtin *)
   exploit eval_builtin_args_inject; eauto.
   eapply match_stacks_preserves_globals; eauto.
   intros. apply KEPT. red. econstructor; econstructor; eauto.
   intros (vargs' & P & Q).
   exploit external_call_inject; eauto.
-  eapply match_stacks_preserves_globals; eauto.
+  eapply match_stacks_preserves_globals; eauto. apply MSTK.
   intros (j' & tv & tm' & A & B & C & D & E & F & G & I & J).
   econstructor; split.
   eapply exec_Ibuiltin; eauto.

@@ -618,7 +618,7 @@ Definition inject_separated (f f': meminj) (m1 m2: mem): Prop :=
 
 Definition external_block (b:block) : Prop :=
   match b with
-    |Stack None _ _ => True
+    |Stack _ None _ _ => True
     |_ => False
   end.
 

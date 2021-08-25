@@ -4283,6 +4283,7 @@ Proof.
   unfold Mem.sup_include. unfold Mem.sup_In.
   erewrite Mem.stack_pop_stage; eauto.
   erewrite Mem.global_pop_stage; eauto.
+  erewrite Mem.sid_pop_stage; eauto.
 Qed.
 
 Lemma mmatch_record_frame:
@@ -4296,6 +4297,7 @@ Proof.
   unfold Mem.sup_include. unfold Mem.sup_In.
   erewrite Mem.stack_record_frame; eauto.
   erewrite Mem.global_record_frame; eauto.
+  erewrite Mem.sid_record_frame; eauto.
 Qed.
 
 Lemma mmatch_push_stage:
