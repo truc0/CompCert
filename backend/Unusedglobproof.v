@@ -1096,8 +1096,9 @@ Proof.
   intro. apply SUPINC in H4. apply U. auto.
   intro. apply TSUPINC in H4. apply V. auto.
   apply set_res_inject; auto. apply regset_inject_incr with (struct_meminj (Mem.support m)); auto.
-  apply external_call_mem_astack in H1. apply external_call_mem_astack in A.
-  congruence.
+  apply external_call_mem_sid in H1. apply external_call_mem_sid in A.
+  inversion MSTK. split. congruence. congruence.
+  apply external_call_mem_astack in H1 as H1'. apply external_call_mem_astack in A as A'. congruence.
   eapply Mem.sup_include_trans. eauto. eapply Mem.unchanged_on_support;eauto.
   eapply Mem.sup_include_trans. eauto. eapply Mem.unchanged_on_support;eauto.
 - (* cond *)
@@ -1116,11 +1117,14 @@ Proof.
 - (* return *)
   exploit Mem.free_parallel_inject; eauto. rewrite ! Z.add_0_r. intros (tm' & C & D).
   apply Mem.support_free in H0 as SUPF. apply Mem.support_free in C as SUPF'.
+  inversion MSTK.
   exploit Mem.return_frame_parallel_inject; eauto.
   apply Mem.return_frame_active in H1. congruence.
   intros (tm'' & E & F).
-  exploit Mem.return_frame_parallel_stackeq. apply H1. apply E. congruence. intro MSTK''.
-  exploit Mem.return_frame_parallel_astackeq. apply H1. apply E. congruence. intro.
+  exploit Mem.return_frame_parallel_stackeq. apply H1. apply E.
+  split; congruence. intro MSTK''. inversion MSTK''.
+  exploit Mem.return_frame_parallel_astackeq. apply H1. apply E.
+  congruence. intro.
   exploit Mem.pop_stage_parallel_inject; eauto.
   apply Mem.pop_stage_nonempty in H2. congruence.
   intros (tm''' & G & I).
@@ -1134,7 +1138,7 @@ Proof.
   eapply Mem.support_pop_stage_1. eauto.
   econstructor; subst; eauto.
   apply match_stacks_bound with sps tsps; auto.
-  rewrite H4. auto.
+  rewrite H8. auto.
   eapply Mem.sup_include_trans; eauto.
   erewrite <- Mem.support_free; eauto. eapply Mem.sup_include_trans.
   intro. eapply Mem.support_return_frame_1 in H1. apply H1.
@@ -1144,21 +1148,23 @@ Proof.
   intro. eapply Mem.support_return_frame_1 in E. apply E.
   intro. eapply Mem.support_pop_stage_1 in G. apply G.
   destruct or; simpl; auto.
-  rewrite H4. auto.
+  rewrite H8. auto.
+  split.
   apply Mem.stack_pop_stage in H2. apply Mem.stack_pop_stage in G. congruence.
+  apply Mem.sid_pop_stage in H2. apply Mem.sid_pop_stage in G. congruence.
   apply Mem.astack_pop_stage in H2. destruct H2. apply Mem.astack_pop_stage in G.
-  destruct G. congruence. rewrite H4. auto.
+  destruct G. congruence. rewrite H8. auto.
 - (* internal function *)
-  exploit Mem.alloc_frame_parallel_inject. eauto. eauto. intros (tm' & p' & A' & B').
+  exploit Mem.alloc_frame_parallel_inject. eauto. eauto. intros (tm' & p' & A' & B'). inversion MSTK.
   exploit Mem.alloc_frame_parallel_astackeq; eauto. intro.
-  exploit Mem.alloc_frame_parallel_stackeq; eauto. intros. destruct H3. inv H3.
+  exploit Mem.alloc_frame_parallel_stackeq. apply H. apply A'. split; congruence. intros. destruct H5. inv H5.
   exploit Mem.alloc_parallel_inject. eauto. eauto. apply Z.le_refl. apply Z.le_refl.
   intros (j' & tm'' & tstk & C & D & E & F & G).
   exploit Mem.alloc_parallel_astackeq. apply H0. apply C. eauto. intro.
-  exploit Mem.alloc_parallel_stackeq. apply H0. apply C. congruence. intros. destruct H5.
+  exploit Mem.alloc_parallel_stackeq. apply H0. apply C. split; congruence. intros. destruct H6.
   exploit Mem.push_stage_inject. eauto. intro.
   exploit Mem.record_frame_parallel_inject; eauto. erewrite Mem.astack_push_stage; eauto. congruence.
-  repeat rewrite Mem.astack_push_stage. rewrite H3. lia.
+  repeat rewrite Mem.astack_push_stage. rewrite H5. lia.
   intros (tm''' & I & J).
   assert (STK: stk = Mem.nextblock m') by (eapply Mem.alloc_result; eauto).
   assert (TSTK: tstk = Mem.nextblock tm') by (eapply Mem.alloc_result; eauto).
@@ -1169,9 +1175,9 @@ Proof.
     intro. eapply Mem.support_alloc_frame_1 in H. apply H.
     intro. eapply Mem.support_alloc_frame_1 in A'. apply A'.
     intros. destruct (eq_block b1 stk).
-    subst b1. rewrite F in H9; inv H9. split. apply freshness. rewrite TSTK.
+    subst b1. rewrite F in H12; inv H12. split. apply freshness. rewrite TSTK.
     apply freshness.
-    rewrite G in H9 by auto. congruence. }
+    rewrite G in H12 by auto. congruence. }
     assert (MEMINJP' : j' = struct_meminj (Mem.support m''')).
   {
     apply functional_extensionality.
@@ -1180,34 +1186,40 @@ Proof.
     + subst. rewrite F. unfold struct_meminj. simpl.
       eapply Mem.valid_new_block in H0. unfold Mem.valid_block in H0.
       destruct (Mem.nextblock m').
-      simpl. destruct (Mem.sup_dec (Stack f0 p0 p1) (Mem.support m''')).
+      simpl. destruct (Mem.sup_dec (Stack n f0 p0 p1) (Mem.support m''')).
       auto. eapply Mem.support_record_frame_1 in H1.
-      exfalso. apply n. rewrite <- H1. simpl. simpl in n. apply H0.
+      exfalso. apply n0. rewrite <- H1. simpl. simpl in n. apply H0.
       generalize (Mem.nextblock_stack tm').
       intros (b0&path0&pos&HH). congruence.
     + apply G in n as n'. rewrite n'.
       destruct x; unfold struct_meminj; simpl.
       apply Mem.support_alloc in H0 as H0'. inv H0'.
-      destruct (Mem.sup_dec (Stack f0 p0 p1)(Mem.support m));
-      destruct (Mem.sup_dec (Stack f0 p0 p1)(Mem.support m''')); auto.
-      * eapply Mem.support_alloc_frame_1 in H. apply H in s0.
+      destruct (Mem.sup_dec (Stack n0 f0 p0 p1)(Mem.support m));
+      destruct (Mem.sup_dec (Stack n0 f0 p0 p1)(Mem.support m''')); auto.
+      * eapply Mem.support_alloc_frame_1 in H as H'. apply H' in s0.
         eapply Mem.valid_block_alloc in s0; eauto. simpl in *.
-        erewrite <- Mem.stack_record_frame in n0. 2: eauto.
-        erewrite Mem.stack_push_stage in n0; eauto. congruence.
-      * exfalso. apply n0.
+        erewrite <- Mem.stack_record_frame in n1. 2: eauto.
+        erewrite Mem.stack_push_stage in n1; eauto.
+        erewrite <- Mem.sid_record_frame in n1; eauto.
+        unfold Mem.push_stage in n1. simpl in n1. congruence.
+      * exfalso. apply n1.
         eapply Mem.support_record_frame_1 in H1. eapply H1 in s0.
         eapply Mem.valid_block_push_stage_2 in s0. 2: eauto.
         eapply Mem.valid_block_alloc_inv in s0; eauto.
         inv s0. congruence. eapply Mem.support_alloc_frame_1 in H.
-        apply H. apply H6.
+        apply H. apply H9.
       * destr.
   }
   econstructor; split.
   eapply exec_function_internal; eauto.
   eapply match_states_regular with (j := j'); eauto.
   apply init_regs_inject; auto. apply val_inject_list_incr with (struct_meminj (Mem.support m)); auto.
+  inversion H6. split.
   apply Mem.stack_record_frame in H1. apply Mem.stack_record_frame in I.
-  rewrite Mem.stack_push_stage in I. rewrite Mem.stack_push_stage in H1. congruence.
+  rewrite Mem.stack_push_stage in I. rewrite Mem.stack_push_stage in H1.
+  congruence.
+  apply Mem.sid_record_frame in H1. apply Mem.sid_record_frame in I.
+  simpl in *.  congruence.
   apply Mem.astack_record_frame in H1. apply Mem.astack_record_frame in I.
   destruct H1 as [a [b [c d]]]. destruct I as [e[f'[g h]]].
   rewrite Mem.astack_push_stage in g. rewrite Mem.astack_push_stage in c. congruence.
@@ -1218,7 +1230,7 @@ Proof.
 
 - (* external function *)
   exploit external_call_inject; eauto.
-  eapply match_stacks_preserves_globals; eauto.
+  eapply match_stacks_preserves_globals; eauto. apply MSTK.
   intros (j' & tres & tm' & A & B & C & D & E & F & G & I & J).
   econstructor; split.
   eapply exec_function_external; eauto.
@@ -1227,8 +1239,10 @@ Proof.
   apply match_stacks_incr with (struct_meminj (Mem.support m)); auto.
   eapply external_call_support; eauto.
   eapply external_call_support; eauto.
-  apply external_call_mem_astack in H. apply external_call_mem_astack in A.
-  congruence.
+  apply external_call_mem_sid in H. apply external_call_mem_sid in A.
+  inversion MSTK. split; congruence.
+  apply external_call_mem_astack in H. apply external_call_mem_astack in A. congruence.
+
 
 - (* return *)
   inv STACKS. econstructor; split.
@@ -1394,10 +1408,11 @@ Proof.
   * unfold init_meminj.
   apply Genv.init_mem_stack in IM.
   unfold struct_meminj.
-  assert (~sup_In (Stack f p0 p1) sup_empty) by (apply Mem.empty_in).
-  assert (~sup_In (Stack f p0 p1) (Mem.support m)).
-  simpl. rewrite IM. destruct p0. simpl. intros [H1 H2]. auto.
+  assert (~sup_In (Stack n f p0 p1) sup_empty) by (apply Mem.empty_in).
+  assert (~sup_In (Stack n f p0 p1) (Mem.support m)).
+  simpl. rewrite IM. destruct p0; destr. simpl. intros [H1 H2]. auto.
   simpl. destruct n; auto.
+  simpl. repeat destr. destruct n0; simpl in Heqo; congruence.
   simpl. repeat destr.
   apply Genv.invert_find_symbol in Heqo. apply Genv.genv_vars_eq in Heqo. inv Heqo.
   apply Genv.invert_find_symbol in Heqo. apply Genv.genv_vars_eq in Heqo. inv Heqo.
@@ -1470,7 +1485,9 @@ Proof.
   constructor. erewrite <- sinj_init; eauto.
   erewrite <- Genv.init_mem_genv_sup by eauto. apply Mem.sup_include_refl.
   erewrite <- Genv.init_mem_genv_sup by eauto. apply Mem.sup_include_refl.
+  unfold Mem.stackeq.
   erewrite Genv.init_mem_stack; eauto. erewrite Genv.init_mem_stack; eauto.
+  erewrite Genv.init_mem_sid; eauto. erewrite Genv.init_mem_sid; eauto.
   erewrite Genv.init_mem_astack; eauto. erewrite Genv.init_mem_astack; eauto.
   erewrite <- sinj_init; eauto.
 Qed.

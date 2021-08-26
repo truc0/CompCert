@@ -2966,6 +2966,13 @@ Proof.
   destr.
 Qed.
 
+Lemma sid_alloc_frame:
+  sid (support m1) = sid (support m2).
+Proof.
+  rewrite support_alloc_frame. unfold sup_incr_frame.
+  destr.
+Qed.
+
 Lemma path_alloc_frame:
     path = sup_npath (support m1) id.
 Proof.
@@ -3114,6 +3121,15 @@ Proof.
   unfold astack. simpl. congruence.
 Qed.
 
+Lemma sid_return_frame:
+  sid (support m1) = sid (support m2).
+Proof.
+  generalize support_return_frame.
+  intro. unfold sup_return_frame in H.
+  repeat destr_in H.
+  unfold astack. simpl. congruence.
+Qed.
+
 Lemma sup_include_return_frame :
   sup_include (support m1) (support m2).
 Proof.
@@ -3204,6 +3220,13 @@ Theorem support_alloc:
 Proof.
   injection ALLOC; intros. rewrite <- H0; auto.
 Qed.
+
+Lemma sid_alloc:
+  sid (support m2) = sid (support m1).
+Proof.
+  rewrite support_alloc. unfold sup_incr. destr.
+Qed.
+
 Theorem alloc_result:
   b = nextblock m1.
 Proof.

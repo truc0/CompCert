@@ -1601,6 +1601,11 @@ Lemma external_call_mem_astack:
     Mem.astack(Mem.support m1) = Mem.astack (Mem.support m2).
 Admitted.
 
+Lemma external_call_mem_sid:
+  forall ef ge vargs m1 t vres m2,
+    external_call ef ge vargs m1 t vres m2 ->
+    Mem.sid (Mem.support m1) = Mem.sid (Mem.support m2).
+Admitted.
 Lemma external_call_mem_iff:
   forall ef ge vargs m1 t vres m2 m1',
     Mem.iff m1 m2 ->

@@ -1443,6 +1443,12 @@ Lemma init_mem_astack:
     Mem.astack (Mem.support m) = nil.
 Admitted.
 
+Lemma init_mem_sid:
+  forall (p:AST.program F V) m,
+    init_mem p = Some m ->
+    Mem.sid (Mem.support m) = O.
+Admitted.
+
 Lemma init_mem_genv_sup: forall p m,
   init_mem p = Some m ->
   genv_sup (globalenv p) = Mem.support m.

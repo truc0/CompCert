@@ -164,10 +164,10 @@ Definition find_frame_offset (fid pos: ident) : option Z:=
 
 Definition unchecked_meminj : meminj :=
   fun b => match b with
-    |Stack (Some id) path pos =>
+    |Stack n (Some id) path pos =>
       match find_frame_offset id pos with
         | Some o =>
-      Some ((Stack (Some id) path 1),o)
+      Some ((Stack n (Some id) path 1),o)
         | None => None
       end
     |_ => Some (b,0)
@@ -184,8 +184,8 @@ Proof.
   intros.
   apply functional_extensionality.
   intros. destruct x; unfold struct_meminj; simpl.
-  destruct (Mem.sup_dec (Stack f p p0) s1);
-  destruct (Mem.sup_dec (Stack f p p0) s2).
+  destruct (Mem.sup_dec (Stack n f p p0) s1);
+  destruct (Mem.sup_dec (Stack n f p p0) s2).
   auto. apply H in s. congruence.
   apply H in s. congruence. auto.
   destr; destr. apply H in s. congruence.
@@ -196,8 +196,8 @@ Lemma vinj_include_incr :forall s1 s2, Mem.sup_include s1 s2 -> inject_incr (str
 Proof.
   intros. intro. intros. unfold struct_meminj in *.
   destruct b; simpl in *.
-  destruct (Mem.sup_dec (Stack f p p0) s1);
-  destruct (Mem.sup_dec (Stack f p p0) s2).
+  destruct (Mem.sup_dec (Stack n f p p0) s1);
+  destruct (Mem.sup_dec (Stack n f p p0) s2).
   auto. apply H in s. congruence. inv H0. inv H0.
   destr. destr_in H0. destr_in H0.
   inv H0. apply H in s. congruence.
@@ -713,9 +713,9 @@ Lemma match_callstack_return_frame:
 Proof.
   intros.
   exploit Mem.return_frame_parallel_inject; eauto.
-  apply match_callstack_stackseq in H1 as H3.
-  apply active_struct_eq in H3.
-  apply H3. eapply Mem.return_frame_active; eauto.
+  apply match_callstack_stackseq in H1 as H3. inversion H3.
+  apply active_struct_eq in H4.
+  apply H4. eapply Mem.return_frame_active; eauto.
   intros (tm' & RETURN & INJ).
   exists tm'. split. auto. split.
   apply match_callstack_incr_bound with (Mem.support m) (Mem.support tm).
@@ -780,9 +780,11 @@ Proof.
   apply match_callstack_stackseq in H0.
   apply Mem.stack_record_frame in H1 as H1'.
   apply Mem.stack_record_frame in A as A'.
-  rewrite Mem.stack_push_stage in H1'.
-  unfold Mem.stackseq in *. simpl in *. congruence.
-  intros. (* no need bound*)
+  rewrite Mem.stack_push_stage in H1'. inversion H0.
+  unfold Mem.stackseq in *. simpl in *. split. congruence.
+  apply Mem.sid_record_frame in H1. apply Mem.sid_record_frame in A.
+  simpl in H1. congruence.
+  intros.
   rewrite <- Mem.perm_record_frame in H5. 2: eauto. eauto.
   intros.
   rewrite <- Mem.perm_record_frame. 2: eauto. eauto.
@@ -812,8 +814,10 @@ Proof.
   apply match_callstack_incr_bound with (Mem.support m) (Mem.support tm).
   apply match_callstack_invariant with f m tm; auto.
   apply match_callstack_stackseq in H0.
-  apply Mem.stack_pop_stage in H1 as H1'.
-  unfold Mem.stackseq in *. simpl in *. congruence.
+  apply Mem.stack_pop_stage in H1 as H1'. inversion H0.
+  unfold Mem.stackseq in *. simpl in *. split. congruence.
+  apply Mem.sid_pop_stage in H1.
+  simpl in *. congruence.
   intros. rewrite Mem.perm_pop_stage; eauto.
   intro. eapply Mem.support_pop_stage_1 in H1. apply H1.
   apply Mem.sup_include_refl.
@@ -927,9 +931,9 @@ Proof.
   red; intros. rewrite PTree.gempty in H4. discriminate.
   red; intros. left. eapply Mem.perm_alloc_2; eauto.
   eapply match_callstack_invariant with (tm1 := tm); eauto.
-  eapply struct_eq_trans.
-  eapply match_callstack_stackseq; eauto.
-  eapply Mem.alloc_stackseq; eauto.
+  apply Mem.alloc_stackseq in H0.
+  apply match_callstack_stackseq in H. inversion H. inversion H0.
+  split. eapply struct_eq_trans; eauto. congruence.
   intros. eapply Mem.perm_alloc_1; eauto.
 Qed.
 
@@ -966,9 +970,11 @@ Proof.
   inv A. apply is_reachable_intro with id0 b0 sz0 delta; auto.
   rewrite PTree.gso. auto. congruence.
   eapply match_callstack_invariant with (m1 := m1); eauto.
-  eapply struct_eq_trans. eapply struct_eq_comm.
-  eapply Mem.alloc_stackseq; eauto.
-  eapply match_callstack_stackseq; eauto.
+  apply Mem.alloc_stackseq in H1. inversion H1.
+  apply match_callstack_stackseq in MCS. inversion MCS.
+  split.
+  eapply struct_eq_trans. eapply struct_eq_comm; eauto. eauto.
+  congruence.
   intros. eapply Mem.perm_alloc_4; eauto.
   intro. subst b0. eapply freshness; eauto. eapply LO.
   rewrite RES in H. auto.
@@ -1292,12 +1298,12 @@ Lemma empty_frame_alloc_variables': forall m0 m1 fid path,
     forall blocks m2,
     Mem.alloc_vars_left m1 blocks m2 ->
    (forall n b, nth_error blocks n = Some b ->
-    b = Stack (Some fid) path (Pos.of_succ_nat n)).
+    b = Stack (Mem.sid (Mem.support m1))(Some fid) path (Pos.of_succ_nat n)).
 Proof.
   intros.
   exploit Mem.alloc_frame_alloc_vars; eauto.
   intro.
-  generalize (Mem.well_blocks_nth_error fid path (Datatypes.length blocks)).
+  generalize (Mem.well_blocks_nth_error fid path (Mem.sid (Mem.support m1))(Datatypes.length blocks)).
   intro. rewrite <- H2 in H3.
   unfold Mem.well_nth_error in H3. generalize (H3 n).
   intro.
@@ -1362,8 +1368,9 @@ Proof.
     replace (n - 0)%nat with (n). 2: lia.
     rewrite F. rewrite I.
     exploit Mem.alloc_frame_alloc. apply H. apply H3.
-    intro. subst. auto.
-    eapply alloc_vars_valid' in H15; eauto. congruence.
+    intro. subst.  apply match_callstack_stackseq in H13. inversion H13. rewrite H12. auto.
+    eapply alloc_vars_valid' in H15; eauto.
+    congruence.
   - rewrite D. rewrite H12. unfold struct_meminj.
     exploit alloc_vars_inv'. apply H15. instantiate (1:=b).
     intros. destr; destr. auto.
@@ -2577,8 +2584,11 @@ Proof.
   rewrite Mem.astack_push_stage in *. congruence.
   exploit match_callstack_incr_bound.
   eapply match_callstack_invariant. apply MCS'.
-  instantiate (1:= tm''). instantiate (1:= m'). apply Mem.stack_pop_stage in POP.
-  apply match_callstack_stackseq in MCS'. unfold Mem.stackseq in *.  congruence.
+  instantiate (1:= tm''). instantiate (1:= m').
+  apply match_callstack_stackseq in MCS'. unfold Mem.stackseq in *.
+  inversion MCS'. split.
+  apply Mem.stack_pop_stage in POP. congruence.
+  apply Mem.sid_pop_stage in POP. congruence.
   eauto. eauto. intros. erewrite <- Mem.perm_pop_stage; eauto. eauto. eauto.
   apply Mem.sup_include_refl. intro. eapply Mem.support_pop_stage_1 in POP. apply POP.
   left; econstructor; split.
@@ -2684,8 +2694,10 @@ Opaque PTree.set.
   etransitivity. eapply Mem.support_return_frame_1; eauto.
   eapply Mem.support_pop_stage_1; eauto.
   eapply match_callstack_incr_bound.
-  eapply match_callstack_invariant; eauto. apply match_callstack_stackseq in F.
-  apply Mem.stack_pop_stage in H1. unfold Mem.stackseq in *. congruence.
+  eapply match_callstack_invariant; eauto.
+  apply match_callstack_stackseq in F. inversion F. split.
+  apply Mem.stack_pop_stage in H1. congruence.
+  apply Mem.sid_pop_stage in H1. congruence.
   intros. rewrite Mem.perm_pop_stage; eauto.
   intro. eapply Mem.support_pop_stage_1 in H1. apply H1.
   apply Mem.sup_include_refl.
@@ -2706,8 +2718,10 @@ Opaque PTree.set.
   etransitivity. eapply Mem.support_return_frame_1; eauto.
   eapply Mem.support_pop_stage_1; eauto.
   eapply match_callstack_incr_bound.
-  eapply match_callstack_invariant; eauto. apply match_callstack_stackseq in F.
-  apply Mem.stack_pop_stage in H2. unfold Mem.stackseq in *. congruence.
+  eapply match_callstack_invariant; eauto.
+  apply match_callstack_stackseq in F. inversion F. split.
+  apply Mem.stack_pop_stage in H2. congruence.
+  apply Mem.sid_pop_stage in H2. congruence.
   intros. rewrite Mem.perm_pop_stage; eauto.
   intro. eapply Mem.support_pop_stage_1 in H2. apply H2.
   apply Mem.sup_include_refl.
@@ -2784,8 +2798,9 @@ Opaque PTree.set.
   assert (match_callstack (struct_meminj (Mem.support m)) m tm'
          (Frame cenv0 tfn e le te (fresh_block sps) sps bes es :: cs0) (Mem.support m)(Mem.support tm')).
   eapply match_callstack_incr_bound. eapply match_callstack_invariant; eauto.
-  apply Mem.stack_pop_stage in POP. apply match_callstack_stackseq in MCS.
-  unfold Mem.stackseq in *. congruence.
+  apply match_callstack_stackseq in MCS. inversion MCS. split.
+  apply Mem.stack_pop_stage in POP. congruence.
+  apply Mem.sid_pop_stage in POP. congruence.
   intros. erewrite <- Mem.perm_pop_stage; eauto. apply Mem.sup_include_refl.
   intro. eapply Mem.support_pop_stage_1 in POP. apply POP.
   left; econstructor; split.
@@ -2833,10 +2848,11 @@ Proof.
   apply Genv.genv_vars_eq in H0. subst. auto.
   unfold Mem.flat_inj. unfold struct_meminj. apply functional_extensionality.
   intro. destr. destruct x. apply Genv.init_mem_stack in H.
-  simpl in s. rewrite H in s. destruct p; simpl in s. inv s. inv H3.
-  destruct n; simpl in s; inv s. reflexivity.
-  apply mcs_nil with (Mem.support m0). apply match_globalenvs_init; auto.
-  apply struct_eq_refl.
+  simpl in s. rewrite H in s. destruct p; simpl in s. destr_in s.
+  destr_in s.
+  destruct n0; simpl in s; inv s. reflexivity.
+  apply mcs_nil with (Mem.support m0). apply match_globalenvs_init; auto. split.
+  apply struct_eq_refl. auto.
   apply Mem.sup_include_refl.
   simpl. unfold Mem.sup_push_stage. intro. destruct b0; eauto.
   constructor. red; auto.
