@@ -82,10 +82,10 @@ End Block.
 Definition block := Block.block.
 Definition eq_block := Block.eq_block.
 
-Definition is_stack (b:block) : bool :=
+Definition is_stack (b:block) : Prop :=
   match b with
-    | Stack _ _ _ => true
-    |  _ => false
+    | Stack _ _ _ => True
+    |  _ => False
   end.
 
 (** A value is either:

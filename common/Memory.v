@@ -2854,10 +2854,20 @@ Theorem support_alloc:
 Proof.
   injection ALLOC; intros. rewrite <- H0; auto.
 Qed.
+
 Theorem alloc_result:
   b = nextblock m1.
 Proof.
   injection ALLOC; auto.
+Qed.
+
+Theorem alloc_result_stack:
+  is_stack b.
+Proof.
+  rewrite alloc_result.
+  generalize (nextblock_stack m1).
+  intros (f & p & p' & H). rewrite H. auto.
+  simpl. auto.
 Qed.
 
 Theorem valid_block_alloc:
@@ -5496,6 +5506,38 @@ Proof.
   apply sup_return_refl'. auto.
   unfold valid_block in *. simpl in *. eauto. intros. exploit mi_mappedblocks0.
   apply H. apply sup_return_frame_in with (s := support m2); eauto.
+  apply sup_return_refl'. auto.
+Qed.
+
+Theorem return_frame_right_inject :
+  forall f m1 m2 m2',
+    inject f m1 m2 ->
+    return_frame m2 = Some m2' ->
+    inject f m1 m2'.
+Proof.
+  intros.
+  unfold return_frame in H0.
+  destr_in H0. inversion H0. inversion H.
+  constructor; auto.  inv mi_inj0.
+  constructor; eauto.
+  unfold valid_block in *. simpl in *. eauto. intros. exploit mi_mappedblocks0.
+  apply H1. apply sup_return_frame_in with (s := support m2); eauto.
+  apply sup_return_refl'. auto.
+Qed.
+
+Theorem return_frame_left_inject :
+  forall f m1 m2 m1',
+    inject f m1 m2 ->
+    return_frame m1 = Some m1' ->
+    inject f m1' m2.
+Proof.
+  intros.
+  unfold return_frame in H0.
+  destr_in H0. inversion H0. inversion H.
+  constructor; auto.  inv mi_inj0.
+  constructor; eauto.
+  unfold valid_block in *. simpl in *. eauto. intros. eapply mi_freeblocks0.
+  intro. apply H1. apply sup_return_frame_in with (s := support m1); eauto.
   apply sup_return_refl'. auto.
 Qed.
 
