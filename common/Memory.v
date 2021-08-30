@@ -5489,6 +5489,20 @@ Proof.
     apply sup_incr_frame_in.
 Qed.
 
+Theorem alloc_frame_left_inject :
+  forall f m1 m2 m1' id p1,
+    inject f m1 m2 ->
+    alloc_frame m1 id = (m1',p1) ->
+    inject f m1' m2.
+Proof.
+  intros. inv H. inv H0.
+  constructor; eauto.
+  - inv mi_inj0. constructor; eauto.
+  - unfold valid_block. simpl. intros.
+    apply mi_freeblocks0. intro. apply H.
+    apply sup_incr_frame_in. auto.
+Qed.
+
 Theorem return_frame_inject :
   forall f m1 m2 m1' m2',
     inject f m1 m2 ->

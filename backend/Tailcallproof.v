@@ -250,8 +250,6 @@ Proof.
   destruct (zeq (fn_stacksize f) 0); auto.
 Qed.
 
-Locate regset_inject.
-
 Definition regset_inject (f: meminj) (rs rs': regset): Prop :=
   forall r, Val.inject f rs#r rs'#r.
 
@@ -362,7 +360,7 @@ Proof.
     destruct (Genv.find_symbol ge id) as [b|] eqn:FS; auto.
     rewrite symbols_preserved. rewrite FS. inv GL. apply H0 in FS.
     econstructor; eauto. rewrite Ptrofs.add_zero. auto. }
-  exploit Mem.loadv_inject; eauto. intros (v' & A & B). exists v'; auto with barg.}
+  exploit Mem.loadv_inject; eauto. intros (v' & A & B). exists v'; auto with barg. }
 - econstructor; split; eauto with barg.
   unfold Senv.symbol_address; simpl; unfold Genv.symbol_address.
   rewrite symbols_preserved. destr. inv GL.
@@ -639,7 +637,8 @@ Proof.
     red; intros; extlia.
   destruct X as [m'' FREE].
   assert ({ m''' | Mem.return_frame m'' = Some m'''}).
-  apply Mem.active_return_frame. admit.
+  apply Mem.active_return_frame.
+  admit.
   destruct X as [m''' RETURN].
   left. exists (Callstate s' (transf_fundef fd) (rs'##args) m''' id); split.
   eapply exec_Itailcall; eauto.
@@ -660,7 +659,8 @@ Proof.
   apply match_stackframes_global in STACKS as GLOB. destruct GLOB.
   exploit find_function_translated; eauto. intro FIND'.
   exploit Mem.free_parallel_inject; eauto. intros [m'1 [FREE INJ]].
-  exploit Mem.return_frame_parallel_inject; eauto. admit.
+  exploit Mem.return_frame_parallel_inject; eauto.
+  admit.
   intros [m'2 [RET INJ']].
   TransfInstr.
   left. exists (Callstate s' (transf_fundef fd) (rs'##args) m'2 id); split.
@@ -699,7 +699,9 @@ Proof.
 
 - (* return *)
   exploit Mem.free_parallel_inject; eauto. intros [m'1 [FREE INJ]].
-  exploit Mem.return_frame_parallel_inject; eauto. admit. intros [m'2 [RET INJ']].
+  exploit Mem.return_frame_parallel_inject; eauto.
+  admit.
+  intros [m'2 [RET INJ']].
   TransfInstr.
   left. exists (Returnstate s' (regmap_optget or Vundef rs') m'2); split.
   eapply exec_Ireturn; auto. rewrite stacksize_preserved; eauto. simpl in FREE.
