@@ -1173,7 +1173,7 @@ Proof.
   exploit tr_builtin_args; eauto. intros (vargs' & P & Q).
   exploit external_call_mem_inject'; eauto.
     eapply match_stacks_inside_globals; eauto.
-  intros [F1 [v1 [m1' [A [B [C [D [E [J [K L]]]]]]]]]].
+  intros [F1 [v1 [m1' [A [B [C [D [E [J [K [L M]]]]]]]]]]].
   left; econstructor; split.
   eapply plus_one. eapply exec_Ibuiltin; eauto.
     eapply external_call_symbols_preserved; eauto. apply senv_preserved.
@@ -1364,7 +1364,7 @@ Proof.
   exploit match_stacks_globalenvs; eauto. intros [support MG].
   exploit external_call_mem_inject'; eauto.
     eapply match_globalenvs_preserves_globals; eauto.
-  intros [F1 [v1 [m1' [A [B [C [D [E [J [K L]]]]]]]]]].
+  intros [F1 [v1 [m1' [A [B [C [D [E [J [K [L M]]]]]]]]]]].
   simpl in FD. inv FD.
   left; econstructor; split.
   eapply plus_one. eapply exec_function_external; eauto.

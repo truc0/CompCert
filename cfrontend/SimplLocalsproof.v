@@ -2302,7 +2302,7 @@ Qed.
 
 End FIND_LABEL.
 
-
+(*
 Lemma sinj_external_call :
   forall m m' tm tm' f f' vargs tvargs vres tvres ef ge t,
     Mem.inject f m tm ->
@@ -2314,7 +2314,8 @@ Lemma sinj_external_call :
     f = struct_meminj (Mem.support m) ->
     Mem.stackseq m' tm' /\
     f' = struct_meminj (Mem.support m').
-Admitted.
+Proof.
+*)
 
 Lemma step_simulation:
   forall S1 t S2, step1 ge S1 t S2 ->
@@ -2391,9 +2392,9 @@ Proof.
 
 (* builtin *)
   exploit eval_simpl_exprlist; eauto with compat. intros [CASTED [tvargs [C D]]].
-  exploit external_call_mem_inject; eauto. apply match_globalenvs_preserves_globals; eauto with compat.
-  intros [j' [tvres [tm' [P [Q [R [S [T [U V]]]]]]]]].
-  exploit sinj_external_call. apply MINJ. all: eauto. intros [X Y].
+  exploit external_call_mem_inject'; eauto. apply match_globalenvs_preserves_globals; eauto with compat.
+  intros [j' [tvres [tm' [P [Q [R [S [T [U [V [W X]]]]]]]]]]].
+  (* exploit sinj_external_call. apply MINJ. all: eauto. intros [Y Z]. *)
   econstructor; split.
   apply plus_one. econstructor; eauto. eapply external_call_symbols_preserved; eauto. apply senv_preserved.
   econstructor; eauto with compat.
@@ -2402,6 +2403,23 @@ Proof.
   eapply match_cont_extcall; eauto.
   inv MENV. eapply Mem.sup_include_trans. eauto. eauto.
   inv MENV; eapply Mem.sup_include_trans. eauto. eauto.
+  {
+    apply Axioms.extensionality. intro b.
+    destruct ((struct_meminj (Mem.support m)) b) eqn:Z. destruct p.
+    - apply U in Z as Z'. rewrite Z'. rewrite <- Z.
+      unfold struct_meminj. destr. exploit external_call_valid_block.
+      apply H0. eauto. intro. destr. apply n in H1. inv H1.
+      inv MINJ. exploit mi_freeblocks; eauto. intro. congruence.
+    - destruct (j' b) eqn:Z1.
+      + destruct p. exploit W; eauto.
+      intros [A1 B1]. inv R. unfold struct_meminj. destr.
+      exploit X; eauto. intros [C1 D1]. rewrite Z1 in D1. inv D1.
+      destruct b. destruct f0; simpl in C1. inv C1. simpl. auto. inv C1.
+      apply mi_freeblocks in n. congruence.
+      + unfold struct_meminj. destr. unfold struct_meminj in Z. destr_in Z.
+      exploit X; eauto. intros [C1 D1]. congruence.
+  }
+  eapply external_call_mem_inject_stackseq; eauto. eapply match_globalenvs_preserves_globals. eauto with compat.
   eapply Mem.sup_include_trans; eauto. eapply external_call_support; eauto.
   eapply Mem.sup_include_trans; eauto. eapply external_call_support; eauto.
 
@@ -2636,10 +2654,10 @@ Proof.
 
 (* external function *)
   monadInv TRFD. inv FUNTY.
-  exploit external_call_mem_inject; eauto. apply match_globalenvs_preserves_globals.
+  exploit external_call_mem_inject'; eauto. apply match_globalenvs_preserves_globals.
   eapply match_cont_globalenv. eexact (MCONT VSet.empty).
-  intros [j' [tvres [tm' [P [Q [R [S [T [U V]]]]]]]]].
-  exploit sinj_external_call. apply MINJ. all: eauto. intros [X Y].
+  intros [j' [tvres [tm' [P [Q [R [S [T [U [V [W X]]]]]]]]]]].
+(*  exploit sinj_external_call. apply MINJ. all: eauto. intros [X Y]. *)
   econstructor; split.
   apply plus_one. econstructor; eauto. eapply external_call_symbols_preserved; eauto. apply senv_preserved.
   econstructor; eauto.
@@ -2648,6 +2666,23 @@ Proof.
   apply Mem.sup_include_refl. apply Mem.sup_include_refl.
   eapply external_call_support; eauto.
   eapply external_call_support; eauto.
+  {
+    apply Axioms.extensionality. intro b.
+    destruct ((struct_meminj (Mem.support m)) b) eqn:Z. destruct p.
+    - apply U in Z as Z'. rewrite Z'. rewrite <- Z.
+      unfold struct_meminj. destr. exploit external_call_valid_block.
+      apply H. eauto. intro. destr. apply n in H0. inv H0.
+      inv MINJ. exploit mi_freeblocks; eauto. intro. congruence.
+    - destruct (j' b) eqn:Z1.
+      + destruct p. exploit W; eauto.
+      intros [A1 B1]. inv R. unfold struct_meminj. destr.
+      exploit X; eauto. intros [C1 D1]. rewrite Z1 in D1. inv D1.
+      destruct b. destruct f; simpl in C1. inv C1. simpl. auto. inv C1.
+      apply mi_freeblocks in n. congruence.
+      + unfold struct_meminj. destr. unfold struct_meminj in Z. destr_in Z.
+      exploit X; eauto. intros [C1 D1]. congruence.
+  }
+  eapply external_call_mem_inject_stackseq; eauto. eapply match_globalenvs_preserves_globals.   eapply match_cont_globalenv. eexact (MCONT VSet.empty).
 (* return *)
   specialize (MCONT (cenv_for f)). inv MCONT.
   econstructor; split.

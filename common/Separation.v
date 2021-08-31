@@ -865,9 +865,9 @@ Lemma external_call_parallel_rule:
 Proof.
   intros until vargs2; intros CALL SEP ARGS.
   destruct SEP as (A & B & C). simpl in A.
-  exploit external_call_mem_inject; eauto.
+  exploit external_call_mem_inject'; eauto.
   eapply globalenv_inject_preserves_globals. eapply sep_pick1; eauto.
-  intros (j' & vres2 & m2' & CALL' & RES & INJ' & UNCH1 & UNCH2 & INCR & ISEP).
+  intros (j' & vres2 & m2' & CALL' & RES & INJ' & UNCH1 & UNCH2 & INCR &INCRG& ISEP & IEXT).
   assert (MAXPERMS: forall b ofs p,
             Mem.valid_block m1 b -> Mem.perm m1' b ofs Max p -> Mem.perm m1 b ofs Max p).
   { intros. eapply external_call_max_perm; eauto. }
@@ -885,9 +885,12 @@ Proof.
   eelim C; eauto. simpl. exists b0, delta; split; auto. apply MAXPERMS; auto.
   eapply Mem.valid_block_inject_1; eauto.
 + exploit ISEP; eauto. intros (X & Y). elim Y. eapply m_valid; eauto.
-- admit.
-- admit.
-Admitted.
+- exploit external_call_mem_inject_stackeq.
+  eapply globalenv_inject_preserves_globals; eauto. eapply sep_pick1; eauto.
+  apply CALL. all: eauto. congruence. intro.
+  apply external_call_global in CALL. apply external_call_global in CALL'.
+  destruct (Mem.support m1'). destruct (Mem.support m2'). simpl in *. congruence.
+Qed.
 
 Lemma alloc_parallel_rule_2:
   forall (F V: Type) (ge: Genv.t F V) m1 sz1 m1' b1 m2 sz2 m2' b2 P j lo hi delta,

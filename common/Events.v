@@ -1708,6 +1708,41 @@ Proof.
       exploit C; eauto. intros EQ; subst b2. congruence.
 Qed.
 
+Lemma external_call_mem_inject_result:
+  forall ef F V (ge: Genv.t F V) vargs m1 t vres m2 f m1' m2' vres' vargs' f' b,
+  meminj_preserves_globals ge f ->
+  external_call ef ge vargs m1 t vres m2 ->
+  Mem.inject f m1 m1' ->
+  Val.inject_list f vargs vargs' ->
+  external_call ef ge vargs' m1' t vres' m2' ->
+  Mem.inject f' m2 m2' ->
+  ~ Mem.valid_block m1 b -> Mem.valid_block m2 b ->
+  f' b = Some (b,0).
+Admitted.
+
+Lemma external_call_mem_inject_stackeq:
+  forall ef F V (ge: Genv.t F V) vargs m1 t vres m2 f m1' m2' vres' vargs' f',
+  meminj_preserves_globals ge f ->
+  external_call ef ge vargs m1 t vres m2 ->
+  Mem.inject f m1 m1' ->
+  Val.inject_list f vargs vargs' ->
+  external_call ef ge vargs' m1' t vres' m2' ->
+  Mem.inject f' m2 m2' ->
+  Mem.stack (Mem.support m1) = Mem.stack (Mem.support m1') ->
+  Mem.stack (Mem.support m2) = Mem.stack (Mem.support m2').
+Admitted.
+
+Lemma external_call_mem_inject_stackseq:
+  forall ef F V (ge: Genv.t F V) vargs m1 t vres m2 f m1' m2' vres' vargs' f',
+  meminj_preserves_globals ge f ->
+  external_call ef ge vargs m1 t vres m2 ->
+  Mem.inject f m1 m1' ->
+  Val.inject_list f vargs vargs' ->
+  external_call ef ge vargs' m1' t vres' m2' ->
+  Mem.inject f' m2 m2' ->
+  Mem.stackseq m1 m1' -> Mem.stackseq m2 m2'.
+Admitted.
+
 Lemma external_call_mem_inject':
   forall ef F V (ge: Genv.t F V) vargs m1 t vres m2 f m1' vargs',
   meminj_preserves_globals ge f ->
@@ -1722,7 +1757,8 @@ Lemma external_call_mem_inject':
     /\ Mem.unchanged_on (loc_out_of_reach f m1) m1' m2'
     /\ inject_incr f f'
     /\ incr_without_glob f f'
-    /\ inject_separated f f' m1 m1'.
+    /\ inject_separated f f' m1 m1'
+    /\ inject_external f' m1 m2.
 Proof.
   intros. exploit external_call_mem_inject; eauto.
   intros (f' & vres' & m2' & A & B & C & D & E & G & I).
@@ -1736,6 +1772,9 @@ Proof.
   apply mi_freeblocks in n. congruence. intro.
   split. destruct b. constructor. inv H6.
   destruct b'. constructor. inv H5.
+  split; eauto. split. eapply external_call_new_block. apply H0.
+  eauto. eauto. exploit external_call_mem_inject_result. eauto.
+  apply H0. eauto. eauto. eauto. eauto. eauto. eauto. eauto.
 Qed.
 
 (** Corollaries of [external_call_determ]. *)

@@ -768,53 +768,7 @@ Lemma match_callstack_external_call:
   Mem.sup_include tbound (Mem.support m1') ->
   match_callstack f2 m2 m2' cs bound tbound.
 Proof.
-  intros until m2'.
-  intros UNMAPPED OUTOFREACH INCR SEPARATED MAXPERMS.
-  induction 1; intros.
-(* base case *)
-  apply mcs_nil with es; auto.
-  inv H. constructor; auto.
-  intros. case_eq (f1 b1).
-  intros [b2' delta'] EQ. rewrite (INCR _ _ _ EQ) in H. inv H. eauto.
-  intro EQ. exploit SEPARATED; eauto. intros [A B]. elim B. red.
-  eapply Mem.sup_include_trans; eauto. apply Mem.sup_include_refl.
-(* inductive case *)
-  admit. (*External f*)
-  assert (sp = fresh_block sps) by (eapply me_sps; eauto). subst.
-  constructor. auto. auto.
-  eapply match_temps_invariant; eauto.
-  eapply match_env_invariant; eauto.
-  red in SEPARATED. intros. destruct (f1 b) as [[b' delta']|] eqn:?.
-  exploit INCR; eauto. congruence.
-  exploit SEPARATED; eauto. intros [A B]. elim B. red.
-  eapply Mem.sup_include_trans; eauto. apply Mem.sup_include_refl.
-  intros. assert (Mem.sup_include bes es) by (eapply me_sup_include; eauto).
-  destruct (f1 b) as [[b' delta']|] eqn:?.
-  apply INCR; auto.
-  destruct (f2 b) as [[b' delta']|] eqn:?; auto.
-  exploit SEPARATED; eauto. intros [A B]. elim A. red.
-  eapply Mem.sup_include_trans; eauto.
-  eapply Mem.sup_include_trans; eauto.
-  eapply match_bounds_invariant; eauto.
-  intros. eapply MAXPERMS; eauto. red. exploit me_bounded; eauto.
-  intros [A B]. apply H0,BOUND. auto.
-  (* padding-freeable *)
-  red; intros.
-  destruct (is_reachable_from_env_dec f1 e (fresh_block sps) ofs).
-  inv H3. right. apply is_reachable_intro with id b sz delta; auto.
-  exploit PERM; eauto. intros [A|A]; try contradiction.
-  left. eapply Mem.perm_unchanged_on; eauto.
-  red; intros; red; intros. elim H3.
-  exploit me_inv; eauto. intros [id [lv B]].
-  exploit BOUND0; eauto. intros C.
-  apply is_reachable_intro with id b0 lv delta; auto; lia.
-  eauto with mem.
-  (* induction *)
-  eapply IHmatch_callstack; eauto. inv MENV.
-  eapply Mem.sup_include_trans; eauto.
-  eapply Mem.sup_include_trans; eauto.
-  eapply Mem.sup_include_trans; eauto.
-  eapply Mem.sup_include_trans; eauto.
+
 Admitted.
 *)
 
@@ -831,6 +785,7 @@ Lemma match_callstack_external_call:
       /\ Val.inject f' vres vres'
       /\ Mem.inject f' m' tm'
       /\ f' = struct_meminj (Mem.support m').
+Proof.
 Admitted.
 (** [match_callstack] and allocations *)
 

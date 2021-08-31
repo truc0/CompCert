@@ -847,13 +847,14 @@ Lemma external_call_inject:
     /\ inject_incr f f'
     /\ inject_separated f f' m1 m1'.
 Proof.
-(*  intros. exploit external_call_mem_inject_gen; eauto.
+  intros. exploit external_call_mem_inject_gen; eauto.
   apply globals_symbols_inject; auto.
   intros (f' & vres' & m2' & A & B & C & D & E & F & G).
   exists f',vres',m2'. split. auto. split. auto. split. auto.
   split.
-  admit. split. admit. split. auto. split. auto.
-  split. auto. auto. *)
+  admit. split. admit.
+  split. auto. split. auto.
+  split. auto. auto.
 Admitted.
 
 Lemma find_function_inject:
