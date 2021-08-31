@@ -144,6 +144,12 @@ Import List.ListNotations.
 Inductive stree : Type :=
   |Node : fid -> (list positive)  -> list stree -> option stree -> stree.
 
+Fixpoint cdepth (t:stree) : nat :=
+  match t with
+    |Node fid bl tl (Some hd) => S (cdepth hd)
+    |Node fid bl tl None => O
+  end.
+
 (* well-founded induction *)
 
 Fixpoint depth (t:stree) : nat :=
@@ -276,10 +282,32 @@ Definition cpath (s:stree) : path :=
 Definition npath (s:stree)(id:ident) : path :=
   let (t,p) := next_stree s id in p.
 
+Lemma next_stree_cdepth: forall p t t' id,
+    next_stree t id = (t',p) -> cdepth t' = S (cdepth t).
+Proof.
+  induction p; (intros; destruct t; destruct o; simpl in H).
+  destr_in H. inv H. destr_in H. inv H.
+  simpl. exploit IHp; eauto. inv H. simpl. auto.
+Qed.
+
+Lemma next_block_stree_cdepth : forall p pos fid t t',
+    next_block_stree t = (fid,pos,p,t') -> cdepth t' = cdepth t.
+Proof.
+  induction p; (intros; destruct t; destruct o; inv H; repeat destr_in H1).
+  auto. simpl. exploit IHp; eauto.
+Qed.
+
+Lemma return_stree_cdepth : forall p t t',
+    return_stree t = Some (t',p) -> S (cdepth t') = (cdepth t).
+Proof.
+  induction p; (intros; destruct t; destruct o; inv H; repeat destr_in H1).
+  simpl. exploit IHp; eauto. simpl. destruct s. destruct o.
+  simpl in Heqo. repeat destr_in Heqo. reflexivity.
+Qed.
+
 Lemma next_stree_cpath :
   forall p t t' id,
-    next_stree t id = (t',p) ->
-    cpath t' = p.
+    next_stree t id = (t',p) ->  cpath t' = p.
 Proof.
   induction p.
   - intros. destruct t. destruct o.
@@ -416,7 +444,6 @@ Proof.
       simpl. destruct n; reflexivity.
       destruct (nth_error l0 a); reflexivity.
 Qed.
-
 
 Lemma return_stree_in : forall s s' path p pos b,
     return_stree s = Some (s',path) ->
@@ -847,6 +874,15 @@ Record mem' : Type := mkmem {
 Definition mem := mem'.
 
 Definition nextblock (m:mem) := fresh_block (support m).
+
+Definition sdepth (m:mem) := cdepth (stack (support m)).
+
+Lemma sdepth_active : forall m, sdepth m <> O -> is_active (stack (support m)).
+Proof.
+  intros. unfold sdepth in H. simpl in H.
+  destruct (stack (support m)). destruct o; simpl in *.
+  auto. extlia.
+Qed.
 
 Lemma nextblock_stack : forall m, exists f path pos,
       nextblock m = Stack f path pos.
@@ -2627,6 +2663,13 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma sdepth_alloc_frame :
+  sdepth m2 = S (sdepth m1).
+Proof.
+  unfold sdepth. generalize stack_alloc_frame.
+  intro. eapply next_stree_cdepth; eauto.
+Qed.
+
 Lemma path_alloc_frame:
     path = sup_npath (support m1) id.
 Proof.
@@ -2764,6 +2807,13 @@ Proof.
   destr_in H. destruct p. inv H. eauto.
 Qed.
 
+Lemma sdepth_return_frame :
+  S (sdepth m2) = sdepth m1.
+Proof.
+  generalize stack_return_frame. intros [pa H].
+  eapply return_stree_cdepth; eauto.
+Qed.
+
 Lemma sup_include_return_frame :
   sup_include (support m1) (support m2).
 Proof.
@@ -2853,6 +2903,15 @@ Theorem support_alloc:
   support m2 = sup_incr(support m1).
 Proof.
   injection ALLOC; intros. rewrite <- H0; auto.
+Qed.
+
+Theorem sdepth_alloc:
+  sdepth m2 = sdepth m1.
+Proof.
+  generalize support_alloc. unfold sup_incr.
+  destr. intro. unfold sdepth. rewrite H. simpl.
+  destruct p. destruct p.
+  eapply next_block_stree_cdepth; eauto.
 Qed.
 
 Theorem alloc_result:
@@ -3336,6 +3395,11 @@ Proof.
   rewrite free_result; reflexivity.
 Qed.
 
+Lemma sdepth_free:
+  sdepth m2 = sdepth m1.
+Proof.
+  unfold sdepth. rewrite support_free. auto.
+Qed.
 
 Theorem valid_block_free_1:
   forall b, valid_block m1 b -> valid_block m2 b.

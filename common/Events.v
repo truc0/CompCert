@@ -1021,7 +1021,7 @@ Proof.
   rewrite dec_eq_false. auto.
   apply Mem.valid_not_valid_diff with m1; eauto with mem.
 (* readonly *)
-- inv H. eapply unchanged_on_readonly; eauto. 
+- inv H. eapply unchanged_on_readonly; eauto.
 (* mem extends *)
 - inv H. inv H1. inv H7.
   assert (SZ: v2 = Vptrofs sz).
@@ -1203,7 +1203,7 @@ Proof.
 - (* perms *)
   intros. inv H. eapply Mem.perm_storebytes_2; eauto.
 - (* readonly *)
-  intros. inv H. eapply unchanged_on_readonly; eauto. 
+  intros. inv H. eapply unchanged_on_readonly; eauto.
   eapply Mem.storebytes_unchanged_on; eauto.
   intros; red; intros. elim H11.
   apply Mem.perm_cur_max. eapply Mem.storebytes_range_perm; eauto.
@@ -1471,10 +1471,10 @@ Proof.
 (* trace length *)
 - inv H; simpl; lia.
 (* receptive *)
-- inv H; inv H0. exists vres1, m1; constructor; auto. 
+- inv H; inv H0. exists vres1, m1; constructor; auto.
 (* determ *)
 - inv H; inv H0.
-  split. constructor. intuition congruence. 
+  split. constructor. intuition congruence.
 Qed.
 
 (** ** Semantics of external functions. *)
@@ -1509,7 +1509,7 @@ Definition builtin_or_external_sem name sg :=
 Lemma builtin_or_external_sem_ok: forall name sg,
   extcall_properties (builtin_or_external_sem name sg) sg.
 Proof.
-  unfold builtin_or_external_sem; intros. 
+  unfold builtin_or_external_sem; intros.
   destruct (lookup_builtin_function name sg) as [bf|] eqn:L.
 - exploit lookup_builtin_function_sig; eauto. intros EQ; subst sg.
   apply known_builtin_ok.
@@ -1595,6 +1595,22 @@ Proof.
   auto.
 Qed.
 (** Special case of [external_call_mem_inject_gen] (for backward compatibility) *)
+
+Lemma external_call_global:
+  forall ef ge vargs m1 t vres m2,
+  external_call ef ge vargs m1 t vres m2 ->
+  Mem.global (Mem.support m1) = Mem.global (Mem.support m2).
+Admitted.
+(*
+Definition external_stree (s:stree) : Prop :=
+  forall b. stree_In b s -> 
+
+Lemma external_call_stack:
+  forall ef ge vargs m1 t vres m2,
+  external_call ef ge vargs m1 t vres m2 ->
+  exists s,
+  Mem.global (Mem.support m1) = Mem.global (Mem.support m2).
+*)
 
 Definition meminj_preserves_globals (F V: Type) (ge: Genv.t F V) (f: block -> option (block * Z)) : Prop :=
      (forall id b, Genv.find_symbol ge id = Some b -> f b = Some(b, 0))
@@ -1770,7 +1786,7 @@ Proof.
   econstructor; split; eauto with barg. apply Val.longofwords_lessdef; auto.
 - destruct IHeval_builtin_arg1 as (vhi' & P & Q).
   destruct IHeval_builtin_arg2 as (vlo' & R & S).
-  econstructor; split; eauto with barg. 
+  econstructor; split; eauto with barg.
   destruct Archi.ptr64; auto using Val.add_lessdef, Val.addl_lessdef.
 Qed.
 
