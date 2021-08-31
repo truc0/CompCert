@@ -30,7 +30,8 @@ Require Import Builtins.
 
 (** The observable behaviour of programs is stated in terms of
   input/output events, which represent the actions of the program
-  that the external world can observe.  CompCert leaves much flexibility as to
+  that the external world can observe.
+  CompCert leaves much flexibility as to
   the exact content of events: the only requirement is that they
   do not expose memory states nor pointer values
   (other than pointers to global variables), because these
@@ -1594,28 +1595,91 @@ Proof.
   exploit external_call_valid_block. eauto. apply H0.
   auto.
 Qed.
-(** Special case of [external_call_mem_inject_gen] (for backward compatibility) *)
+
+Definition external_stree (s:stree) : Prop :=
+  forall fid p pos , stree_In fid p pos s -> fid = None.
+
+Fixpoint add_dead_substree (s s':stree) : stree :=
+  match s with
+    |Node fid pl tl (Some s1) =>
+     let s1' := add_dead_substree s1 s' in
+     Node fid pl tl (Some s1')
+    |Node fid pl tl None =>
+     Node fid pl (tl ++ (s'::nil)) None
+  end.
 
 Lemma external_call_global:
   forall ef ge vargs m1 t vres m2,
   external_call ef ge vargs m1 t vres m2 ->
   Mem.global (Mem.support m1) = Mem.global (Mem.support m2).
 Admitted.
-(*
-Definition external_stree (s:stree) : Prop :=
-  forall b. stree_In b s -> 
+
 
 Lemma external_call_stack:
   forall ef ge vargs m1 t vres m2,
   external_call ef ge vargs m1 t vres m2 ->
-  exists s,
-  Mem.global (Mem.support m1) = Mem.global (Mem.support m2).
-*)
+  Mem.stack (Mem.support m2) = Mem.stack (Mem.support m1)
+  \/( exists s,
+      Mem.stack (Mem.support m2) = add_dead_substree (Mem.stack (Mem.support m1)) s /\ external_stree s).
+Admitted.
+
+Lemma add_dead_substree_depth :
+  forall t t' st,
+    add_dead_substree t st = t' ->
+    Memory.cdepth t = Memory.cdepth t'.
+Proof.
+  induction t. intros. destruct t. destruct o; subst; simpl.
+  exploit H; eauto. simpl. auto. auto.
+Qed.
+
+Lemma add_dead_substree_in :
+  forall t t' st fid p pos,
+    add_dead_substree t st = t' ->
+    ~ stree_In fid p pos t -> stree_In fid p pos t'
+    -> external_stree st -> fid = None.
+Proof.
+  induction t; intros. destruct t; destruct o; simpl in *.
+  subst. destruct p; simpl in *. congruence.
+  destr_in H1. exploit H; eauto.
+  subst. destruct p; simpl in *. congruence.
+  destr_in H2. assert (n < length (l0++st::nil))%nat.
+  apply nth_error_Some. congruence. destr_in H1.
+  assert (n < length l0)%nat. apply nth_error_Some. congruence.
+  rewrite nth_error_app1 in Heqo. congruence. auto.
+  apply nth_error_None in Heqo0.
+  rewrite nth_error_app2 in Heqo; eauto.
+  assert (n = length l0). rewrite app_length in H0. simpl in *. extlia. subst. rewrite Nat.sub_diag in Heqo. inv Heqo. apply H3 in H2. auto.
+Qed.
+
+Lemma external_call_new_block:
+  forall ef ge vargs m1 t vres m2 b,
+  external_call ef ge vargs m1 t vres m2 ->
+  ~ Mem.valid_block m1 b -> Mem.valid_block m2 b ->
+  external_block b.
+Proof.
+  intros. unfold Mem.valid_block in *. destruct b; simpl in *.
+  - exploit external_call_stack; eauto. intros [X|[s[X Y]]].
+    congruence. exploit add_dead_substree_in; eauto.
+    rewrite <- X. auto. intro. rewrite H2. auto.
+  - erewrite external_call_global in H0; eauto.
+Qed.
+
+Lemma external_call_sdepth:
+  forall ef ge vargs m1 t vres m2,
+  external_call ef ge vargs m1 t vres m2 ->
+  Mem.sdepth m2 = Mem.sdepth m1.
+Proof.
+  intros. exploit external_call_stack; eauto.
+  intros [A|[s [B C]]]. unfold Mem.sdepth. congruence.
+  unfold Mem.sdepth. rewrite B. exploit add_dead_substree_depth; eauto.
+Qed.
 
 Definition meminj_preserves_globals (F V: Type) (ge: Genv.t F V) (f: block -> option (block * Z)) : Prop :=
      (forall id b, Genv.find_symbol ge id = Some b -> f b = Some(b, 0))
   /\ (forall b gv, Genv.find_var_info ge b = Some gv -> f b = Some(b, 0))
   /\ (forall b1 b2 delta gv, Genv.find_var_info ge b2 = Some gv -> f b1 = Some(b2, delta) -> b2 = b1).
+
+(** Special case of [external_call_mem_inject_gen] (for backward compatibility) *)
 
 Lemma external_call_mem_inject:
   forall ef F V (ge: Genv.t F V) vargs m1 t vres m2 f m1' vargs',
@@ -1642,6 +1706,36 @@ Proof.
     * exploit B; eauto. intros EQ; rewrite EQ in H; inv H. rewrite V1; auto.
     * destruct (Genv.find_var_info ge b2) as [gv2|] eqn:V2; auto.
       exploit C; eauto. intros EQ; subst b2. congruence.
+Qed.
+
+Lemma external_call_mem_inject':
+  forall ef F V (ge: Genv.t F V) vargs m1 t vres m2 f m1' vargs',
+  meminj_preserves_globals ge f ->
+  external_call ef ge vargs m1 t vres m2 ->
+  Mem.inject f m1 m1' ->
+  Val.inject_list f vargs vargs' ->
+  exists f', exists vres', exists m2',
+     external_call ef ge vargs' m1' t vres' m2'
+    /\ Val.inject f' vres vres'
+    /\ Mem.inject f' m2 m2'
+    /\ Mem.unchanged_on (loc_unmapped f) m1 m2
+    /\ Mem.unchanged_on (loc_out_of_reach f m1) m1' m2'
+    /\ inject_incr f f'
+    /\ incr_without_glob f f'
+    /\ inject_separated f f' m1 m1'.
+Proof.
+  intros. exploit external_call_mem_inject; eauto.
+  intros (f' & vres' & m2' & A & B & C & D & E & G & I).
+  eexists. eexists. eexists. split; eauto. split; eauto.
+  split; eauto. split; eauto. split; eauto. split; eauto.
+  split; eauto. intro. intros. exploit I; eauto.
+  intros [X Y]. inv C.
+  exploit external_call_new_block; eauto. intro.
+  exploit external_call_new_block. apply H0. all: eauto.
+  destruct (Mem.sup_dec b (Mem.support m2)). auto.
+  apply mi_freeblocks in n. congruence. intro.
+  split. destruct b. constructor. inv H6.
+  destruct b'. constructor. inv H5.
 Qed.
 
 (** Corollaries of [external_call_determ]. *)
@@ -1711,7 +1805,7 @@ Lemma eval_builtin_arg_determ:
 Proof.
   induction 1; intros v' EV; inv EV; try congruence.
   f_equal; eauto.
-  apply IHeval_builtin_arg1 in H3. apply IHeval_builtin_arg2 in H5. subst; auto. 
+  apply IHeval_builtin_arg1 in H3. apply IHeval_builtin_arg2 in H5. subst; auto.
 Qed.
 
 Lemma eval_builtin_args_determ:

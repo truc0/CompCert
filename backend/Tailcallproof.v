@@ -706,13 +706,15 @@ Proof.
   apply match_stackframes_global in STACKS as GLOB. destruct GLOB.
   TransfInstr. exploit eval_builtin_args_inject; eauto.
   intros (vargs' & P & Q).
-  exploit external_call_mem_inject; eauto.
-  intros [f' [v' [m'1 [A [B [C [D [E [F G]]]]]]]]].
+  exploit external_call_mem_inject'; eauto.
+  intros [f' [v' [m'1 [A [B [C [D [E [F [G I]]]]]]]]]].
   left. exists (State s' (transf_function f) (Vptr sp' Ptrofs.zero) pc' (regmap_setres res v' rs') m'1); split.
   eapply exec_Ibuiltin; eauto.
   eapply external_call_symbols_preserved; eauto. apply senv_preserved.
   econstructor. 4 : eauto. all: eauto.
-  eapply match_stackframes_incr; eauto. admit. admit. (*external*)
+  eapply match_stackframes_incr; eauto.
+  apply external_call_sdepth in A. apply external_call_sdepth in H1.
+  congruence.
   apply set_res_inject; eauto. eapply regset_inject_incr; eauto.
 
 - (* cond *)
@@ -793,13 +795,14 @@ Proof.
 
 - (* external call *)
   apply match_stackframes_global in H6 as GLOB. destruct GLOB.
-  exploit external_call_mem_inject; eauto.
-  intros (f' & res' & m2' & A & B & C & D & E & F& G).
+  exploit external_call_mem_inject'; eauto.
+  intros (f' & res' & m2' & A & B & C & D & E & F & G & I).
   left. exists (Returnstate s' res' m2'); split.
   simpl. econstructor; eauto.
   eapply external_call_symbols_preserved; eauto. apply senv_preserved.
-  econstructor. eapply match_stackframes_incr; eauto. admit.
-  inv H7. admit. eauto. eauto.
+  econstructor. eapply match_stackframes_incr; eauto.
+  inv H7. apply external_call_sdepth in A. apply external_call_sdepth in H.
+  simpl in *. congruence. eauto. eauto.
 
 - (* returnstate *)
   inv H2.
@@ -816,7 +819,7 @@ Proof.
   split. auto.
   econstructor; eauto.
   rewrite Regmap.gss. auto.
-Admitted.
+Qed.
 
 Lemma transf_initial_states:
   forall st1, initial_state prog st1 ->

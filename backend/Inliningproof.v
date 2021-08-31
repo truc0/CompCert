@@ -1171,9 +1171,9 @@ Proof.
   exploit tr_funbody_inv; eauto. intros TR; inv TR.
   exploit match_stacks_inside_globalenvs; eauto. intros [support MG].
   exploit tr_builtin_args; eauto. intros (vargs' & P & Q).
-  exploit external_call_mem_inject; eauto.
+  exploit external_call_mem_inject'; eauto.
     eapply match_stacks_inside_globals; eauto.
-  intros [F1 [v1 [m1' [A [B [C [D [E [J K]]]]]]]]].
+  intros [F1 [v1 [m1' [A [B [C [D [E [J [K L]]]]]]]]]].
   left; econstructor; split.
   eapply plus_one. eapply exec_Ibuiltin; eauto.
     eapply external_call_symbols_preserved; eauto. apply senv_preserved.
@@ -1185,7 +1185,7 @@ Proof.
     intros; eapply external_call_max_perm; eauto.
   auto. eauto. auto.
   destruct res; simpl; [apply agree_set_reg;auto|idtac|idtac]; eapply agree_regs_incr; eauto. eauto.
-  eapply meminj_global_invariant; eauto. admit. (*external*)
+  eapply meminj_global_invariant; eauto.
   auto. auto. eapply Mem.sup_include_trans; eauto. eapply Mem.unchanged_on_support. eauto.
   eapply range_private_extcall; eauto.
     intros; eapply external_call_max_perm; eauto.
@@ -1362,9 +1362,9 @@ Proof.
 
 - (* external function *)
   exploit match_stacks_globalenvs; eauto. intros [support MG].
-  exploit external_call_mem_inject; eauto.
+  exploit external_call_mem_inject'; eauto.
     eapply match_globalenvs_preserves_globals; eauto.
-  intros [F1 [v1 [m1' [A [B [C [D [E [J K]]]]]]]]].
+  intros [F1 [v1 [m1' [A [B [C [D [E [J [K L]]]]]]]]]].
   simpl in FD. inv FD.
   left; econstructor; split.
   eapply plus_one. eapply exec_function_external; eauto.
@@ -1375,8 +1375,8 @@ Proof.
     intros; eapply external_call_max_perm; eauto.
     intros; eapply external_call_max_perm; eauto.
     apply Mem.sup_include_refl.
-    eapply external_call_support; eauto.
-    auto. admit. (*external*) auto.
+    eapply external_call_support; eauto. auto.
+    eapply meminj_global_invariant; eauto. auto.
 
 - (* return from noninlined function *)
   inv MS0.
