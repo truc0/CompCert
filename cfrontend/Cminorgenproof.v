@@ -855,11 +855,13 @@ Proof.
     - destruct (f' b) eqn:Z1.
       + destruct p. exploit I; eauto.
       intros [A1 B1]. inv C. unfold struct_meminj. destr.
-      exploit J; eauto. intros [C1 D1]. rewrite Z1 in D1. inv D1.
+      exploit J; eauto. eapply match_callstack_stackseq; eauto.
+      intros [C1 D1]. rewrite Z1 in D1. inv D1.
       destruct b. destruct f; simpl in C1. inv C1. simpl. auto. inv C1.
       apply mi_freeblocks in n. congruence.
       + unfold struct_meminj. destr. unfold struct_meminj in Z. destr_in Z.
-      exploit J; eauto. intros [C1 D1]. congruence.
+      exploit J; eauto. eapply match_callstack_stackseq; eauto.
+      intros [C1 D1]. congruence.
   }
 Qed.
 

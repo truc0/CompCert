@@ -863,7 +863,7 @@ Lemma external_call_parallel_rule:
   /\ inject_external j' m1 m1'
   /\ Mem.inject j' m1' m2'.
 Proof.
-  intros until vargs2; intros CALL SEP ARGS.
+  intros until vargs2; intros CALL SEP ARGS SUP.
   destruct SEP as (A & B & C). simpl in A.
   exploit external_call_mem_inject'; eauto.
   eapply globalenv_inject_preserves_globals. eapply sep_pick1; eauto.
@@ -879,7 +879,7 @@ Proof.
 + eapply Mem.unchanged_on_implies; eauto.
   intros; red; intros; red; intros.
   eelim C; eauto. simpl. exists b0, delta; auto.
-- red; intros. destruct H0 as (b0 & delta & J' & E).
+- red; intros. destruct H as (b0 & delta & J' & E).
   destruct (j b0) as [[b' delta'] | ] eqn:J.
 + erewrite INCR in J' by eauto. inv J'.
   eelim C; eauto. simpl. exists b0, delta; split; auto. apply MAXPERMS; auto.
@@ -890,6 +890,7 @@ Proof.
   apply CALL. all: eauto. congruence. intro.
   apply external_call_global in CALL. apply external_call_global in CALL'.
   destruct (Mem.support m1'). destruct (Mem.support m2'). simpl in *. congruence.
+- apply IEXT. unfold Mem.stackseq. rewrite SUP. apply struct_eq_refl.
 Qed.
 
 Lemma alloc_parallel_rule_2:

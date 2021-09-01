@@ -865,7 +865,8 @@ Proof.
       + destruct p0. exploit I; eauto.
       intros [A1 B1]. inv C. unfold struct_meminj.
       destruct (Mem.sup_dec b (Mem.support m2)).
-        -- exploit J; eauto.
+        -- exploit J; eauto. unfold Mem.stackseq.
+           rewrite H4. apply struct_eq_refl.
            intros [C1 D1]. rewrite Z1 in D1. inv D1. unfold check_block.
            destr. destr_in Heqb0. destr_in Heqb0. inv C1.
       -- apply mi_freeblocks in n. congruence.
@@ -873,7 +874,9 @@ Proof.
         repeat destr_in Heqb0.
         unfold struct_meminj in Z. destr_in Z.
         unfold check_block in Heqb. repeat destr_in Heqb.
-        exploit J; eauto. intros [C1 D1]. congruence.
+        exploit J; eauto. unfold Mem.stackseq.
+           rewrite H4. apply struct_eq_refl.
+        intros [C1 D1]. congruence.
         unfold struct_meminj in Z. destr_in Z.
         unfold check_block in Heqb. repeat destr_in Heqb.
   }
