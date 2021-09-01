@@ -18,8 +18,6 @@ Require Import AST Linking.
 Require Import Values Memory Globalenvs Events Smallstep.
 Require Import Ctypes Cop Clight SimplLocals.
 
-Require Import Coq.Logic.FunctionalExtensionality.
-
 Module VSF := FSetFacts.Facts(VSet).
 Module VSP := FSetProperties.Properties(VSet).
 
@@ -709,7 +707,7 @@ Lemma sinj_refl:
            struct_meminj s1= struct_meminj s2.
 Proof.
   intros.
-  apply functional_extensionality.
+  apply Axioms.extensionality.
   intros. destruct x; unfold struct_meminj; simpl.
   destruct (Mem.sup_dec (Stack f p p0) s1);
   destruct (Mem.sup_dec (Stack f p p0) s2).
@@ -2618,7 +2616,7 @@ Proof.
   eapply alloc_variables_load; eauto.
   erewrite Mem.load_alloc_frame; eauto.
 {
-  apply functional_extensionality. intro b0.
+  apply Axioms.extensionality. intro b0.
   destruct (Mem.sup_dec b0 (Mem.support m0)).
   - rewrite E. unfold struct_meminj.
     eapply Mem.support_alloc_frame_1 in H1 as SUP1.
@@ -2698,7 +2696,7 @@ Proof.
   intros. inv H.
   exploit function_ptr_translated; eauto. intros [tf [A B]].
   assert (struct_meminj (Mem.support m0) = Mem.flat_inj (Mem.support m0)).
-  apply functional_extensionality. intro x.
+  apply Axioms.extensionality. intro x.
   unfold struct_meminj. unfold Mem.flat_inj.
   destruct (Mem.sup_dec x (Mem.support m0)); auto.
   unfold unchecked_meminj. destruct x. simpl in s.

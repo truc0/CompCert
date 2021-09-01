@@ -18,8 +18,6 @@ Require Import Integers Values Memory Globalenvs Events Smallstep.
 Require Import Op Registers RTL.
 Require Import Unusedglob.
 
-Require Import Coq.Logic.FunctionalExtensionality.
-
 Module ISF := FSetFacts.Facts(IS).
 Module ISP := FSetProperties.Properties(IS).
 
@@ -555,7 +553,7 @@ Lemma sinj_refl:
            struct_meminj s1= struct_meminj s2.
 Proof.
   intros.
-  apply functional_extensionality.
+  apply Axioms.extensionality.
   intros. destruct x; unfold struct_meminj; simpl.
   destruct (Mem.sup_dec (Stack f p0 p1) s1);
   destruct (Mem.sup_dec (Stack f p0 p1) s2).
@@ -847,7 +845,8 @@ Lemma external_call_inject:
     /\ inject_incr f f'
     /\ inject_separated f f' m1 m1'.
 Proof.
-  intros. exploit external_call_mem_inject_gen; eauto.
+  intros.
+  exploit external_call_mem_inject_gen; eauto.
   apply globals_symbols_inject; auto.
   intros (f' & vres' & m2' & A & B & C & D & E & F & G).
   exists f',vres',m2'. split. auto. split. auto. split. auto.
@@ -1136,7 +1135,7 @@ Proof.
     rewrite G in H2 by auto. congruence. }
     assert (MEMINJP' : j' = struct_meminj (Mem.support m'')).
   {
-    apply functional_extensionality.
+    apply Axioms.extensionality.
     intros.
     assert (stk=tstk).
     {
@@ -1351,7 +1350,7 @@ Qed.
 
 Lemma sinj_init : init_meminj = struct_meminj (Mem.support m).
 Proof.
-  apply functional_extensionality.
+  apply Axioms.extensionality.
   intro. destruct x.
   * unfold init_meminj.
   apply Genv.init_mem_stack in IM.
