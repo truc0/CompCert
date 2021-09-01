@@ -846,15 +846,43 @@ Lemma external_call_inject:
     /\ inject_separated f f' m1 m1'.
 Proof.
   intros.
-  exploit external_call_mem_inject_gen; eauto.
+  exploit external_call_mem_inject_gen'; eauto.
   apply globals_symbols_inject; auto.
-  intros (f' & vres' & m2' & A & B & C & D & E & F & G).
+  intros (f' & vres' & m2' & A & B & C & D & E & F & G & I & J).
   exists f',vres',m2'. split. auto. split. auto. split. auto.
+  split. subst.
+  {
+    apply Axioms.extensionality. intro b.
+    destruct ((struct_meminj (Mem.support m1)) b) eqn:Z. destruct p0.
+    - apply F in Z as Z'. rewrite Z'. rewrite <- Z.
+      unfold struct_meminj. destr.
+      + unfold check_block in Heqb1. repeat destr_in Heqb1.
+        exploit external_call_valid_block. apply H0.
+        eauto. intro. unfold check_block. repeat destr. destr_in Heqb.
+        apply n in H3. inv H3. unfold check_block. rewrite Heqo. auto.
+      + unfold struct_meminj in Z. destr_in Z.
+    - destruct (f' b) eqn:Z1.
+      + destruct p0. exploit I; eauto.
+      intros [A1 B1]. inv C. unfold struct_meminj.
+      destruct (Mem.sup_dec b (Mem.support m2)).
+        -- exploit J; eauto.
+           intros [C1 D1]. rewrite Z1 in D1. inv D1. unfold check_block.
+           destr. destr_in Heqb0. destr_in Heqb0. inv C1.
+      -- apply mi_freeblocks in n. congruence.
+      + unfold struct_meminj. destr. unfold check_block in Heqb0.
+        repeat destr_in Heqb0.
+        unfold struct_meminj in Z. destr_in Z.
+        unfold check_block in Heqb. repeat destr_in Heqb.
+        exploit J; eauto. intros [C1 D1]. congruence.
+        unfold struct_meminj in Z. destr_in Z.
+        unfold check_block in Heqb. repeat destr_in Heqb.
+  }
   split.
-  admit. split. admit.
+  eapply external_call_mem_inject_gen_stackeq; eauto.
+  apply globals_symbols_inject; auto.
   split. auto. split. auto.
   split. auto. auto.
-Admitted.
+Qed.
 
 Lemma find_function_inject:
   forall j ros rs fd trs,

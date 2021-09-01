@@ -1608,14 +1608,13 @@ Fixpoint add_dead_substree (s s':stree) : stree :=
      Node fid pl (tl ++ (s'::nil)) None
   end.
 
-Lemma external_call_global:
+Theorem external_call_global:
   forall ef ge vargs m1 t vres m2,
   external_call ef ge vargs m1 t vres m2 ->
   Mem.global (Mem.support m1) = Mem.global (Mem.support m2).
 Admitted.
 
-
-Lemma external_call_stack:
+Theorem external_call_stack:
   forall ef ge vargs m1 t vres m2,
   external_call ef ge vargs m1 t vres m2 ->
   Mem.stack (Mem.support m2) = Mem.stack (Mem.support m1)
@@ -1679,10 +1678,71 @@ Definition meminj_preserves_globals (F V: Type) (ge: Genv.t F V) (f: block -> op
   /\ (forall b gv, Genv.find_var_info ge b = Some gv -> f b = Some(b, 0))
   /\ (forall b1 b2 delta gv, Genv.find_var_info ge b2 = Some gv -> f b1 = Some(b2, delta) -> b2 = b1).
 
+Lemma meminj_preserves_globals_symbols_inject :
+  forall F V (ge:Genv.t F V) f,
+    meminj_preserves_globals ge f -> symbols_inject f ge ge.
+Proof.
+  intros. destruct H as (A&B&C).
+  repeat split; intros.
+  + simpl in H0. exploit A; eauto. intros EQ; rewrite EQ in H; inv H. auto.
+  + simpl in H0. exploit A; eauto. intros EQ; rewrite EQ in H; inv H. auto.
+  + simpl in H0. exists b1; split; eauto.
+  + simpl; unfold Genv.block_is_volatile.
+    destruct (Genv.find_var_info ge b1) as [gv1|] eqn:V1.
+    * exploit B; eauto. intros EQ; rewrite EQ in H; inv H. rewrite V1; auto.
+    * destruct (Genv.find_var_info ge b2) as [gv2|] eqn:V2; auto.
+      exploit C; eauto. intros EQ; subst b2. congruence.
+Qed.
+
 (** Special case of [external_call_mem_inject_gen] (for backward compatibility) *)
 
+Lemma external_call_mem_inject_gen_result:
+  forall ef ge1 ge2  vargs m1 t vres m2 f m1' m2' vres' vargs' f' b,
+  symbols_inject f ge1 ge2 ->
+  external_call ef ge1 vargs m1 t vres m2 ->
+  Mem.inject f m1 m1' ->
+  Val.inject_list f vargs vargs' ->
+  external_call ef ge2 vargs' m1' t vres' m2' ->
+  Mem.inject f' m2 m2' ->
+  ~ Mem.valid_block m1 b -> Mem.valid_block m2 b ->
+  f' b = Some (b,0).
+Admitted.
+
+Lemma external_call_mem_inject_gen':
+  forall ef ge1 ge2 vargs m1 t vres m2 f m1' vargs',
+    symbols_inject f ge1 ge2 ->
+    external_call ef ge1 vargs m1 t vres m2 ->
+    Mem.inject f m1 m1' ->
+    Val.inject_list f vargs vargs' ->
+    exists(f':meminj)(vres':val)(m2':mem),
+     external_call ef ge2 vargs' m1' t vres' m2'
+    /\ Val.inject f' vres vres'
+    /\ Mem.inject f' m2 m2'
+    /\ Mem.unchanged_on (loc_unmapped f) m1 m2
+    /\ Mem.unchanged_on (loc_out_of_reach f m1) m1' m2'
+    /\ inject_incr f f'
+    /\ incr_without_glob f f'
+    /\ inject_separated f f' m1 m1'
+    /\ inject_external f' m1 m2.
+Proof.
+  intros. exploit external_call_mem_inject_gen; eauto.
+  intros (f' & vres' &m2'&A&B&C&D&E&F&G).
+  exists f',vres',m2'. split. auto. split. auto. split. auto.
+  split. auto. split. auto. split. auto. split.
+ intro. intros. exploit G; eauto.
+  intros [X Y]. inv C.
+  exploit external_call_new_block; eauto. intro.
+  exploit external_call_new_block. apply H0. all: eauto.
+  destruct (Mem.sup_dec b (Mem.support m2)). auto.
+  apply mi_freeblocks in n. congruence. intro.
+  split. destruct b. constructor. inv H6.
+  destruct b'. constructor. inv H5.
+  split; eauto. split. eapply external_call_new_block. apply H0.
+  eauto. eauto. eapply external_call_mem_inject_gen_result; eauto.
+Qed.
+
 Lemma external_call_mem_inject:
-  forall ef F V (ge: Genv.t F V) vargs m1 t vres m2 f m1' vargs',
+  forall ef F V (ge : Genv.t F V) vargs m1 t vres m2 f m1' vargs',
   meminj_preserves_globals ge f ->
   external_call ef ge vargs m1 t vres m2 ->
   Mem.inject f m1 m1' ->
@@ -1696,28 +1756,20 @@ Lemma external_call_mem_inject:
     /\ inject_incr f f'
     /\ inject_separated f f' m1 m1'.
 Proof.
-  intros. destruct H as (A & B & C). eapply external_call_mem_inject_gen with (ge1 := ge); eauto.
-  repeat split; intros.
-  + simpl in H3. exploit A; eauto. intros EQ; rewrite EQ in H; inv H. auto.
-  + simpl in H3. exploit A; eauto. intros EQ; rewrite EQ in H; inv H. auto.
-  + simpl in H3. exists b1; split; eauto.
-  + simpl; unfold Genv.block_is_volatile.
-    destruct (Genv.find_var_info ge b1) as [gv1|] eqn:V1.
-    * exploit B; eauto. intros EQ; rewrite EQ in H; inv H. rewrite V1; auto.
-    * destruct (Genv.find_var_info ge b2) as [gv2|] eqn:V2; auto.
-      exploit C; eauto. intros EQ; subst b2. congruence.
+  intros. eapply external_call_mem_inject_gen with (ge1 := ge); eauto.
+  eapply meminj_preserves_globals_symbols_inject; eauto.
 Qed.
 
-Lemma external_call_mem_inject_result:
-  forall ef F V (ge: Genv.t F V) vargs m1 t vres m2 f m1' m2' vres' vargs' f' b,
-  meminj_preserves_globals ge f ->
-  external_call ef ge vargs m1 t vres m2 ->
+Lemma external_call_mem_inject_gen_stackeq:
+  forall ef ge1 ge2 vargs m1 t vres m2 f m1' m2' vres' vargs' f',
+  symbols_inject f ge1 ge2 ->
+  external_call ef ge1 vargs m1 t vres m2 ->
   Mem.inject f m1 m1' ->
   Val.inject_list f vargs vargs' ->
-  external_call ef ge vargs' m1' t vres' m2' ->
+  external_call ef ge2 vargs' m1' t vres' m2' ->
   Mem.inject f' m2 m2' ->
-  ~ Mem.valid_block m1 b -> Mem.valid_block m2 b ->
-  f' b = Some (b,0).
+  Mem.stack (Mem.support m1) = Mem.stack (Mem.support m1') ->
+  Mem.stack (Mem.support m2) = Mem.stack (Mem.support m2').
 Admitted.
 
 Lemma external_call_mem_inject_stackeq:
@@ -1730,6 +1782,20 @@ Lemma external_call_mem_inject_stackeq:
   Mem.inject f' m2 m2' ->
   Mem.stack (Mem.support m1) = Mem.stack (Mem.support m1') ->
   Mem.stack (Mem.support m2) = Mem.stack (Mem.support m2').
+Proof.
+  intros. eapply external_call_mem_inject_gen_stackeq; eauto.
+  eapply meminj_preserves_globals_symbols_inject; eauto.
+Qed.
+
+Lemma external_call_mem_inject_gen_stackseq:
+  forall ef ge1 ge2 vargs m1 t vres m2 f m1' m2' vres' vargs' f',
+  symbols_inject f ge1 ge2 ->
+  external_call ef ge1 vargs m1 t vres m2 ->
+  Mem.inject f m1 m1' ->
+  Val.inject_list f vargs vargs' ->
+  external_call ef ge2 vargs' m1' t vres' m2' ->
+  Mem.inject f' m2 m2' ->
+  Mem.stackseq m1 m1' -> Mem.stackseq m2 m2'.
 Admitted.
 
 Lemma external_call_mem_inject_stackseq:
@@ -1741,7 +1807,10 @@ Lemma external_call_mem_inject_stackseq:
   external_call ef ge vargs' m1' t vres' m2' ->
   Mem.inject f' m2 m2' ->
   Mem.stackseq m1 m1' -> Mem.stackseq m2 m2'.
-Admitted.
+Proof.
+  intros. eapply external_call_mem_inject_gen_stackseq; eauto.
+  eapply meminj_preserves_globals_symbols_inject; eauto.
+Qed.
 
 Lemma external_call_mem_inject':
   forall ef F V (ge: Genv.t F V) vargs m1 t vres m2 f m1' vargs',
@@ -1760,21 +1829,8 @@ Lemma external_call_mem_inject':
     /\ inject_separated f f' m1 m1'
     /\ inject_external f' m1 m2.
 Proof.
-  intros. exploit external_call_mem_inject; eauto.
-  intros (f' & vres' & m2' & A & B & C & D & E & G & I).
-  eexists. eexists. eexists. split; eauto. split; eauto.
-  split; eauto. split; eauto. split; eauto. split; eauto.
-  split; eauto. intro. intros. exploit I; eauto.
-  intros [X Y]. inv C.
-  exploit external_call_new_block; eauto. intro.
-  exploit external_call_new_block. apply H0. all: eauto.
-  destruct (Mem.sup_dec b (Mem.support m2)). auto.
-  apply mi_freeblocks in n. congruence. intro.
-  split. destruct b. constructor. inv H6.
-  destruct b'. constructor. inv H5.
-  split; eauto. split. eapply external_call_new_block. apply H0.
-  eauto. eauto. exploit external_call_mem_inject_result. eauto.
-  apply H0. eauto. eauto. eauto. eauto. eauto. eauto. eauto.
+  intros. eapply external_call_mem_inject_gen' with (ge1 := ge); eauto.
+  eapply meminj_preserves_globals_symbols_inject; eauto.
 Qed.
 
 (** Corollaries of [external_call_determ]. *)
