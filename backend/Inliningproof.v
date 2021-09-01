@@ -892,7 +892,7 @@ Inductive match_states: RTL.state -> RTL.state -> Prop :=
         (SP: F sp = Some(sp', ctx.(dstk)))
         (GLOB: meminj_global F)
         (MINJ: Mem.inject F m m')
-(*        (STREE: inline_depth (S n::l) (Mem.sdepth m) (Mem.sdepth m')) *)
+        (STREE: inline_depth (S n::l) ((Mem.sdepth m)) ((Mem.sdepth m')))
         (VB: Mem.sup_include (sup_incr sps') (Mem.support m'))
         (PRIV: range_private F m m' sp' (ctx.(dstk) + ctx.(mstk)) f'.(fn_stacksize))
         (SSZ1: 0 <= f'.(fn_stacksize) < Ptrofs.max_unsigned)
@@ -906,7 +906,7 @@ Inductive match_states: RTL.state -> RTL.state -> Prop :=
         (VINJ: Val.inject_list F args args')
         (GLOB: meminj_global F)
         (MINJ: Mem.inject F m m')
-(*        (STREE: inline_depth (S n::l) (S(Mem.sdepth m)) (S(Mem.sdepth m'))) *),
+        (STREE: inline_depth (1%nat::l) (S(Mem.sdepth m)) (S(Mem.sdepth m'))),
       match_states (Callstate stk fd args m id)
                    (Callstate stk' fd' args' m' id)
   | match_call_regular_states: forall stk f vargs m stk' f' sps' sp' rs' m' F fenv ctx ctx' pc' pc1' rargs id n l
@@ -920,7 +920,7 @@ Inductive match_states: RTL.state -> RTL.state -> Prop :=
         (VINJ: list_forall2 (val_reg_charact F ctx' rs') vargs rargs)
         (GLOB: meminj_global F)
         (MINJ: Mem.inject F m m')
-(*        (STREE: inline_depth (S n::l) (S(Mem.sdepth m)) (S(Mem.sdepth m'))) *)
+        (STREE: inline_depth (S n::l) (S(Mem.sdepth m)) ((Mem.sdepth m')))
         (VB: Mem.sup_include (sup_incr sps') (Mem.support m'))
         (PRIV: range_private F m m' sp' ctx.(dstk) f'.(fn_stacksize))
         (SSZ1: 0 <= f'.(fn_stacksize) < Ptrofs.max_unsigned)
@@ -932,7 +932,7 @@ Inductive match_states: RTL.state -> RTL.state -> Prop :=
         (VINJ: Val.inject F v v')
         (GLOB: meminj_global F)
         (MINJ: Mem.inject F m m')
-(*        (STREE: inline_depth (1%nat::l) (S(Mem.sdepth m)) (S(Mem.sdepth m'))) *),
+        (STREE: inline_depth (1%nat::l) (S(Mem.sdepth m)) (S(Mem.sdepth m'))),
       match_states (Returnstate stk v m)
                    (Returnstate stk' v' m')
   | match_return_regular_states: forall stk v m stk' f' sps' sp' rs' m' F ctx pc' or rinfo n l
@@ -943,7 +943,7 @@ Inductive match_states: RTL.state -> RTL.state -> Prop :=
         (VINJ: match or with None => v = Vundef | Some r => Val.inject F v rs'#(sreg ctx r) end)
         (GLOB: meminj_global F)
         (MINJ: Mem.inject F m m')
- (*       (STREE: inline_depth (S n::l) (S(Mem.sdepth m)) (Mem.sdepth m')) *)
+        (STREE: inline_depth (S n::l) (S(Mem.sdepth m)) (Mem.sdepth m'))
         (VB: Mem.sup_include (sup_incr sps') (Mem.support m'))
         (PRIV: range_private F m m' sp' ctx.(dstk) f'.(fn_stacksize))
         (SSZ1: 0 <= f'.(fn_stacksize) < Ptrofs.max_unsigned)
@@ -1067,6 +1067,8 @@ Proof.
   destruct a'; simpl in U; try discriminate.
   econstructor; eauto.
   eapply match_stacks_inside_store; eauto.
+  unfold Mem.sdepth. erewrite Mem.support_store; eauto.
+  rewrite (Mem.support_store _ _ _ _ _ _ U). auto.
   erewrite Mem.support_store; eauto.
   eapply range_private_invariant; eauto.
   intros; split; auto. eapply Mem.perm_store_2; eauto.
@@ -1085,7 +1087,7 @@ Proof.
   econstructor; eauto.
   eapply match_stacks_cons; eauto.
   eapply agree_val_regs; eauto.
-(*  instantiate (1:= O). constructor. simpl. rewrite Nat.sub_0_r. auto. *)
+  constructor. simpl. rewrite Nat.sub_0_r. auto.
 + (* inlined *)
   assert (EQ: fd = Internal f0) by (eapply find_inlined_function; eauto).
   subst fd.
@@ -1094,6 +1096,7 @@ Proof.
   eapply match_stacks_inside_inlined; eauto.
   red; intros. apply PRIV. inv H14. destruct H17. extlia.
   apply agree_val_regs_gen; auto.
+  inv STREE. constructor. simpl. auto.
   red; intros; apply PRIV. destruct H17. lia.
 
 - (* tailcall *)
@@ -1117,7 +1120,9 @@ Proof.
   eelim Q; eauto. replace (ofs + delta - delta) with ofs by lia.
   apply Mem.perm_max with k. apply Mem.perm_implies with p; auto with mem.
   intro.
-  exploit Mem.return_frame_parallel_inject; eauto. admit.
+  exploit Mem.return_frame_parallel_inject; eauto.
+  inv STREE. apply Mem.sdepth_active; eauto.
+  erewrite Mem.sdepth_free; eauto. congruence.
   intros (m2' & RET' & INJ').
   left; econstructor; split.
   eapply plus_one. eapply exec_Itailcall; eauto.
@@ -1134,6 +1139,9 @@ Proof.
   eapply Mem.sup_include_trans; eauto. eapply Mem.sup_include_trans; eauto.
   erewrite <- Mem.support_free; eauto. intro. eapply Mem.support_return_frame_1 in RET'. apply RET'.
   eapply agree_val_regs; eauto.
+  erewrite Mem.sdepth_return_frame; eauto.
+  erewrite Mem.sdepth_return_frame; eauto. erewrite Mem.sdepth_free; eauto.
+  erewrite (Mem.sdepth_free _ _ _ _ _ FREE ). auto.
   (* show that no valid location points into the stack block being freed *)
 + (* turned into a call *)
   left; econstructor; split.
@@ -1149,6 +1157,13 @@ Proof.
   eapply agree_val_regs; eauto.
   eapply Mem.return_frame_left_inject. 2: eauto.
   eapply Mem.free_left_inject; eauto.
+  constructor. inv STREE.
+  assert (O < n)%nat. {
+    inv MS0. congruence. lia.
+  } destruct n. extlia.
+  simpl. constructor. erewrite <- Mem.sdepth_free in H7; eauto.
+  erewrite <- Mem.sdepth_return_frame in H7; eauto. simpl in *.
+  rewrite Nat.sub_0_r. auto.
 + (* inlined *)
   assert (EQ: fd = Internal f0) by (eapply find_inlined_function; eauto).
   subst fd.
@@ -1162,6 +1177,7 @@ Proof.
   apply agree_val_regs_gen; auto.
   eapply Mem.return_frame_left_inject. 2:eauto.
   eapply Mem.free_left_inject; eauto.
+  erewrite Mem.sdepth_return_frame. 2: eauto. erewrite Mem.sdepth_free; eauto.
   red; intros. exploit PRIV'; eauto. instantiate (1:= ofs).
     assert (dstk ctx <= dstk ctx'). red in H16; rewrite H16. apply align_le. apply min_alignment_pos.
     lia.
@@ -1186,7 +1202,9 @@ Proof.
   auto. eauto. auto.
   destruct res; simpl; [apply agree_set_reg;auto|idtac|idtac]; eapply agree_regs_incr; eauto. eauto.
   eapply meminj_global_invariant; eauto.
-  auto. auto. eapply Mem.sup_include_trans; eauto. eapply Mem.unchanged_on_support. eauto.
+  auto. apply external_call_sdepth in A. apply external_call_sdepth in H1.
+  congruence. auto.
+  eapply Mem.sup_include_trans; eauto. eapply Mem.unchanged_on_support. eauto.
   eapply range_private_extcall; eauto.
     intros; eapply external_call_max_perm; eauto.
   auto. apply VB. auto. auto.
@@ -1228,9 +1246,9 @@ Proof.
     rewrite H10 in PRIV. eapply range_private_free_left; eauto.
   rewrite DSTK in PRIV'. exploit (PRIV' (ofs + delta)). lia. intros [A B].
   eelim B; eauto. replace (ofs + delta - delta) with ofs by lia.
-  apply Mem.perm_max with k. apply Mem.perm_implies with p; auto with mem.
-  intro.
-  exploit Mem.return_frame_parallel_inject; eauto. admit.
+  apply Mem.perm_max with k. apply Mem.perm_implies with p; auto with mem. intro.
+  exploit Mem.return_frame_parallel_inject; eauto.
+  apply Mem.sdepth_active. inv STREE. erewrite Mem.sdepth_free; eauto. congruence.
   intros [m2' [RET' INJ']].
   left; econstructor; split.
   eapply plus_one. eapply exec_Ireturn; eauto.
@@ -1244,6 +1262,9 @@ Proof.
   eapply Mem.sup_include_trans; eauto. eapply Mem.sup_include_trans; eauto.
   erewrite <- Mem.support_free; eauto. intro. eapply Mem.support_return_frame_1 in RET'. eapply RET'.
   destruct or; simpl. apply agree_val_reg; auto. auto.
+  erewrite Mem.sdepth_return_frame; eauto. apply Mem.sdepth_free in H0.
+  erewrite Mem.sdepth_return_frame; eauto. apply Mem.sdepth_free in FREE.
+  congruence.
 + (* inlined *)
   right. split. simpl. lia. split. auto.
   econstructor; eauto.
@@ -1252,6 +1273,7 @@ Proof.
   destruct or; simpl. apply agree_val_reg; auto. auto.
   eapply Mem.return_frame_left_inject. 2: eauto.
   eapply Mem.free_left_inject; eauto.
+  erewrite Mem.sdepth_return_frame. 2:eauto. erewrite Mem.sdepth_free; eauto.
   inv FB. rewrite H5 in PRIV.
   eapply range_private_invariant.
   eapply range_private_free_left; eauto.
@@ -1297,8 +1319,9 @@ Proof.
   intro. intros. destruct (eq_block b stk).
   subst. rewrite D in H10. inv H10.
   apply Mem.alloc_result_stack in H0. apply Mem.alloc_result_stack in A. auto.
-  rewrite E in H10. congruence. auto.
-  auto.
+  rewrite E in H10. congruence. auto. auto.
+  erewrite Mem.sdepth_alloc; eauto. erewrite Mem.sdepth_alloc_frame; eauto.
+  apply Mem.sdepth_alloc in A. apply Mem.sdepth_alloc_frame in ALLOCF. congruence.
   rewrite  Mem.support_alloc with m1' 0 (fn_stacksize f') m2' sp'.
   apply Mem.sup_include_refl. auto.
   red; intros. split.
@@ -1351,9 +1374,9 @@ Proof.
   subst. rewrite C in H9. inv H9.
   apply Mem.alloc_result_stack in H0.
   unfold fresh_block. destr. destr. destr. split. auto.
-  constructor.
-  rewrite D in H9. congruence. auto.
-  auto. auto.
+  constructor. rewrite D in H9. congruence. auto. auto.
+  erewrite Mem.sdepth_alloc; eauto. erewrite Mem.sdepth_alloc_frame; eauto.
+  auto.
   rewrite H3.
   eapply range_private_alloc_left.
   eapply range_private_invariant. eauto.
@@ -1377,6 +1400,7 @@ Proof.
     apply Mem.sup_include_refl.
     eapply external_call_support; eauto. auto.
     eapply meminj_global_invariant; eauto. auto.
+    apply external_call_sdepth in H. apply external_call_sdepth in A. congruence.
 
 - (* return from noninlined function *)
   inv MS0.
@@ -1386,6 +1410,7 @@ Proof.
   econstructor; eauto.
   apply match_stacks_inside_set_reg; eauto.
   apply agree_set_reg; auto.
+  inv STREE. simpl in H2. rewrite Nat.sub_0_r in H2. auto.
 + (* untailcall case *)
   inv MS; try congruence.
   rewrite RET in RET0; inv RET0.
@@ -1395,7 +1420,8 @@ Proof.
   eapply match_stacks_inside_set_reg; eauto.
   eauto. auto.
   apply agree_set_reg; auto.
-  auto. auto. auto. auto.
+  auto. auto. auto. inv STREE. simpl in H2. rewrite Nat.sub_0_r in H2.
+  auto. auto.
   red; intros. destruct (zlt ofs (dstk ctx)). apply PAD; lia. apply PRIV; lia.
   auto. auto.
 
@@ -1409,11 +1435,13 @@ Proof.
   left; econstructor; split.
   eapply plus_one. eapply exec_Iop; eauto. simpl. reflexivity.
   econstructor; eauto. apply match_stacks_inside_set_reg; eauto. apply agree_set_reg; auto.
+  inv STREE. constructor. simpl in *. auto.
 + (* without a result *)
   left; econstructor; split.
   eapply plus_one. eapply exec_Inop; eauto.
   econstructor; eauto. subst vres. apply agree_set_reg_undef'; auto.
-Admitted.
+  inv STREE. constructor. simpl in *. auto.
+Qed.
 
 Lemma transf_initial_states:
   forall st1, initial_state prog st1 -> exists st2, initial_state tprog st2 /\ match_states st1 st2.
@@ -1439,6 +1467,8 @@ Proof.
     apply Mem.sup_include_refl.
   intro. unfold Mem.flat_inj. intro. intros. destr_in H.
   eapply Genv.initmem_inject; eauto.
+  constructor. simpl. rewrite Nat.sub_0_r. unfold Mem.sdepth.
+  erewrite Genv.init_mem_stack; eauto. simpl. constructor.
     symmetry; eapply match_program_main; eauto.
 Qed.
 
