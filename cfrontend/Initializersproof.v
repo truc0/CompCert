@@ -323,9 +323,12 @@ Qed.
   [Vptr b ofs] where [Genv.find_symbol ge id = Some b]. *)
 
 Definition inj (b: block) :=
-  match Genv.find_symbol ge (block_to_ident b) with
-  | Some b' => Some (b', 0)
-  | None => None
+  match b with
+    |Global id => match Genv.find_symbol ge id with
+                   |Some b' => Some (b',0)
+                   |None => None
+                 end
+    |Stack _ _ _ => None
   end.
 
 Lemma mem_empty_not_valid_pointer:
@@ -440,7 +443,7 @@ Proof.
   (* var local *)
   unfold empty_env in H. rewrite PTree.gempty in H. congruence.
   (* var_global *)
-  econstructor. unfold inj. rewrite ident_to_block_to_ident. rewrite H0. eauto. auto.
+  econstructor. unfold inj. rewrite H0. eauto. auto.
   (* deref *)
   eauto.
   (* field struct *)
@@ -627,14 +630,14 @@ Proof.
   destruct ty; try discriminate.
   destruct f1; inv EQ0; simpl in H2; inv H2; assumption.
 - (* pointer *)
-  unfold inj in H.
-  assert (data = Init_addrof (block_to_ident b1) ofs1 /\ chunk = Mptr).
+  unfold inj in H. destr_in H. destr_in H. inv H.
+  assert (data = Init_addrof i ofs1 /\ chunk = Mptr).
   { remember Archi.ptr64 as ptr64.
     destruct ty; inversion EQ0.
-    destruct i; inv H5. unfold Mptr. destruct Archi.ptr64; inv H6; inv H2; auto.
-    subst ptr64. unfold Mptr. destruct Archi.ptr64; inv H5; inv H2; auto.
+    destruct i0; inv H4. unfold Mptr. destruct Archi.ptr64; inv H5; inv H2; auto.
+    subst ptr64. unfold Mptr. destruct Archi.ptr64; inv H4; inv H2; auto.
     inv H2. auto. }
-  destruct H4; subst. destruct (Genv.find_symbol ge (block_to_ident b1)); inv H.
+  destruct H; subst. rewrite Heqo.
   rewrite Ptrofs.add_zero in H3. auto.
 - (* undef *)
   discriminate.
@@ -651,16 +654,16 @@ Proof.
 - monadInv EQ0.
 - destruct ty; try discriminate.
   destruct i0; inv EQ0; auto.
-  destruct ptr64; inv EQ0. 
+  destruct ptr64; inv EQ0.
 Local Transparent sizeof.
   unfold sizeof. rewrite <- Heqptr64; auto.
-- destruct ty; inv EQ0; auto. 
+- destruct ty; inv EQ0; auto.
   unfold sizeof. destruct Archi.ptr64; inv H0; auto.
 - destruct ty; try discriminate.
   destruct f0; inv EQ0; auto.
 - destruct ty; try discriminate.
   destruct f0; inv EQ0; auto.
-- destruct ty; try discriminate.
+- destruct ty; destruct b; try discriminate.
   destruct i0; inv EQ0; auto.
   destruct Archi.ptr64 eqn:SF; inv H0. simpl. rewrite SF; auto.
   destruct ptr64; inv EQ0. simpl. rewrite <- Heqptr64; auto.
@@ -714,14 +717,14 @@ Proof.
 Local Opaque sizeof.
 - destruct 1; simpl.
 + erewrite transl_init_single_size by eauto. lia.
-+ Local Transparent sizeof. simpl. eapply tr_init_array_size; eauto. 
++ Local Transparent sizeof. simpl. eapply tr_init_array_size; eauto.
 + replace (idlsize d) with (idlsize d + 0) by lia.
   eapply tr_init_struct_size; eauto. simpl.
   unfold lookup_composite in H. destruct (ge.(genv_cenv)!id) as [co'|] eqn:?; inv H.
   erewrite co_consistent_sizeof by (eapply ce_consistent; eauto).
   unfold sizeof_composite. rewrite H0. apply align_le.
   destruct (co_alignof_two_p co) as [n EQ]. rewrite EQ. apply two_power_nat_pos.
-+ rewrite idlsize_app, padding_size. 
++ rewrite idlsize_app, padding_size.
   exploit tr_init_size; eauto. intros EQ; rewrite EQ. lia.
   simpl. unfold lookup_composite in H. destruct (ge.(genv_cenv)!id) as [co'|] eqn:?; inv H.
   apply Z.le_trans with (sizeof_union ge (co_members co)).
