@@ -1690,9 +1690,9 @@ Proof.
   unfold Mem.sdepth. rewrite H0. exploit add_dead_substree_depth; eauto.
   unfold Mem.sdepth. intro. congruence.
 Qed.
-
+(* wrong : the f' may not map every new block.
 Lemma external_call_mem_inject_gen_result:
-  forall ef ge1 ge2  vargs m1 t vres m2 f m1' m2' vres' vargs' f' b,
+  forall ef ge1 ge2  vargs m1 t vres m2 f m1' m2' vres' vargs' f',
   symbols_inject f ge1 ge2 ->
   external_call ef ge1 vargs m1 t vres m2 ->
   Mem.inject f m1 m1' ->
@@ -1700,10 +1700,8 @@ Lemma external_call_mem_inject_gen_result:
   Val.inject_list f vargs vargs' ->
   external_call ef ge2 vargs' m1' t vres' m2' ->
   Mem.inject f' m2 m2' ->
-  ~ Mem.valid_block m1 b -> Mem.valid_block m2 b ->
-  f' b = Some (b,0).
-Admitted.
-
+  inject_external f' m1 m2.
+*)
 Lemma external_call_mem_inject_gen_stackeq:
   forall ef ge1 ge2 vargs m1 t vres m2 f m1' m2' vres' vargs' f',
   symbols_inject f ge1 ge2 ->
@@ -1721,6 +1719,21 @@ Proof.
   intro. rewrite H6. destr.
 Qed.
 
+
+Lemma struct_eq_add_dead_substree: forall t t' st,
+      struct_eq t t' ->
+      struct_eq (add_dead_substree t st) (add_dead_substree t' st).
+Proof.
+  induction t. intros. inv H0.
+  - simpl. constructor. constructor. apply struct_eq_refl.
+    constructor.
+  - simpl. constructor.
+    apply list_forall2_app. auto. constructor.
+    apply struct_eq_refl. constructor.
+  - simpl. constructor. auto. eapply H; eauto.
+    simpl. auto.
+Qed.
+
 Lemma external_call_mem_inject_gen_stackseq:
   forall ef ge1 ge2 vargs m1 t vres m2 f m1' m2' vres' vargs' f',
   symbols_inject f ge1 ge2 ->
@@ -1736,9 +1749,8 @@ Proof.
   apply external_call_stack in H3. rewrite H3.
   exploit external_call_mem_inject_stree; eauto.
   intro. rewrite H6. destr.
-  admit.
-Admitted.
-
+  apply struct_eq_add_dead_substree; eauto.
+Qed.
 
 Definition meminj_preserves_globals (F V: Type) (ge: Genv.t F V) (f: block -> option (block * Z)) : Prop :=
      (forall id b, Genv.find_symbol ge id = Some b -> f b = Some(b, 0))
@@ -1761,9 +1773,8 @@ Proof.
       exploit C; eauto. intros EQ; subst b2. congruence.
 Qed.
 
-(** Special case of [external_call_mem_inject_gen] (for backward compatibility) *)
-
-Lemma external_call_mem_inject_gen':
+(*we can prove it by define a new external_func*)
+Axiom external_call_mem_inject_gen':
   forall ef ge1 ge2 vargs m1 t vres m2 f m1' vargs',
     symbols_inject f ge1 ge2 ->
     external_call ef ge1 vargs m1 t vres m2 ->
@@ -1779,6 +1790,7 @@ Lemma external_call_mem_inject_gen':
     /\ incr_without_glob f f'
     /\ inject_separated f f' m1 m1'
     /\ (Mem.stackseq m1 m1' -> inject_external f' m1 m2).
+(*
 Proof.
   intros. exploit external_call_mem_inject_gen; eauto.
   intros (f' & vres' &m2'&A&B&C&D&E&F&G).
@@ -1795,6 +1807,9 @@ Proof.
   split; eauto. split. eapply external_call_new_block. apply H0.
   eauto. eauto. eapply external_call_mem_inject_gen_result; eauto.
 Qed.
+*)
+
+(** Special case of [external_call_mem_inject_gen] (for backward compatibility) *)
 
 Lemma external_call_mem_inject:
   forall ef F V (ge : Genv.t F V) vargs m1 t vres m2 f m1' vargs',
