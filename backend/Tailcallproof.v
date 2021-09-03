@@ -529,7 +529,7 @@ Inductive match_states: state -> state -> Prop :=
   | match_states_return:
       forall s v m s' v' m' j n l,
       match_stackframes j n l s s' ->
-      tc_depth l ((Mem.sdepth m)- n) (Mem.sdepth m') ->
+      tc_depth (S n::l) (S(Mem.sdepth m)) (S(Mem.sdepth m')) ->
       Val.inject j v v' ->
       Mem.inject j m m' ->
       match_states (Returnstate s v m)
@@ -537,9 +537,9 @@ Inductive match_states: state -> state -> Prop :=
   | match_states_interm:
       forall s sp pc rs m s' m' f r v' j n l
              (STACKS: match_stackframes j n l s s')
-             (STREE: tc_depth l
-                              ((Mem.sdepth m) - (S n))
-                              ((Mem.sdepth m')))
+             (STREE: tc_depth (S n::l)
+                              ((Mem.sdepth m))
+                              (S(Mem.sdepth m')))
              (MLD: Mem.inject j m m'),
       is_return_spec f pc r ->
       f.(fn_stacksize) = 0 ->
@@ -742,11 +742,11 @@ Proof.
   left. exists (Returnstate s' (regmap_optget or Vundef rs') m'2); split.
   eapply exec_Ireturn; auto. rewrite stacksize_preserved; eauto. simpl in FREE.
   rewrite Z.add_0_r in FREE. eauto. eauto.
-  econstructor. eauto. inv STREE.
-  erewrite <- Mem.sdepth_free in H5; eauto.
-  erewrite <- Mem.sdepth_free in H6; eauto.
-  rewrite <- (Mem.sdepth_return_frame _ _ RET) in H6. inv H6.
-  rewrite <- (Mem.sdepth_return_frame _ _ H1) in H5. simpl in H5. auto.
+  econstructor. eauto.
+  erewrite <- Mem.sdepth_free in STREE; eauto.
+  erewrite <-(Mem.sdepth_free m'0 _ _ _ _ FREE) in STREE.
+  rewrite <- (Mem.sdepth_return_frame _ _ RET) in STREE.
+  rewrite <- (Mem.sdepth_return_frame _ _ H1) in STREE. auto.
   destruct or; simpl. apply RINJ. constructor. auto.
 
 - (* eliminated return None *)
@@ -801,7 +801,7 @@ Proof.
   simpl. econstructor; eauto.
   eapply external_call_symbols_preserved; eauto. apply senv_preserved.
   econstructor. eapply match_stackframes_incr; eauto.
-  inv H7. apply external_call_sdepth in A. apply external_call_sdepth in H.
+  apply external_call_sdepth in A. apply external_call_sdepth in H.
   simpl in *. congruence. eauto. eauto.
 
 - (* returnstate *)
@@ -809,7 +809,8 @@ Proof.
 + (* synchronous return in both programs *)
   left. econstructor; split.
   apply exec_return.
-  econstructor; eauto. rewrite Nat.sub_0_r in H3. auto.
+  econstructor; eauto.
+  inv H3. simpl in *. rewrite Nat.sub_0_r in H2.  auto.
   apply set_reg_inject; auto.
 + (* return instr in source program, eliminated because of tailcall *)
   right. split. unfold measure. simpl length.
@@ -818,6 +819,7 @@ Proof.
   generalize (return_measure_bounds (fn_code f) pc). lia.
   split. auto.
   econstructor; eauto.
+  inv H3. simpl in *. constructor. auto.
   rewrite Regmap.gss. auto.
 Qed.
 
