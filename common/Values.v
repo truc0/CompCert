@@ -82,10 +82,10 @@ End Block.
 Definition block := Block.block.
 Definition eq_block := Block.eq_block.
 
-Definition is_stack (b:block) : bool :=
+Definition is_stack (b:block) : Prop :=
   match b with
-    | Stack _ _ _ => true
-    |  _ => false
+    | Stack _ _ _ => True
+    |  _ => False
   end.
 
 (** A value is either:
@@ -2579,6 +2579,10 @@ Notation meminj := Val.meminj.
 
 Definition inject_incr (f1 f2: meminj) : Prop :=
   forall b b' delta, f1 b = Some(b', delta) -> f2 b = Some(b', delta).
+
+Definition incr_without_glob (j j' : meminj) : Prop :=
+  forall b b' delta, j b = None -> j' b = Some (b',delta) ->
+       is_stack b /\ is_stack b'.
 
 Lemma inject_incr_refl :
    forall f , inject_incr f f .

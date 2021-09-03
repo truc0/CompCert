@@ -18,8 +18,6 @@ Require Import Integers Values Memory Globalenvs Events Smallstep.
 Require Import Op Registers RTL RTLmach.
 Require Import Unusedglob.
 
-Require Import Coq.Logic.FunctionalExtensionality.
-
 Module ISF := FSetFacts.Facts(IS).
 Module ISP := FSetProperties.Properties(IS).
 
@@ -557,7 +555,7 @@ Lemma sinj_refl:
            struct_meminj s1= struct_meminj s2.
 Proof.
   intros.
-  apply functional_extensionality.
+  apply Axioms.extensionality.
   intros. destruct x; unfold struct_meminj; simpl.
   destruct (Mem.sup_dec (Stack f p0 p1) s1);
   destruct (Mem.sup_dec (Stack f p0 p1) s2).
@@ -852,10 +850,47 @@ Lemma external_call_inject:
     /\ inject_incr f f'
     /\ inject_separated f f' m1 m1'.
 Proof.
-  Admitted.
-(*  intros. eapply external_call_mem_inject_gen; eauto.
+  intros.
+  exploit external_call_mem_inject_gen'; eauto.
   apply globals_symbols_inject; auto.
-Qed.*)
+  intros (f' & vres' & m2' & A & B & C & D & E & F & G & I & J).
+  exists f',vres',m2'. split. auto. split. auto. split. auto.
+  split. subst.
+  {
+    apply Axioms.extensionality. intro b.
+    destruct ((struct_meminj (Mem.support m1)) b) eqn:Z. destruct p0.
+    - apply F in Z as Z'. rewrite Z'. rewrite <- Z.
+      unfold struct_meminj. destr.
+      + unfold check_block in Heqb1. repeat destr_in Heqb1.
+        exploit external_call_valid_block. apply H0.
+        eauto. intro. unfold check_block. repeat destr. destr_in Heqb.
+        apply n in H3. inv H3. unfold check_block. rewrite Heqo. auto.
+      + unfold struct_meminj in Z. destr_in Z.
+    - destruct (f' b) eqn:Z1.
+      + destruct p0. exploit I; eauto.
+      intros [A1 B1]. inv C. unfold struct_meminj.
+      destruct (Mem.sup_dec b (Mem.support m2)).
+        -- exploit J; eauto. unfold Mem.stackseq.
+           rewrite H4. apply struct_eq_refl.
+           intros [C1 D1]. rewrite Z1 in D1. inv D1. unfold check_block.
+           destr. destr_in Heqb0. destr_in Heqb0. inv C1.
+      -- apply mi_freeblocks in n. congruence.
+      + unfold struct_meminj. destr. unfold check_block in Heqb0.
+        repeat destr_in Heqb0.
+        unfold struct_meminj in Z. destr_in Z.
+        unfold check_block in Heqb. repeat destr_in Heqb.
+        exploit J; eauto. unfold Mem.stackseq.
+           rewrite H4. apply struct_eq_refl.
+        intros [C1 D1]. congruence.
+        unfold struct_meminj in Z. destr_in Z.
+        unfold check_block in Heqb. repeat destr_in Heqb.
+  }
+  split.
+  eapply external_call_mem_inject_gen_stackeq; eauto.
+  apply globals_symbols_inject; auto.
+  split. auto. split. auto.
+  split. auto. auto.
+Qed.
 
 Lemma find_function_inject:
   forall j ros rs fd trs,
@@ -1091,7 +1126,7 @@ Proof.
   intro. apply SUPINC in H4. apply U. auto.
   intro. apply TSUPINC in H4. apply V. auto.
   apply set_res_inject; auto. apply regset_inject_incr with (struct_meminj (Mem.support m)); auto.
-  apply external_call_mem_astack in H1. apply external_call_mem_astack in A.
+  apply external_call_astack in H1. apply external_call_astack in A.
   congruence.
   eapply Mem.sup_include_trans. eauto. eapply Mem.unchanged_on_support;eauto.
   eapply Mem.sup_include_trans. eauto. eapply Mem.unchanged_on_support;eauto.
@@ -1169,7 +1204,7 @@ Proof.
     rewrite G in H9 by auto. congruence. }
     assert (MEMINJP' : j' = struct_meminj (Mem.support m''')).
   {
-    apply functional_extensionality.
+    apply Axioms.extensionality.
     intros. subst.
     destruct (eq_block x (Mem.nextblock m')).
     + subst. rewrite F. unfold struct_meminj. simpl.
@@ -1221,7 +1256,7 @@ Proof.
   apply match_stacks_incr with (struct_meminj (Mem.support m)); auto.
   eapply external_call_support; eauto.
   eapply external_call_support; eauto.
-  apply external_call_mem_astack in H. apply external_call_mem_astack in A.
+  apply external_call_astack in H. apply external_call_astack in A.
   congruence.
 
 - (* return *)
@@ -1383,7 +1418,7 @@ Qed.
 
 Lemma sinj_init : init_meminj = struct_meminj (Mem.support m).
 Proof.
-  apply functional_extensionality.
+  apply Axioms.extensionality.
   intro. destruct x.
   * unfold init_meminj.
   apply Genv.init_mem_stack in IM.

@@ -20,8 +20,6 @@ Require Import AST Linking.
 Require Import Values Memory Events Globalenvs Smallstep.
 Require Import Csharpminor Switch Cminor Cminorgen.
 
-Require Import Coq.Logic.FunctionalExtensionality.
-
 Local Open Scope error_monad_scope.
 
 Definition match_prog (p: Csharpminor.program) (tp: Cminor.program) :=
@@ -182,7 +180,7 @@ Lemma sinj_refl:
            struct_meminj s1= struct_meminj s2.
 Proof.
   intros.
-  apply functional_extensionality.
+  apply Axioms.extensionality.
   intros. destruct x; unfold struct_meminj; simpl.
   destruct (Mem.sup_dec (Stack f p p0) s1);
   destruct (Mem.sup_dec (Stack f p p0) s2).
@@ -819,8 +817,8 @@ Proof.
 Qed.
 
 (** Preservation of [match_callstack] by external calls. *)
-(*
-Lemma match_callstack_external_call:
+
+Lemma match_callstack_external_call_rec:
   forall f1 f2 m1 m2 m1' m2',
   Mem.unchanged_on (loc_unmapped f1) m1 m2 ->
   Mem.unchanged_on (loc_out_of_reach f1 m1) m1' m2' ->
@@ -831,7 +829,9 @@ Lemma match_callstack_external_call:
   match_callstack f1 m1 m1' cs bound tbound ->
   Mem.sup_include bound (Mem.support m1) ->
   Mem.sup_include tbound (Mem.support m1') ->
+  Mem.stackseq m2 m2' ->
   match_callstack f2 m2 m2' cs bound tbound.
+Proof.
 Proof.
   intros until m2'.
   intros UNMAPPED OUTOFREACH INCR SEPARATED MAXPERMS.
@@ -843,7 +843,7 @@ Proof.
   intros [b2' delta'] EQ. rewrite (INCR _ _ _ EQ) in H. inv H. eauto.
   intro EQ. exploit SEPARATED; eauto. intros [A B]. elim B. red.
   eapply Mem.sup_include_trans; eauto. apply Mem.sup_include_refl.
-(* inductive *)
+(* inductive case *)
   assert (sp = fresh_block sps) by (eapply me_sps; eauto). subst.
   constructor. auto. auto.
   eapply match_temps_invariant; eauto.
@@ -865,10 +865,10 @@ Proof.
   (* padding-freeable *)
   red; intros.
   destruct (is_reachable_from_env_dec f1 e (fresh_block sps) ofs).
-  inv H3. right. apply is_reachable_intro with id b sz delta; auto.
+  inv H4. right. apply is_reachable_intro with id b sz delta; auto.
   exploit PERM; eauto. intros [A|A]; try contradiction.
   left. eapply Mem.perm_unchanged_on; eauto.
-  red; intros; red; intros. elim H3.
+  red; intros; red; intros. elim H4.
   exploit me_inv; eauto. intros [id [lv B]].
   exploit BOUND0; eauto. intros C.
   apply is_reachable_intro with id b0 lv delta; auto; lia.
@@ -879,11 +879,10 @@ Proof.
   eapply Mem.sup_include_trans; eauto.
   eapply Mem.sup_include_trans; eauto.
   eapply Mem.sup_include_trans; eauto.
-Admitted.
-*)
+Qed.
 
 Lemma match_callstack_external_call:
-  forall m tm ge vargs tvargs m' f t ef vres cs,
+  forall m tm vargs tvargs m' f t ef vres cs,
     Mem.inject f m tm ->
     Val.inject_list f vargs tvargs ->
     external_call ef ge vargs m t vres m' ->
@@ -895,7 +894,42 @@ Lemma match_callstack_external_call:
       /\ Val.inject f' vres vres'
       /\ Mem.inject f' m' tm'
       /\ f' = struct_meminj (Mem.support m').
-Admitted.
+Proof.
+  intros. exploit  match_callstack_match_globalenvs; eauto. intros [hi H4].
+  exploit external_call_mem_inject'; eauto.
+  eapply inj_preserves_globals. eauto.
+  intros (f' & vres' & tm' & A & B & C & D & E & F & G & I & J).
+  exists f',vres',tm'. split. auto. split.
+  eapply match_callstack_incr_bound; eauto.
+  eapply match_callstack_external_call_rec; eauto. intros.
+  eapply external_call_max_perm; eauto.
+  apply Mem.sup_include_refl. apply Mem.sup_include_refl.
+  exploit external_call_mem_inject_stackseq.
+  eapply inj_preserves_globals. eauto. apply H1. eauto. eauto.
+  eauto. eauto. eapply match_callstack_stackseq; eauto. auto.
+  eapply external_call_support; eauto.
+  eapply external_call_support; eauto.
+  split. auto. split. auto. subst.
+    {
+    apply Axioms.extensionality. intro b.
+    destruct ((struct_meminj (Mem.support m)) b) eqn:Z. destruct p.
+    - apply F in Z as Z'. rewrite Z'. rewrite <- Z.
+      unfold struct_meminj. destr. exploit external_call_valid_block.
+      apply H1. eauto. intro. destr. apply n in H3. inv H3.
+      unfold struct_meminj in Z. destr_in Z.
+    - destruct (f' b) eqn:Z1.
+      + destruct p. exploit I; eauto.
+      intros [A1 B1]. inv C. unfold struct_meminj. destr.
+      exploit J; eauto. eapply match_callstack_stackseq; eauto.
+      intros [C1 D1]. rewrite Z1 in D1. inv D1.
+      destruct b. destruct f; simpl in C1. inv C1. simpl. auto. inv C1.
+      apply mi_freeblocks in n. congruence.
+      + unfold struct_meminj. destr. unfold struct_meminj in Z. destr_in Z.
+      exploit J; eauto. eapply match_callstack_stackseq; eauto.
+      intros [C1 D1]. congruence.
+  }
+Qed.
+
 (** [match_callstack] and allocations *)
 
 Lemma match_callstack_alloc_right:
@@ -1343,7 +1377,7 @@ Proof.
   eapply Mem.alloc_right_inject; eauto.
   intros (f2 & A & B & C & D & E).
   exists f2. split. auto. split. auto.
-  apply functional_extensionality.
+  apply Axioms.extensionality.
   intro b.
   destruct (In_dec eq_block b blocks).
   - generalize (E b i). intro.
@@ -2566,11 +2600,11 @@ Proof.
   simpl. unfold Mem.sup_push_stage. intro. destruct b; eauto.
   intros [f' [vres' [tm' [EXT' [MCS' [VINJ [MINJ' SINJ]]]]]]].
   assert ({tm''| Mem.pop_stage tm' = Some tm''}).
-  apply Mem.nonempty_pop_stage. erewrite <- external_call_mem_astack; eauto.
+  apply Mem.nonempty_pop_stage. erewrite <- external_call_astack; eauto.
   simpl. congruence. destruct X as (tm'' & POP).
   exploit Mem.pop_stage_right_inject; eauto. intro.
   assert (Mem.astack (Mem.support m') = Mem.astack (Mem.support tm'')).
-  apply external_call_mem_astack in H0. apply external_call_mem_astack in EXT'.
+  apply external_call_astack in H0. apply external_call_astack in EXT'.
   apply Mem.astack_pop_stage in POP. destruct POP. simpl in *. congruence.
   exploit match_callstack_incr_bound.
   eapply match_callstack_invariant. apply MCS'.
@@ -2768,7 +2802,7 @@ Opaque PTree.set.
   apply plus_one. econstructor.
   eapply external_call_symbols_preserved; eauto. apply senv_preserved.
   econstructor; eauto.
-  apply external_call_mem_astack in H. apply external_call_mem_astack in EC.
+  apply external_call_astack in H. apply external_call_astack in EC.
   rewrite <- EC. rewrite <- H. eauto.
 
 (* return *)
@@ -2828,7 +2862,7 @@ Proof.
   subst ge0. apply Genv.genv_vars_eq in H0. subst. auto.
   subst ge0. apply Genv.genv_vars_eq in H0. subst. auto.
   apply Genv.genv_vars_eq in H0. subst. auto.
-  unfold Mem.flat_inj. unfold struct_meminj. apply functional_extensionality.
+  unfold Mem.flat_inj. unfold struct_meminj. apply Axioms.extensionality.
   intro. destr. destruct x. apply Genv.init_mem_stack in H.
   simpl in s. rewrite H in s. destruct p; simpl in s. inv s. inv H4.
   destruct n; simpl in s; inv s. reflexivity.

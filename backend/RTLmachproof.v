@@ -210,9 +210,9 @@ Proof.
     eapply eval_builtin_args_memiff; eauto.
     econstructor; eauto.
     eapply Mem.pop_stage_left_iff; eauto.
-    rewrite <- (external_call_mem_astack _ _ _ _ _ _ _ EXT).
+    rewrite <- (external_call_astack _ _ _ _ _ _ _ EXT).
     apply Mem.astack_pop_stage in H4. destruct H4.
-    rewrite <- (external_call_mem_astack _ _ _ _ _ _ _ H3) in H0.
+    rewrite <- (external_call_astack _ _ _ _ _ _ _ H3) in H0.
     simpl in H0. inv H0. auto.
   - econstructor; eauto. split.
     rewrite <- genv_eq.
@@ -275,8 +275,8 @@ Proof.
     rewrite <- genv_eq.
     econstructor; eauto.
     econstructor; eauto.
-    rewrite <- (external_call_mem_astack _ _ _ _ _ _ _ H1). eauto.
-    rewrite <- (external_call_mem_astack _ _ _ _ _ _ _ H1'). eauto.
+    rewrite <- (external_call_astack _ _ _ _ _ _ _ H1). eauto.
+    rewrite <- (external_call_astack _ _ _ _ _ _ _ H1'). eauto.
   - apply Mem.stack_pop_stage in H1 as H1'. destruct H1'.
     econstructor; eauto. split.
     econstructor; eauto.

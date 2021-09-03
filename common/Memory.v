@@ -144,6 +144,12 @@ Import List.ListNotations.
 Inductive stree : Type :=
   |Node : fid -> (list positive)  -> list stree -> option stree -> stree.
 
+Fixpoint cdepth (t:stree) : nat :=
+  match t with
+    |Node fid bl tl (Some hd) => S (cdepth hd)
+    |Node fid bl tl None => O
+  end.
+
 (* well-founded induction *)
 
 Fixpoint depth (t:stree) : nat :=
@@ -276,10 +282,32 @@ Definition cpath (s:stree) : path :=
 Definition npath (s:stree)(id:ident) : path :=
   let (t,p) := next_stree s id in p.
 
+Lemma next_stree_cdepth: forall p t t' id,
+    next_stree t id = (t',p) -> cdepth t' = S (cdepth t).
+Proof.
+  induction p; (intros; destruct t; destruct o; simpl in H).
+  destr_in H. inv H. destr_in H. inv H.
+  simpl. exploit IHp; eauto. inv H. simpl. auto.
+Qed.
+
+Lemma next_block_stree_cdepth : forall p pos fid t t',
+    next_block_stree t = (fid,pos,p,t') -> cdepth t' = cdepth t.
+Proof.
+  induction p; (intros; destruct t; destruct o; inv H; repeat destr_in H1).
+  auto. simpl. exploit IHp; eauto.
+Qed.
+
+Lemma return_stree_cdepth : forall p t t',
+    return_stree t = Some (t',p) -> S (cdepth t') = (cdepth t).
+Proof.
+  induction p; (intros; destruct t; destruct o; inv H; repeat destr_in H1).
+  simpl. exploit IHp; eauto. simpl. destruct s. destruct o.
+  simpl in Heqo. repeat destr_in Heqo. reflexivity.
+Qed.
+
 Lemma next_stree_cpath :
   forall p t t' id,
-    next_stree t id = (t',p) ->
-    cpath t' = p.
+    next_stree t id = (t',p) ->  cpath t' = p.
 Proof.
   induction p.
   - intros. destruct t. destruct o.
@@ -416,7 +444,6 @@ Proof.
       simpl. destruct n; reflexivity.
       destruct (nth_error l0 a); reflexivity.
 Qed.
-
 
 Lemma return_stree_in : forall s s' path p pos b,
     return_stree s = Some (s',path) ->
@@ -961,6 +988,15 @@ Record mem' : Type := mkmem {
 Definition mem := mem'.
 
 Definition nextblock (m:mem) := fresh_block (support m).
+
+Definition sdepth (m:mem) := cdepth (stack (support m)).
+
+Lemma sdepth_active : forall m, sdepth m <> O -> is_active (stack (support m)).
+Proof.
+  intros. unfold sdepth in H. simpl in H.
+  destruct (stack (support m)). destruct o; simpl in *.
+  auto. extlia.
+Qed.
 
 Lemma nextblock_stack : forall m, exists f path pos,
       nextblock m = Stack f path pos.
@@ -2792,6 +2828,13 @@ Proof.
   destr.
 Qed.
 
+Lemma sdepth_alloc_frame :
+  sdepth m2 = S (sdepth m1).
+Proof.
+  unfold sdepth. generalize stack_alloc_frame.
+  intro. eapply next_stree_cdepth; eauto.
+Qed.
+
 Lemma path_alloc_frame:
     path = sup_npath (support m1) id.
 Proof.
@@ -2937,6 +2980,13 @@ Proof.
   repeat destr_in H. inv H1. simpl. congruence.
 Qed.
 
+Lemma sdepth_return_frame :
+  S (sdepth m2) = sdepth m1.
+Proof.
+  generalize stack_return_frame. intros [pa H].
+  eapply return_stree_cdepth; eauto.
+Qed.
+
 Lemma sup_include_return_frame :
   sup_include (support m1) (support m2).
 Proof.
@@ -3027,10 +3077,29 @@ Theorem support_alloc:
 Proof.
   injection ALLOC; intros. rewrite <- H0; auto.
 Qed.
+
+Theorem sdepth_alloc:
+  sdepth m2 = sdepth m1.
+Proof.
+  generalize support_alloc. unfold sup_incr.
+  destr. intro. unfold sdepth. rewrite H. simpl.
+  destruct p. destruct p.
+  eapply next_block_stree_cdepth; eauto.
+Qed.
+
 Theorem alloc_result:
   b = nextblock m1.
 Proof.
   injection ALLOC; auto.
+Qed.
+
+Theorem alloc_result_stack:
+  is_stack b.
+Proof.
+  rewrite alloc_result.
+  generalize (nextblock_stack m1).
+  intros (f & p & p' & H). rewrite H. auto.
+  simpl. auto.
 Qed.
 
 Theorem valid_block_alloc:
@@ -3475,6 +3544,13 @@ Proof.
   destruct b; reflexivity.
 Qed.
 
+Theorem sdepth_push_stage:
+  sdepth m2 = sdepth m1.
+Proof.
+  unfold sdepth. rewrite support_push_stage.
+  reflexivity.
+Qed.
+
 Theorem nextblock_push_stage:
   nextblock m2 = nextblock m1.
 Proof.
@@ -3600,6 +3676,12 @@ Lemma stack_pop_stage :
 Proof.
   unfold pop_stage in POP_STAGE. destruct (astack (support m1)).
   discriminate. inv POP_STAGE. auto.
+Qed.
+
+Lemma sdepth_pop_stage :
+  sdepth m2 = sdepth m1.
+Proof.
+  unfold sdepth. rewrite stack_pop_stage. reflexivity.
 Qed.
 
 Lemma global_pop_stage :
@@ -3749,6 +3831,12 @@ Proof.
   repeat destr_in RECORD_FRAME. reflexivity.
 Qed.
 
+Lemma sdepth_record_frame :
+  sdepth m2 = sdepth m1.
+Proof.
+  unfold sdepth. rewrite stack_record_frame. reflexivity.
+Qed.
+
 Lemma global_record_frame :
   global (support m1) = global (support m2).
 Proof.
@@ -3873,6 +3961,11 @@ Proof.
   rewrite free_result; reflexivity.
 Qed.
 
+Lemma sdepth_free:
+  sdepth m2 = sdepth m1.
+Proof.
+  unfold sdepth. rewrite support_free. auto.
+Qed.
 
 Theorem valid_block_free_1:
   forall b, valid_block m1 b -> valid_block m2 b.
@@ -6241,6 +6334,20 @@ Proof.
     apply sup_incr_frame_in.
 Qed.
 
+Theorem alloc_frame_left_inject :
+  forall f m1 m2 m1' id p1,
+    inject f m1 m2 ->
+    alloc_frame m1 id = (m1',p1) ->
+    inject f m1' m2.
+Proof.
+  intros. inv H. inv H0.
+  constructor; eauto.
+  - inv mi_inj0. constructor; eauto.
+  - unfold valid_block. simpl. intros.
+    apply mi_freeblocks0. intro. apply H.
+    apply sup_incr_frame_in. auto.
+Qed.
+
 Theorem return_frame_inject :
   forall f m1 m2 m1' m2',
     inject f m1 m2 ->
@@ -6258,6 +6365,38 @@ Proof.
   apply sup_return_refl'. auto.
   unfold valid_block in *. simpl in *. eauto. intros. exploit mi_mappedblocks0.
   apply H. apply sup_return_frame_in with (s := support m2); eauto.
+  apply sup_return_refl'. auto.
+Qed.
+
+Theorem return_frame_right_inject :
+  forall f m1 m2 m2',
+    inject f m1 m2 ->
+    return_frame m2 = Some m2' ->
+    inject f m1 m2'.
+Proof.
+  intros.
+  unfold return_frame in H0.
+  destr_in H0. inversion H0. inversion H.
+  constructor; auto.  inv mi_inj0.
+  constructor; eauto.
+  unfold valid_block in *. simpl in *. eauto. intros. exploit mi_mappedblocks0.
+  apply H1. apply sup_return_frame_in with (s := support m2); eauto.
+  apply sup_return_refl'. auto.
+Qed.
+
+Theorem return_frame_left_inject :
+  forall f m1 m2 m1',
+    inject f m1 m2 ->
+    return_frame m1 = Some m1' ->
+    inject f m1' m2.
+Proof.
+  intros.
+  unfold return_frame in H0.
+  destr_in H0. inversion H0. inversion H.
+  constructor; auto.  inv mi_inj0.
+  constructor; eauto.
+  unfold valid_block in *. simpl in *. eauto. intros. eapply mi_freeblocks0.
+  intro. apply H1. apply sup_return_frame_in with (s := support m1); eauto.
   apply sup_return_refl'. auto.
 Qed.
 

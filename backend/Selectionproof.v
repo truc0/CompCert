@@ -1462,7 +1462,7 @@ Proof.
 - (* external call turned into a Sbuiltin *)
   assert ({m'':mem|Mem.pop_stage m' = Some m''}).
   apply Mem.nonempty_pop_stage.
-  erewrite <- external_call_mem_astack; eauto. simpl. congruence.
+  erewrite <- external_call_astack; eauto. simpl. congruence.
   destruct X as [m'' POP_STAGE].
   exploit sel_builtin_correct; eauto. intros (e2' & m2' & P & Q & R).
   left; econstructor; split. eexact P. econstructor; eauto.
