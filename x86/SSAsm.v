@@ -3,6 +3,10 @@ Require Import AST Integers Floats Values Memory Events Globalenvs Smallstep.
 Require Import Locations Conventions.
 Require Import Asm.
 
+Definition stkblock := Stack None nil 1.
+Definition trans_ptr (v:val) :=
+  if (Val.eq v Vnullptr) then (Vptr stkblock (Ptrofs.repr max_stacksize)) else v.
+
 Section SSASM.
 
 Variable ge: genv.
@@ -10,9 +14,10 @@ Variable ge: genv.
 Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : outcome :=
   match i with
   | Pallocframe sz ofs_ra ofs_link =>
-    let aligned_sz := align sz 8 in
-    let sp := Val.offset_ptr (rs RSP) (Ptrofs.neg (Ptrofs.repr aligned_sz)) in
-    match Mem.storev Mptr m (Val.offset_ptr sp ofs_link) rs#RSP with
+    let aligned_sz := align (Z.max 0 sz) 8 in
+    let RSP' := trans_ptr (rs#RSP) in
+    let sp := Val.offset_ptr RSP' (Ptrofs.neg (Ptrofs.repr aligned_sz)) in
+    match Mem.storev Mptr m (Val.offset_ptr sp ofs_link) (rs#RSP) with
     | None => Stuck
     | Some m1 =>
       match Mem.storev Mptr m1 (Val.offset_ptr sp ofs_ra) rs#RA with
@@ -65,17 +70,16 @@ End SSASM.
 (** Execution of whole programs. *)
 
 Inductive initial_state (p: program): state -> Prop :=
-  | initial_state_intro: forall m0 m1 m2 stk,
+  | initial_state_intro: forall m0 m1 stk,
       Genv.init_mem p = Some m0 ->
       Mem.alloc m0 0 (Memory.max_stacksize) = (m1, stk) ->
-      Mem.record_frame (Mem.push_stage m1) (Memory.mk_frame Memory.max_stacksize) = Some m2 ->
       let ge := Genv.globalenv p in
       let rs0 :=
         (Pregmap.init Vundef)
         # PC <- (Genv.symbol_address ge p.(prog_main) Ptrofs.zero)
         # RA <- Vnullptr
-        # RSP <- (Vptr stk (Ptrofs.repr (Memory.max_stacksize)))  in
-      initial_state p (State rs0 m2).
+        # RSP <- Vnullptr in
+      initial_state p (State rs0 m1).
 
 (** The same final_state as defined in the Asm.v *)
 Definition semantics (p: program) :=
