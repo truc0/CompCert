@@ -1324,6 +1324,7 @@ Proof.
   unfold Mem.sup_include in *. unfold Mem.sup_In in *.
   erewrite <- Mem.stack_pop_stage; eauto.
   erewrite <- Mem.global_pop_stage; eauto.
+  erewrite <- Mem.sid_pop_stage; eauto.
   eapply sound_stack_pop_stage; eauto.
   eapply romatch_pop_stage; eauto.
   eapply mmatch_pop_stage; eauto.

@@ -880,8 +880,12 @@ Proof.
     destr_in H0'. inv H0'.
     simpl in mext_sup. unfold Mem.sup_push_stage in mext_sup. inv mext_sup.
     rewrite H3. simpl. assert (s0 = Mem.astack (Mem.support m1')).
-    rewrite H3 in Heqs. inv Heqs. auto.
-    rewrite H1. destruct (Mem.support m1'). simpl in *. congruence.
+    rewrite H3 in Heqs. inv Heqs. auto. unfold Mem.astack in H4.
+    simpl in H4. rewrite Mem.setastack_astack in H4. inv H4. reflexivity.
+    rewrite <- Mem.length_eq. eapply Mem.sid_valid.
+    rewrite H1. destruct (Mem.support m1'). simpl in *.
+    apply Mem.mksup_ext; auto. simpl.  unfold Mem.astack. simpl.
+    rewrite Mem.setastack_setastack. auto. lia.
   - inv H1. inv mext_inj. constructor; simpl; auto.
     intros. exploit mi_perm; eauto. erewrite Mem.perm_pop_stage; eauto.
     intros. exploit mi_align; eauto. instantiate (2:= ofs).
@@ -1462,7 +1466,8 @@ Proof.
 - (* external call turned into a Sbuiltin *)
   assert ({m'':mem|Mem.pop_stage m' = Some m''}).
   apply Mem.nonempty_pop_stage.
-  erewrite <- external_call_astack; eauto. simpl. congruence.
+  erewrite <- external_call_astack; eauto.
+  erewrite Mem.astack_push_stage; eauto. congruence.
   destruct X as [m'' POP_STAGE].
   exploit sel_builtin_correct; eauto. intros (e2' & m2' & P & Q & R).
   left; econstructor; split. eexact P. econstructor; eauto.

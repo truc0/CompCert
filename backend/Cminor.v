@@ -606,7 +606,7 @@ Proof.
   assert ({m3:mem | Mem.pop_stage m2 = Some m3}).
     apply Mem.nonempty_pop_stage.
     eapply external_call_astack in EC2. rewrite <- EC2.
-    simpl. congruence.
+    rewrite Mem.astack_push_stage. congruence.
   destruct X as [m3 POP_STAGE].
   exists (State f Sskip k sp (set_optvar optid vres2 e) m3). econstructor; eauto.
   exploit external_call_receptive; eauto. intros [vres2 [m2 EC2]].

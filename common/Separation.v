@@ -852,12 +852,12 @@ Lemma external_call_parallel_rule:
   external_call ef ge vargs1 m1 t vres1 m1' ->
   m2 |= minjection j m1 ** globalenv_inject ge j ** P ->
   Val.inject_list j vargs1 vargs2 ->
-  Mem.support m1 = Mem.support m2 ->
+  Mem.stackeq m1 m2 ->
   exists j' vres2 m2',
      external_call ef ge vargs2 m2 t vres2 m2'
   /\ Val.inject j' vres1 vres2
   /\ m2' |= minjection j' m1' ** globalenv_inject ge j' ** P
-  /\ Mem.support m1' = Mem.support m2'
+  /\ Mem.stackeq m1' m2'
   /\ inject_incr j j'
   /\ inject_separated j j' m1 m2
   /\ inject_external j' m1 m1'
@@ -887,11 +887,9 @@ Proof.
 + exploit ISEP; eauto. intros (X & Y). elim Y. eapply m_valid; eauto.
 - exploit external_call_mem_inject_stackeq.
   eapply globalenv_inject_preserves_globals; eauto. eapply sep_pick1; eauto.
-  apply CALL. all: eauto. congruence. intro.
-  apply external_call_global in CALL as CA. apply external_call_global in CALL' as CA'.
-  apply external_call_astack in CALL. apply external_call_astack in CALL'.
-  destruct (Mem.support m1'). destruct (Mem.support m2'). simpl in *. congruence.
-- apply IEXT. unfold Mem.stackseq. rewrite SUP. apply struct_eq_refl.
+  apply CALL. all: eauto.
+- apply IEXT. unfold Mem.stackseq. inv SUP. split. rewrite H.
+  apply struct_eq_refl. auto.
 Qed.
 
 Lemma alloc_parallel_rule_2:

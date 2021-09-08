@@ -728,14 +728,92 @@ End STACKADT.
 Module Sup <: SUP.
 
 Record sup' : Type := mksup {
-  stack : stree;
-  astack : stackadt;
+  stacks : list stree;
+  astacks : list stackadt;
   global : list ident;
+
+  sid : nat;
+
+  sid_valid : (length stacks > sid)%nat;
+  length_eq : length stacks = length astacks
 }.
 
 Definition sup := sup'.
 
-Definition sup_empty : sup := mksup empty_stree nil nil.
+Program Definition sup_empty : sup :=
+  mksup (empty_stree::nil) ((nil)::nil) nil O _ _.
+
+Lemma mksup_ext : forall ss1 ss2 as1 as2 g1 g2 id1 id2 a1 a2 b1 b2,
+    ss1 = ss2 -> as1 = as2 -> g1 = g2 -> id1 = id2 ->
+    mksup ss1 as1 g1 id1 a1 b1 = mksup ss2 as2 g2 id2 a2 b2.
+Proof.
+  intros. subst. f_equal; apply proof_irr.
+Qed.
+
+Definition stack (s:sup) := nth (sid s) (stacks s) empty_stree.
+
+Fixpoint setstack (l: list stree) (t:stree) (id:nat): list stree :=
+  match id with
+    |O => match l with
+           |nil => l
+           |a :: l' => t :: l'
+         end
+    |S n => match l with
+             |nil => l
+             |a :: l' => a :: (setstack l' t n)
+           end
+end.
+
+Lemma setstack_length : forall n t l,
+    length (setstack l t n) = length l.
+Proof.
+  induction n; intros.
+  destruct l; simpl; auto.
+  destruct l; simpl; auto.
+Qed.
+
+Lemma setstack_stack:
+  forall n l a,
+    (n < length l)%nat ->
+    nth n (setstack l a n) empty_stree = a.
+Proof.
+  induction n; intros; simpl.
+  - destruct l; simpl in *. extlia. auto.
+  - destruct l; simpl in *. extlia. apply IHn. lia.
+Qed.
+
+
+Definition astack (s:sup) := nth (sid s)(astacks s) nil.
+
+Fixpoint setastack (l: list stackadt) (t:stackadt) (id:nat): list stackadt :=
+  match id with
+    |O => match l with
+           |nil => l
+           |a :: l' => t :: l'
+         end
+    |S n => match l with
+             |nil => l
+             |a :: l' => a :: (setastack l' t n)
+           end
+end.
+
+Lemma setastack_length : forall n t l,
+    length (setastack l t n) = length l.
+Proof.
+  induction n; intros.
+  destruct l; simpl; auto.
+  destruct l; simpl; auto.
+Qed.
+
+Lemma setastack_astack:
+  forall n l a,
+    (n < length l)%nat ->
+    nth n (setastack l a n) nil = a.
+Proof.
+  induction n; intros; simpl.
+  - destruct l; simpl in *. extlia. auto.
+  - destruct l; simpl in *. extlia. apply IHn. lia.
+Qed.
 
 Definition sup_cpath (s:sup) := cpath (stack s).
 
@@ -745,65 +823,82 @@ Definition sup_depth (s:sup) := depth (stack s).
 
 Definition sup_In(b:block)(s:sup) : Prop :=
   match b with
-  | Stack fid path pos => stree_In fid path pos (stack s)
+  | Stack n fid path pos => if (n=?(sid s))%nat then stree_In fid path pos (stack s) else False
   | Global id => In id (global s)
   end.
 
 Definition empty_in: forall b, ~ sup_In b sup_empty.
 Proof.
   intros. destruct b; simpl in *; try congruence.
+  destruct n; simpl; auto.
   destruct p; unfold stree_In; simpl; auto. intro. inv H. auto.
   destruct n; auto.
 Qed.
 
 Definition sup_dec : forall b s, {sup_In b s}+{~sup_In b s}.
 Proof.
-  intros. destruct b.
+  intros. destruct b. simpl. destr.
   apply stree_Indec.
   apply In_dec. apply peq.
 Qed.
 
 Definition fresh_block (s:sup): block :=
   match next_block_stree (stack s) with
-    |(f,pos,path,_) =>  Stack f path pos
+    |(f,pos,path,_) =>  Stack (sid s) f path pos
   end.
 
 Theorem freshness : forall s, ~sup_In (fresh_block s) s.
 Proof.
   intros. unfold fresh_block.
   destruct (next_block_stree (stack s)) eqn:?.
-  destruct p. destruct p.
+  destruct p. destruct p. simpl. destr.
   eapply stree_freshness; eauto.
 Qed.
 
-Definition sup_incr (s:sup):sup :=
+Program Definition sup_incr (s:sup):sup :=
   let (pp,t') := next_block_stree (stack s) in
-  mksup t' (astack s) (global s).
-
-Definition sup_include(s1 s2:sup) := forall b, sup_In b s1 -> sup_In b s2.
+  mksup (setstack (stacks s) t' (sid s)) (astacks s) (global s) (sid s) _ _.
+Next Obligation.
+  rewrite setstack_length. apply sid_valid.
+Qed.
+Next Obligation.
+  rewrite setstack_length. apply length_eq.
+Qed.
 
 Theorem sup_incr_in : forall b s,
     sup_In b (sup_incr s) <-> b = (fresh_block s) \/ sup_In b s.
 Proof.
   intros. unfold sup_In. destruct b.
   - unfold sup_incr. unfold fresh_block.
-    destruct (next_block_stree) eqn:?. simpl.
-    destruct p1. destruct p1.
+    destruct (next_block_stree (stack s)) eqn:?. simpl.
+    destruct p1. destruct p1. unfold stack. simpl.
+    rewrite setstack_stack. 2: apply sid_valid. destr.
+    apply Nat.eqb_eq in Heqb. subst.
     eapply next_block_stree_in in Heqp1.
     split. intro. apply Heqp1 in H. destruct H.
     inv H. auto. auto.
     intro. apply Heqp1. destruct H.
     inv H. auto. auto.
+    apply Nat.eqb_neq in Heqb.
+    split. auto. intros [H|H]. congruence. auto.
   - unfold sup_incr. unfold fresh_block.
     destruct (next_block_stree) eqn:?. simpl.
     destruct p. destruct p. split.
     auto. intros [H|H]. inv H. auto.
 Qed.
 
+Definition sup_include(s1 s2:sup) := forall b, sup_In b s1 -> sup_In b s2.
+
 Theorem sup_incr_in1 : forall s, sup_In (fresh_block s) (sup_incr s).
 Proof. intros. apply sup_incr_in. left. auto. Qed.
 Theorem sup_incr_in2 : forall s, sup_include s (sup_incr s).
 Proof. intros. intro. intro. apply sup_incr_in. right. auto. Qed.
+
+Lemma astack_sup_incr : forall s,
+  astack (sup_incr s) = astack s.
+Proof.
+  intros. unfold sup_incr. destr.
+Qed.
 
 Lemma sup_include_refl : forall s:sup, sup_include s s.
 Proof. intro. intro. auto. Qed.
@@ -821,9 +916,15 @@ Proof.
 Qed.
 
 (* sup_incr_frame *)
-Definition sup_incr_frame (s:sup)(id:ident):sup :=
+Program Definition sup_incr_frame (s:sup)(id:ident):sup :=
   let (t',p) := next_stree (stack s) id in
-  mksup t' (astack s)(global s).
+  mksup (setstack (stacks s) t' (sid s)) (astacks s) (global s) (sid s) _ _.
+Next Obligation.
+  rewrite setstack_length. apply sid_valid.
+Qed.
+Next Obligation.
+  rewrite setstack_length. apply length_eq.
+Qed.
 
 Theorem sup_incr_frame_in : forall s b id,
     sup_In b s <-> sup_In b (sup_incr_frame s id).
@@ -831,19 +932,31 @@ Proof.
   intros. unfold sup_In. destruct b.
   - unfold sup_incr_frame.
     destruct (next_stree (stack s)) eqn:?.
-    simpl.
-    eapply next_stree_in. eauto.
+    simpl. unfold stack. simpl. rewrite setstack_stack. 2: apply sid_valid.
+    destr. eapply next_stree_in. eauto.
   - unfold sup_incr_frame.
     destruct (next_stree (stack s)).
     reflexivity.
 Qed.
 
+Lemma astack_sup_incr_frame : forall s id,
+  astack (sup_incr_frame s id) = astack s.
+Proof.
+  intros. unfold sup_incr_frame. destr.
+Qed.
+
 (* sup_return_frame *)
-Definition sup_return_frame (s:sup) : option sup :=
+Program Definition sup_return_frame (s:sup) : option sup :=
   match return_stree (stack s) with
-    |Some (t',p) => Some (mksup t' (astack s)(global s))
+    |Some (t',p) => Some (mksup (setstack (stacks s) t' (sid s)) (astacks s) (global s) (sid s) _ _)
     |None => None
   end.
+Next Obligation.
+  rewrite setstack_length. apply sid_valid.
+Qed.
+Next Obligation.
+  rewrite setstack_length. apply length_eq.
+Qed.
 
 Definition sup_return_frame' (s:sup) : sup :=
   match sup_return_frame s with
@@ -879,17 +992,23 @@ Proof.
   intros.
   destruct b; unfold sup_return_frame in H;
   destruct (return_stree (stack s)) eqn:?.
-  - destruct p1. inv H.
-    simpl.
-    eapply return_stree_in; eauto.
+  - destruct p1. inv H. simpl. destr.
+    eapply return_stree_in; eauto. unfold stack in *. simpl.
+    rewrite setstack_stack. eauto. apply sid_valid.
   - inv H.
   - destruct p. inv H. reflexivity.
   - inv H.
 Qed.
 
 (* sup_incr_glob *)
-Definition sup_incr_glob (i:ident) (s:sup) : sup :=
- mksup (stack s) (astack s)(i::(global s)).
+Program Definition sup_incr_glob (i:ident) (s:sup) : sup :=
+ mksup (stacks s) (astacks s)(i::(global s)) (sid s) _ _.
+Next Obligation.
+  apply sid_valid.
+Qed.
+Next Obligation.
+  apply length_eq.
+Qed.
 
 Theorem sup_incr_glob_in :  forall i s b,
     sup_In b (sup_incr_glob i s) <-> b = (Global i) \/ sup_In b s.
@@ -913,20 +1032,42 @@ Definition sup_incr_block := sup_incr.
 
 (* about stackadt *)
 
-Definition sup_push_stage (s:sup) := mksup (stack s) (nil::(astack s)) (global s).
+Program Definition sup_push_stage (s:sup) :=
+  mksup (stacks s) (setastack (astacks s) (nil::(astack s)) (sid s)) (global s) (sid s) _ _.
+Next Obligation.
+  apply sid_valid.
+Qed.
+Next Obligation.
+  rewrite setastack_length. apply length_eq.
+Qed.
 
-Definition sup_record_frame (f:frame)(s:sup) :=
+Program Definition sup_record_frame (f:frame)(s:sup) : option sup:=
   match (astack s) with
     |nil => None
-    |hd::tl => Some(mksup (stack s) ((f::hd)::tl) (global s))
+    |hd::tl => Some(mksup (stacks s)
+                         (setastack (astacks s) ((f::hd)::tl) (sid s))
+                         (global s) (sid s) _ _)
   end.
+Next Obligation.
+  apply sid_valid.
+Qed.
+Next Obligation.
+  rewrite setastack_length. apply length_eq.
+Qed.
 
-Definition sup_pop_stage (s:sup) :=
+Program Definition sup_pop_stage (s:sup) :=
   match (astack s) with
   |nil => None
-  |hd::tl => Some(mksup (stack s) (tl)(global s))
+  |hd::tl => Some(mksup (stacks s)
+                       (setastack (astacks s) (tl) (sid s))
+                       (global s) (sid s) _ _)
   end.
-
+Next Obligation.
+  apply sid_valid.
+Qed.
+Next Obligation.
+  rewrite setastack_length. apply length_eq.
+Qed.
 (*
 Theorem sup_push_stage_stack : forall s, stack s = stack (sup_push_stage s).
 Proof.
@@ -999,7 +1140,7 @@ Proof.
 Qed.
 
 Lemma nextblock_stack : forall m, exists f path pos,
-      nextblock m = Stack f path pos.
+      nextblock m = Stack (sid (support m)) f path pos.
 Proof.
   intros. unfold nextblock. unfold fresh_block.
   destruct (next_block_stree (stack (support m))).
@@ -1007,12 +1148,15 @@ Proof.
   eauto.
 Qed.
 
+Definition stackeq (m1 m2: mem) : Prop :=
+  stack (support m1) = stack (support m2) /\ sid (support m1) = sid (support m2).
+
 Lemma stackeq_nextblock : forall m1 m2,
-    stack(support m1) = stack(support m2) ->
+    stackeq m1 m2  ->
     nextblock m1 = nextblock m2.
 Proof.
-  intros. unfold nextblock. unfold fresh_block.
-  rewrite H. simpl. reflexivity.
+  intros. inv H. unfold nextblock. unfold fresh_block.
+  rewrite H0. repeat destr.
 Qed.
 
 Definition empty_stack (m:mem) : Prop :=
@@ -1439,20 +1583,41 @@ Program Definition pop_stage (m:mem) :=
     |hd::tl =>
        Some (mkmem m.(mem_contents)
          m.(mem_access)
-         (mksup (stack (support m)) tl (global (support m)))
+         (mksup (stacks (support m))
+                (setastack (astacks (support m)) (tl) (sid (support m)))
+                (global (support m)) (sid (support m)) _ _)
          m.(access_max)
          m.(nextblock_noaccess)
          m.(contents_default)
   )
     |nil => None
   end.
+Next Obligation.
+  apply sid_valid.
+Qed.
+Next Obligation.
+  rewrite setastack_length. apply length_eq.
+Qed.
+
+Lemma setastack_setastack:forall n l a b,
+    (n < length l)%nat ->
+    setastack (setastack l a n) (nth n l b) n = l.
+Proof.
+  induction n; intros.
+  - destruct l; auto.
+  - destruct l; simpl; auto. rewrite IHn. auto. simpl in H. lia.
+Qed.
 
 Lemma pop_push_stage : forall m, pop_stage (push_stage m) = Some m.
 Proof.
-  intro. unfold push_stage.
-  unfold pop_stage. simpl. apply f_equal.
+  intro. unfold push_stage. unfold sup_push_stage.
+  unfold pop_stage. simpl. unfold astack. simpl.
+  repeat rewrite setastack_astack.
+  apply f_equal.
   destruct m. simpl. apply mkmem_ext; auto.
-  destruct support0. reflexivity.
+  destruct support0. apply mksup_ext; auto.
+  simpl. apply setastack_setastack. lia.
+  rewrite <- length_eq. apply sid_valid.
 Qed.
 
 Program Definition record_frame (m:mem)(fr:frame) :=
@@ -1461,7 +1626,9 @@ Program Definition record_frame (m:mem)(fr:frame) :=
     |hd::tl =>
        Some (mkmem m.(mem_contents)
          m.(mem_access)
-         (mksup (stack (support m)) ((fr::hd)::tl) (global (support m)))
+         (mksup (stacks (support m))
+                (setastack (astacks (support m))((fr::hd)::tl) (sid (support m)))
+                (global (support m)) (sid (support m)) _ _)
          m.(access_max)
          m.(nextblock_noaccess)
          m.(contents_default)
@@ -1469,6 +1636,12 @@ Program Definition record_frame (m:mem)(fr:frame) :=
     |nil => None
   end else None.
 
+Next Obligation.
+  apply sid_valid.
+Qed.
+Next Obligation.
+  rewrite setastack_length. apply length_eq.
+Qed.
 (** Freeing a block between the given bounds.
   Return the updated memory state where the given range of the given block
   has been invalidated: future reads and writes to this
@@ -2818,7 +2991,8 @@ Proof.
   intros. inv ALLOC_FRAME. simpl.
   unfold sup_incr_frame. unfold sup_npath. unfold npath.
   destruct (next_stree (stack (support m1))).
-  reflexivity.
+  unfold stack. simpl. rewrite setstack_stack.
+  reflexivity. apply sid_valid.
 Qed.
 
 Lemma astack_alloc_frame:
@@ -2833,6 +3007,13 @@ Lemma sdepth_alloc_frame :
 Proof.
   unfold sdepth. generalize stack_alloc_frame.
   intro. eapply next_stree_cdepth; eauto.
+Qed.
+
+Lemma sid_alloc_frame:
+  sid (support m1) = sid (support m2).
+Proof.
+  rewrite support_alloc_frame. unfold sup_incr_frame.
+  destr.
 Qed.
 
 Lemma path_alloc_frame:
@@ -2969,7 +3150,9 @@ Proof.
   intros.
   generalize support_return_frame.
   intro. unfold sup_return_frame in H.
-  destr_in H. destruct p. inv H. eauto.
+  destr_in H. destruct p. inv H.
+  unfold stack. simpl. rewrite setstack_stack.
+  eauto. apply sid_valid.
 Qed.
 
 Lemma astack_return_frame:
@@ -2977,7 +3160,17 @@ Lemma astack_return_frame:
 Proof.
   generalize support_return_frame.
   intro. unfold sup_return_frame in H.
-  repeat destr_in H. inv H1. simpl. congruence.
+  repeat destr_in H.
+  unfold astack. simpl. congruence.
+Qed.
+
+Lemma sid_return_frame:
+  sid (support m1) = sid (support m2).
+Proof.
+  generalize support_return_frame.
+  intro. unfold sup_return_frame in H.
+  repeat destr_in H.
+  unfold astack. simpl. congruence.
 Qed.
 
 Lemma sdepth_return_frame :
@@ -3083,8 +3276,24 @@ Theorem sdepth_alloc:
 Proof.
   generalize support_alloc. unfold sup_incr.
   destr. intro. unfold sdepth. rewrite H. simpl.
+  unfold stack. simpl.
+  rewrite setstack_stack.
   destruct p. destruct p.
   eapply next_block_stree_cdepth; eauto.
+  apply sid_valid.
+Qed.
+
+Theorem astack_alloc:
+  astack (support m2) = astack (support m1).
+Proof.
+  rewrite support_alloc. unfold sup_incr.
+  destr.
+Qed.
+
+Lemma sid_alloc:
+  sid (support m2) = sid (support m1).
+Proof.
+  rewrite support_alloc. unfold sup_incr. destr.
 Qed.
 
 Theorem alloc_result:
@@ -3309,24 +3518,24 @@ Inductive alloc_vars_left : mem -> list block -> mem -> Prop :=
       Mem.alloc m1 0 sz = (m2,b) ->
       alloc_vars_left m (blocks++(b::nil)) m2.
 
-Fixpoint well_blocks (id:ident) (p:path) (len:nat) : list block :=
+Fixpoint well_blocks (sid:nat)(id:ident) (p:path) (len:nat) : list block :=
   match len with
     |O => nil
-    |S n => (well_blocks id p n) ++ ((Stack (Some id) p (Pos.of_nat len))::nil)
+    |S n => (well_blocks sid id p n) ++ ((Stack sid (Some id) p (Pos.of_nat len))::nil)
   end.
 
-Definition well_nth_error (l:list block) (id:ident) (p:path) : Prop :=
+Definition well_nth_error (sid:nat)(l:list block) (id:ident) (p:path) : Prop :=
   let len := length l in
-  forall n0, (n0 < len)%nat -> nth_error l n0 = Some (Stack (Some id) p (Pos.of_succ_nat n0)).
+  forall n0, (n0 < len)%nat -> nth_error l n0 = Some (Stack sid (Some id) p (Pos.of_succ_nat n0)).
 
-Lemma well_blocks_len : forall id p n,
-  length (well_blocks id p n) = n.
+Lemma well_blocks_len : forall id p sid n,
+  length (well_blocks sid id p n) = n.
 Proof.
   induction n. auto. simpl. rewrite app_length. simpl. lia.
 Qed.
 
-Lemma well_blocks_nth_error : forall id p n,
-    well_nth_error (well_blocks id p n) id p.
+Lemma well_blocks_nth_error : forall id p sid n,
+    well_nth_error sid (well_blocks sid id p n) id p.
 Proof.
   induction n; intros.
   - unfold well_nth_error. intros. inv H.
@@ -3346,50 +3555,52 @@ Qed.
 Lemma alloc_frame_alloc : forall m m1 m2 id path lo hi sp,
     alloc_frame m id = (m1,path) ->
     alloc m1 lo hi = (m2,sp) ->
-    sp = Stack (Some id) path 1.
+    sp = Stack (sid (support m1)) (Some id) path 1.
 Proof.
   intros. unfold alloc in H0. inv H0.
   inv H. unfold nextblock. simpl. unfold sup_incr_frame.
   destruct (next_stree (stack (support m))id) eqn:?. unfold fresh_block. simpl.
+  unfold stack. simpl. rewrite setstack_stack.
   destruct (next_block_stree s) eqn:?. destruct p0. destruct p0.
   unfold sup_npath. unfold npath. rewrite Heqp.
   exploit next_stree_next_block_stree; eauto. intros (A & B & C).
-  congruence.
+  congruence. apply sid_valid.
 Qed.
 
 Lemma alloc_frame_nextblock : forall m m1 id path,
     alloc_frame m id = (m1,path) ->
-    nextblock m1 = Stack (Some id) path 1.
+    nextblock m1 = Stack (sid (support m1))(Some id) path 1.
 Proof.
   intros. caseEq (alloc m1 0 0). intros.
   apply alloc_result in H0 as H1. subst.
   eapply alloc_frame_alloc; eauto.
 Qed.
 
-Lemma alloc_alloc : forall m1 m2 m3 lo1 hi1 lo2 hi2 b1 b2 fid path pos,
+Lemma alloc_alloc : forall m1 m2 m3 lo1 hi1 lo2 hi2 b1 b2 fid path pos sid,
     alloc m1 lo1 hi1 = (m2,b1) ->
     alloc m2 lo2 hi2 = (m3,b2) ->
-    b1 = Stack fid path pos ->
-    b2 = Stack fid path (Pos.succ pos).
+    b1 = Stack sid fid path pos ->
+    b2 = Stack sid fid path (Pos.succ pos).
 Proof.
   intros. inv H. inv H0. unfold nextblock in *.
   simpl in *. unfold sup_incr.
   unfold fresh_block in *.
   destruct (next_block_stree (stack (support m1))) eqn:?.
+  unfold stack. simpl. rewrite setstack_stack.
   destruct p. destruct p.
   simpl.
   destruct (next_block_stree s) eqn:?.
   destruct p1. destruct p1.
   inv H4.
   exploit next_block_stree_next_block. apply Heqp. eauto.
-  intros [A [B C]]. subst. auto.
+  intros [A [B C]]. subst. auto. apply sid_valid.
 Qed.
 
 Lemma alloc_frame_alloc_vars :
   forall m m1 m2 id path blocks,
     alloc_frame m id = (m1,path) ->
     alloc_vars_left m1 blocks m2 ->
-    blocks = well_blocks id path (length blocks).
+    blocks = well_blocks (sid (support m1))id path (length blocks).
 Proof.
   intros. induction H0.
   - reflexivity.
@@ -3403,7 +3614,7 @@ Proof.
       intro. subst. auto.
     + simpl. rewrite app_length.
       rewrite Nat.add_1_r.
-      generalize (well_blocks_nth_error id path (Datatypes.length (blocks0 ++ b0 :: nil))).
+      generalize (well_blocks_nth_error id path (sid (support m0))(Datatypes.length (blocks0 ++ b0 :: nil))).
       intros. rewrite <- H2 in H0.
       unfold well_nth_error in H0.
       generalize (H0 (Datatypes.length (blocks0))).
@@ -3523,6 +3734,19 @@ Proof.
 Qed.
 
 End ALLOCGLOB.
+
+Lemma astack_push_stage : forall m,
+  astack (support (push_stage m)) = nil :: astack (support m).
+Proof.
+  intros. unfold push_stage. simpl.
+  unfold sup_push_stage. unfold astack. simpl.
+  rewrite setastack_astack. auto. rewrite <- length_eq.
+  apply sid_valid.
+Qed.
+
+Lemma stack_push_stage : forall m,
+  stack (support (push_stage m)) = stack (support m).
+Proof. reflexivity. Qed.
 
 Section PUSH_STAGE.
 
@@ -3648,8 +3872,10 @@ Qed.
 Lemma support_pop_stage :
     sup_pop_stage (support m1) = Some (support m2).
 Proof.
-  intros.  unfold pop_stage in POP_STAGE. destruct (astack(support m1)) eqn:H0; auto.
-  discriminate. inv POP_STAGE. unfold sup_pop_stage. simpl. rewrite H0. auto.
+  intros. unfold pop_stage in POP_STAGE. destruct (astack(support m1)) eqn:H0; auto.
+  discriminate. inv POP_STAGE.
+  unfold sup_pop_stage. simpl. rewrite H0.
+  apply f_equal. apply mksup_ext; auto.
 Qed.
 
 Lemma support_pop_stage_1 :
@@ -3667,8 +3893,9 @@ Proof.
   unfold pop_stage in POP_STAGE.
   destruct (astack (support m1)).
   discriminate.
-  inv POP_STAGE. simpl.
-  exists s. auto.
+  inv POP_STAGE. simpl. unfold astack. simpl.
+  rewrite setastack_astack.
+  exists s. auto. rewrite <- length_eq. apply sid_valid.
 Qed.
 
 Lemma stack_pop_stage :
@@ -3691,32 +3918,39 @@ Proof.
   discriminate. inv POP_STAGE. auto.
 Qed.
 
+Lemma sid_pop_stage :
+  sid (support m1) = sid (support m2).
+Proof.
+  unfold pop_stage in POP_STAGE. destruct (astack (support m1)).
+  discriminate. inv POP_STAGE. auto.
+Qed.
+
 Lemma sup_include_pop_stage :
   sup_include (support m1) (support m2).
 Proof.
-  unfold sup_include, sup_In.  rewrite stack_pop_stage.
-  rewrite global_pop_stage. auto.
+  unfold sup_include, sup_In. rewrite stack_pop_stage.
+  rewrite global_pop_stage. rewrite sid_pop_stage. auto.
 Qed.
 
 Theorem nextblock_pop_stage:
   nextblock m2 = nextblock m1.
 Proof.
   unfold nextblock. unfold fresh_block.
-  rewrite stack_pop_stage. reflexivity.
+  rewrite stack_pop_stage. rewrite sid_pop_stage. auto.
 Qed.
 
 Theorem valid_block_pop_stage_1:
   forall b, valid_block m1 b -> valid_block m2 b.
 Proof.
   unfold valid_block, sup_In. rewrite stack_pop_stage.
-  rewrite global_pop_stage. auto.
+  rewrite global_pop_stage. rewrite sid_pop_stage. auto.
 Qed.
 
 Theorem valid_block_pop_stage_2:
   forall b, valid_block m2 b -> valid_block m1 b.
 Proof.
   unfold valid_block, sup_In. rewrite stack_pop_stage.
-  rewrite global_pop_stage. auto.
+  rewrite global_pop_stage. rewrite sid_pop_stage. auto.
 Qed.
 
 Local Hint Resolve valid_block_pop_stage_1 valid_block_pop_stage_2: mem.
@@ -3782,8 +4016,9 @@ Hypothesis RECORD_FRAME: record_frame m1 fr = Some m2.
 Lemma record_frame_size :
     (stack_size (astack(support m2))) <= max_stacksize.
 Proof.
-  intros. unfold record_frame in RECORD_FRAME.   repeat destr_in RECORD_FRAME.
-  simpl in *. lia.
+  intros. unfold record_frame in RECORD_FRAME. repeat destr_in RECORD_FRAME.
+  unfold astack. simpl. rewrite setastack_astack. simpl in *. lia.
+  rewrite <- length_eq. apply sid_valid.
 Qed.
 
 Lemma record_frame_size1:
@@ -3803,7 +4038,7 @@ Lemma support_record_frame :
 Proof.
   intros. unfold record_frame in RECORD_FRAME.
   repeat destr_in RECORD_FRAME. unfold sup_record_frame. rewrite Heqs.
-  reflexivity.
+  apply f_equal. apply mksup_ext; auto.
 Qed.
 
 Lemma support_record_frame_1:
@@ -3821,7 +4056,8 @@ Proof.
   generalize record_frame_nonempty.
   destruct (astack (support m1)). intro.
   discriminate. inv RECORD_FRAME. intro. inv H.
-  exists s. exists s0. auto.
+  exists s. exists s0. auto. unfold astack. simpl. rewrite setastack_astack.
+  auto. rewrite <- length_eq. apply sid_valid.
 Qed.
 
 Lemma stack_record_frame :
@@ -3844,31 +4080,38 @@ Proof.
   repeat destr_in RECORD_FRAME. reflexivity.
 Qed.
 
+Lemma sid_record_frame :
+  sid (support m1) = sid (support m2).
+Proof.
+  intros. unfold record_frame in RECORD_FRAME.
+  repeat destr_in RECORD_FRAME. reflexivity.
+Qed.
+
 Lemma sup_include_record_frame :
   sup_include (support m1) (support m2).
 Proof.
-  unfold sup_include. unfold sup_In.
+  unfold sup_include. unfold sup_In. rewrite sid_record_frame.
   rewrite stack_record_frame. rewrite global_record_frame. auto.
 Qed.
 
 Theorem nextblock_record_frame:
   nextblock m2 = nextblock m1.
 Proof.
-  unfold nextblock. unfold fresh_block.
+  unfold nextblock. unfold fresh_block.  rewrite sid_record_frame.
   rewrite stack_record_frame. auto.
 Qed.
 
 Theorem valid_block_record_frame_1:
   forall b, valid_block m1 b -> valid_block m2 b.
 Proof.
-  unfold valid_block. unfold sup_In.
+  unfold valid_block. unfold sup_In.  rewrite sid_record_frame.
   rewrite stack_record_frame. rewrite global_record_frame. auto.
 Qed.
 
 Theorem valid_block_record_frame_2:
   forall b, valid_block m2 b -> valid_block m1 b.
 Proof.
-  unfold valid_block. unfold sup_In.
+  unfold valid_block. unfold sup_In.  rewrite sid_record_frame.
   rewrite stack_record_frame. rewrite global_record_frame. auto.
 Qed.
 
@@ -5475,7 +5718,8 @@ Qed.
 (** * Stack Structure Equality *)
 
 Definition stackseq (m1 m2:mem) :Prop :=
-  struct_eq (m1.(support).(stack)) (m2.(support).(stack)).
+  struct_eq (stack m1.(support)) (stack m2.(support))
+  /\ sid (support m1) = sid (support m2).
 
 Theorem alloc_stackseq : forall m1 lo hi b m1',
     alloc m1 lo hi = (m1',b) ->
@@ -5484,7 +5728,8 @@ Proof.
   intros. inv H. unfold stackseq. simpl.
   unfold sup_incr. destruct (next_block_stree (stack(support m1))) eqn:?.
   destruct p. destruct p.
-  apply next_block_stree_struct_eq in Heqp. auto.
+  apply next_block_stree_struct_eq in Heqp.
+  unfold stack in *. simpl. rewrite setstack_stack. auto. apply sid_valid.
 Qed.
 
 Theorem store_stackseq : forall chunk m1 b ofs v m2,
@@ -5493,7 +5738,7 @@ Theorem store_stackseq : forall chunk m1 b ofs v m2,
 Proof.
   intros. unfold stackseq.
   rewrite (support_store _ _ _ _ _ _ H).
-  apply struct_eq_refl.
+  split. apply struct_eq_refl. auto.
 Qed.
 
 Theorem store_parallel_stackseq :
@@ -5517,11 +5762,11 @@ Theorem alloc_parallel_stackseq :
     stackseq m1' m2'.
 Proof.
   intros.
-  apply alloc_stackseq in H.
-  apply alloc_stackseq in H0.
+  apply alloc_stackseq in H. inv H.
+  apply alloc_stackseq in H0. inv H0. inv H1. split.
   eapply struct_eq_trans; eauto.
   eapply struct_eq_trans; eauto.
-  eapply struct_eq_comm; eauto.
+  eapply struct_eq_comm; eauto. congruence.
 Qed.
 
 Theorem alloc_frame_parallel_stackseq :
@@ -5536,12 +5781,15 @@ Proof.
   apply support_alloc_frame in H0 as H2.
   apply support_alloc_frame in H1 as H3.
   unfold sup_incr_frame in *. destr_in H2. destr_in H3.
+  inversion H.
   exploit next_stree_struct_eq; eauto.
   intros [A B]. split.
   - rewrite (path_alloc_frame _ _ _ _ H0).
     rewrite (path_alloc_frame _ _ _ _ H1).
     unfold sup_npath. unfold npath. repeat destr.
-  - unfold stackseq. rewrite H2. rewrite H3. simpl. auto.
+  - unfold stackseq. rewrite H2. rewrite H3. simpl.
+    unfold stack. simpl. repeat rewrite setstack_stack.
+    auto. apply sid_valid. apply sid_valid.
 Qed.
 
 Theorem return_frame_parallel_stackseq :
@@ -5554,26 +5802,29 @@ Theorem return_frame_parallel_stackseq :
 Proof.
   intros.
   apply support_return_frame in H0 as H1. unfold sup_return_frame in H1.
-  repeat destr_in H1. exploit return_stree_struct_eq; eauto.
+  repeat destr_in H1. inversion H.
+  exploit return_stree_struct_eq; eauto.
   intros (s2' & A & B).
   unfold return_frame. apply return_frame_active in H0.
-  apply active_struct_eq in H. apply H in H0.
+  apply active_struct_eq in H1. apply H1 in H0.
   destr. eexists. split. eauto. unfold stackseq.
   simpl. unfold sup_return_frame'. unfold sup_return_frame.
-  rewrite A. inv H3. simpl. auto.
+  rewrite A. inv H3. simpl.
+  unfold stack. simpl. repeat rewrite setstack_stack.
+  auto. apply sid_valid. apply sid_valid.
 Qed.
 
-Lemma stackseq_id_path : forall m1 m2 fid1 p1 pos1 fid2 p2 pos2,
+Lemma stackseq_id_path : forall m1 m2 fid1 p1 pos1 fid2 p2 pos2 sid,
     stackseq m1 m2 ->
-    nextblock m1 = Stack fid1 p1 pos1 ->
-    nextblock m2 = Stack fid2 p2 pos2 ->
+    nextblock m1 = Stack sid fid1 p1 pos1 ->
+    nextblock m2 = Stack sid fid2 p2 pos2 ->
     fid1 = fid2 /\ p1 = p2.
 Proof.
   intros. unfold nextblock in *. unfold fresh_block in *.
   destruct (next_block_stree (stack (support m1))) eqn:?.
   destruct p. destruct p. inv H0.
   destruct (next_block_stree (stack (support m2))) eqn:?.
-  destruct p. destruct p. inv H1.
+  destruct p. destruct p. inv H1. inversion H.
   exploit struct_eq_next_block_stree; eauto.
 Qed.
 
@@ -6428,15 +6679,17 @@ Theorem alloc_parallel_stackeq :
   forall m1 m2 lo1 hi1 lo2 hi2 b1 b2 m1' m2',
     alloc m1 lo1 hi1 = (m1',b1) ->
     alloc m2 lo2 hi2 = (m2',b2) ->
-    stack(support m1) = stack(support m2) ->
-    stack(support m1') = stack (support m2')
-    /\ b1 = b2.
+    stackeq m1 m2 ->
+    stackeq m1' m2' /\ b1 = b2.
 Proof.
-  intros. inv H. inv H0.
-  simpl. unfold sup_incr. rewrite H1. simpl. split.
+  intros. inv H. inv H0. inversion H1.
+  simpl. unfold sup_incr. split. split; simpl.
+  rewrite H. simpl.
   destruct (next_block_stree (stack(support m2))).
-  reflexivity. apply stackeq_nextblock.
-  auto.
+  unfold stack. simpl. repeat rewrite setstack_stack.
+  auto. apply sid_valid. apply sid_valid.
+  rewrite H. destr.
+  apply stackeq_nextblock. auto.
 Qed.
 
 Theorem alloc_parallel_astackeq:
@@ -6452,37 +6705,39 @@ Qed.
 
 Theorem alloc_frame_parallel_stackeq :
   forall m1 m2 id m1' m2' p1 p2,
-    stack (support m1) = stack (support m2) ->
     alloc_frame m1 id = (m1',p1) ->
     alloc_frame m2 id = (m2',p2) ->
-    p1 = p2 /\
-    stack (support m1') = stack (support m2').
+    stackeq m1 m2 ->
+    stackeq m1' m2' /\ p1 = p2.
 Proof.
-  intros. split.
-  rewrite (path_alloc_frame _ _ _ _ H0).
-  rewrite (path_alloc_frame _ _ _ _ H1).
-  unfold sup_npath. unfold npath. rewrite H. reflexivity.
+  intros. inversion H1. split. unfold stackeq.
+  rewrite (support_alloc_frame _ _ _ _ H).
   rewrite (support_alloc_frame _ _ _ _ H0).
-  rewrite (support_alloc_frame _ _ _ _ H1).
   unfold sup_incr_frame.
-  rewrite H. destruct (next_stree (stack (support m2))).
-  reflexivity.
+  rewrite H2. destruct (next_stree (stack (support m2))).
+  unfold stack. simpl. repeat rewrite setstack_stack.
+  auto. apply sid_valid. apply sid_valid.
+  rewrite (path_alloc_frame _ _ _ _ H).
+  rewrite (path_alloc_frame _ _ _ _ H0).
+  unfold sup_npath. unfold npath. rewrite H2. reflexivity.
 Qed.
 
 Theorem return_frame_parallel_stackeq :
   forall m1 m2 m1' m2',
     return_frame m1 = Some m1' ->
     return_frame m2 = Some m2' ->
-    stack (support m1) = stack (support m2) ->
-    stack (support m1') = stack (support m2').
+    stackeq m1 m2 ->
+    stackeq m1' m2'.
 Proof.
-  intros.
+  intros. inversion H1. unfold stackeq.
   apply support_return_frame in H.
   apply support_return_frame in H0.
   unfold sup_return_frame in *.
-  rewrite H1 in H.
+  rewrite H2 in H.
   destruct (return_stree (stack(support m2))).
-  destruct p. inv H. inv H0. reflexivity.
+  destruct p. inv H. inv H0.
+  unfold stack. simpl. repeat rewrite setstack_stack.
+  auto. apply sid_valid. apply sid_valid.
   inv H.
 Qed.
 
@@ -6509,6 +6764,7 @@ Proof.
   apply support_return_frame in H0.
   unfold sup_return_frame in *.
   repeat destr_in H. repeat destr_in H0. simpl in *.
+  unfold astack in *. simpl.
   congruence.
 Qed.
 
@@ -7109,6 +7365,8 @@ Qed.
 Section MEMIFF.
 
 Record iff (m1 m2: mem) : Prop := mk_iff {
+  sid_iff:
+    sid (support m1) = sid (support m2);
   global_iff:
     Mem.global (Mem.support m1) = Mem.global (Mem.support m2);
   stack_iff:
@@ -7141,8 +7399,8 @@ Lemma valid_block_iff:
   forall m m' b,
   iff m m' -> valid_block m b -> valid_block m' b.
 Proof.
-  unfold valid_block; intros. destruct b; simpl in *.
-  erewrite <- stack_iff; eauto. erewrite <- global_iff; eauto.
+  unfold valid_block; intros. destruct b; simpl in *. erewrite <- sid_iff.
+  erewrite <- stack_iff; eauto. auto.  erewrite <- global_iff; eauto.
 Qed.
 
 Lemma perm_iff:
@@ -7358,6 +7616,8 @@ Proof.
   apply path_alloc_frame in H1. unfold sup_npath in *. congruence.
   inv H0. inv H1.
   constructor; simpl; auto; unfold sup_incr_frame; rewrite stack_iff0; destr.
+  unfold stack in *. simpl. repeat rewrite setstack_stack. auto.
+  apply sid_valid. apply sid_valid.
 Qed.
 
 Lemma return_frame_iff :
@@ -7371,13 +7631,12 @@ Proof.
   apply active_return_frame in H1 as H2. destruct H2 as [m2' H3].
   exists m2'. split. eauto. unfold return_frame in *. destr_in H0.
   destr_in H3. inv H0. inv H3.
-  constructor; simpl; auto.
-  unfold sup_return_frame'.
+  constructor; simpl; auto;  unfold sup_return_frame';
   unfold sup_return_frame.
   rewrite stack_iff0. destruct (return_stree (stack (support m2))) eqn:?. destruct p. simpl. auto. auto.
-unfold sup_return_frame'.
-  unfold sup_return_frame.
   rewrite stack_iff0. destruct (return_stree (stack (support m2))) eqn:?. destruct p. simpl. auto. auto.
+  rewrite stack_iff0. destruct (return_stree (stack (support m2))) eqn:?. destruct p.   unfold stack in *. simpl. repeat rewrite setstack_stack. auto.
+  apply sid_valid. apply sid_valid. auto.
 Qed.
 
 Lemma alloc_parallel_iff:
@@ -7394,12 +7653,14 @@ Proof.
    apply alloc_result in H0.
    apply alloc_result in H1.
   unfold nextblock in *. unfold fresh_block in *.
-  rewrite stack_iff0 in H0. congruence.
+  rewrite stack_iff0 in H0. rewrite sid_iff0 in H0. congruence.
   subst.
   exists m. split. auto.
   unfold alloc in *. inv H0. inv H1.
   constructor; simpl; try congruence; unfold sup_incr;
   rewrite stack_iff0; destr.
+  unfold stack in *. simpl. repeat rewrite setstack_stack. auto.
+  apply sid_valid. apply sid_valid.
 Qed.
 
 Lemma pop_stage_safe_iff:

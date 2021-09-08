@@ -1363,9 +1363,10 @@ Definition init_mem (p: program F V) :=
 Lemma store_init_data_stack:
   forall l ge m m' b ofs,
     store_init_data ge m b ofs l = Some m' ->
-    Mem.stack (Mem.support m') = Mem.stack (Mem.support m)
+    Mem.stackeq m' m
    /\ Mem.astack (Mem.support m') = Mem.astack (Mem.support m).
 Proof.
+  unfold Mem.stackeq.
   destruct l; simpl; intros;
   try now (erewrite Mem.support_store; eauto).
   inv H; auto.
@@ -1376,37 +1377,40 @@ Qed.
 Lemma store_init_data_list_stack:
   forall l ge m m' b ofs,
     store_init_data_list ge m b ofs l = Some m' ->
-    Mem.stack (Mem.support m') = Mem.stack (Mem.support m)
+    Mem.stackeq m' m
    /\ Mem.astack (Mem.support m') = Mem.astack (Mem.support m).
 Proof.
+  unfold Mem.stackeq.
   induction l; simpl; intros; eauto.
   inv H; auto.
   destruct store_init_data eqn:?; try discriminate.
   eapply IHl in H.
-  eapply store_init_data_stack in Heqo; eauto.
-  destruct Heqo. destruct H. split; congruence.
+  eapply store_init_data_stack in Heqo; eauto. inv Heqo. inv H.
+  inv H0. inv H2.
+  split. split; congruence. congruence.
 Qed.
 
 Lemma store_zeros_stack:
   forall m b lo hi m',
     store_zeros m b lo hi = Some m' ->
-    Mem.stack (Mem.support m') = Mem.stack (Mem.support m)
+    Mem.stackeq m' m
    /\ Mem.astack (Mem.support m') = Mem.astack (Mem.support m).
 Proof.
-  intros.
+  intros. unfold Mem.stackeq.
   revert H.
   eapply store_zeros_ind; simpl; intros.
-  inv H; auto. apply H in H0. destruct H0.
-  erewrite H0,H1, Mem.support_store; eauto.
+  inv H; auto. apply H in H0. destruct H0. destruct H0.
+  erewrite H0,H1,H2, Mem.support_store; eauto.
   inv H.
 Qed.
 
 Lemma alloc_global_stack:
   forall l ge m m',
     alloc_global ge m l = Some m' ->
-    Mem.stack (Mem.support m') = Mem.stack (Mem.support m)
+    Mem.stackeq m' m
    /\ Mem.astack (Mem.support m') = Mem.astack (Mem.support m).
 Proof.
+  unfold Mem.stackeq.
   destruct l; simpl; intros.
   destruct g.
   destruct (Mem.alloc_glob i m 0 1) eqn:?; try discriminate.
@@ -1415,22 +1419,23 @@ Proof.
   destruct store_zeros eqn:?; try discriminate.
   destruct store_init_data_list eqn:?; try discriminate.
   erewrite Mem.support_drop. 2: eauto.
-  exploit store_init_data_list_stack; eauto. intros [A B].
-  exploit store_zeros_stack; eauto. intros [C D].
+  exploit store_init_data_list_stack; eauto. intros [[A B] C].
+  exploit store_zeros_stack; eauto. intros [[D E] G].
   rewrite A,C. rewrite B,D. inv Heqp. auto.
 Qed.
 
 Lemma alloc_globals_stack:
   forall l ge m m',
     alloc_globals ge m l = Some m' ->
-    Mem.stack (Mem.support m') = Mem.stack (Mem.support m)
+    Mem.stackeq m' m
    /\ Mem.astack (Mem.support m') = Mem.astack (Mem.support m).
 Proof.
-  induction l; simpl; intros; eauto. split; congruence.
+  unfold Mem.stackeq.
+  induction l; simpl; intros; eauto. split. split; congruence. congruence.
   destruct (alloc_global ge m a) eqn:?; try discriminate.
-  exploit IHl; eauto. intros [A B].
-  exploit alloc_global_stack; eauto. intros [C D].
-  split; congruence.
+  exploit IHl; eauto. intros [[A B] C].
+  exploit alloc_global_stack; eauto. intros [[D E ]G].
+  split. split; congruence. congruence.
 Qed.
 
 Lemma init_mem_stack:
@@ -1439,7 +1444,7 @@ Lemma init_mem_stack:
     Mem.stack (Mem.support m) = (Node None nil nil None).
 Proof.
   unfold init_mem. intros.
-  exploit alloc_globals_stack; eauto. intros [A B].
+  exploit alloc_globals_stack; eauto. intros [[A B] C].
   rewrite A. reflexivity.
 Qed.
 
@@ -1449,7 +1454,17 @@ Lemma init_mem_astack:
     Mem.astack (Mem.support m) = nil.
 Proof.
   unfold init_mem. intros.
-  exploit alloc_globals_stack; eauto. intros [A B].
+  exploit alloc_globals_stack; eauto. intros [[A B] C].
+  rewrite C. reflexivity.
+Qed.
+
+Lemma init_mem_sid:
+  forall (p:AST.program F V) m,
+    init_mem p = Some m ->
+    Mem.sid (Mem.support m) = O.
+Proof.
+  unfold init_mem. intros.
+  exploit alloc_globals_stack; eauto. intros [[A B] C].
   rewrite B. reflexivity.
 Qed.
 

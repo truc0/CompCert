@@ -112,8 +112,7 @@ Proof.
   destruct (Mem.astack(Mem.support m1)) eqn:S1. discriminate.
   destruct (Mem.astack(Mem.support m2)) eqn:S2. discriminate.
   inv H0. inv POP.
-  constructor; eauto. simpl.
-  congruence.
+  constructor; eauto. simpl. apply Mem.mksup_ext; (try congruence); auto.
 Qed.
 
 Lemma magree_loadbytes:

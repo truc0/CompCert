@@ -61,7 +61,7 @@ Proof.
 Qed.
 
 Inductive block' :=
-  |Stack : fid -> path -> positive -> block'
+  |Stack : nat -> fid -> path -> positive -> block'
   |Global : ident -> block'.
 
 Module Block <: BLOCK.
@@ -73,7 +73,8 @@ Proof.
   intros. destruct x; destruct y; try(right; congruence).
   - (destruct (eq_path p p1)); try (right; congruence).
     destruct (peq p0 p2); try (right; congruence).
-    destruct (fid_eq f f0). left. congruence. right. congruence.
+    destruct (fid_eq f f0); try (right; congruence).
+    destruct (nat_eq n n0). left. congruence. right. congruence.
   - destruct (peq i i0). left. congruence. right. congruence.
 Qed.
 
@@ -84,7 +85,7 @@ Definition eq_block := Block.eq_block.
 
 Definition is_stack (b:block) : Prop :=
   match b with
-    | Stack _ _ _ => True
+    | Stack _ _ _ _ => True
     |  _ => False
   end.
 

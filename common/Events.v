@@ -619,7 +619,7 @@ Definition inject_separated (f f': meminj) (m1 m2: mem): Prop :=
 
 Definition external_block (b:block) : Prop :=
   match b with
-    |Stack None _ _ => True
+    |Stack _ None _ _ => True
     |_ => False
   end.
 
@@ -1620,6 +1620,11 @@ Axiom external_call_global:
   external_call ef ge vargs m1 t vres m2 ->
   Mem.global (Mem.support m1) = Mem.global (Mem.support m2).
 
+Axiom external_call_mem_sid:
+  forall ef ge vargs m1 t vres m2,
+    external_call ef ge vargs m1 t vres m2 ->
+    Mem.sid (Mem.support m1) = Mem.sid (Mem.support m2).
+
 Axiom external_call_astack:
   forall ef ge vargs m1 t vres m2,
     external_call ef ge vargs m1 t vres m2 ->
@@ -1682,11 +1687,14 @@ Lemma external_call_new_block:
   external_block b.
 Proof.
   intros. unfold Mem.valid_block in *. destruct b; simpl in *.
+  destr_in H0. destr_in H1.
   - exploit external_call_stack; eauto.
     destr. intro.
     exploit add_dead_substree_in; eauto.
     2: eapply external_stree_gen_spec; eauto. rewrite H2 in H1.
     auto. intro. rewrite H3. auto.
+  - destr_in H1.
+    apply external_call_mem_sid in H. congruence.
   - erewrite external_call_global in H0; eauto.
 Qed.
 
@@ -1720,13 +1728,17 @@ Lemma external_call_mem_inject_gen_stackeq:
   Val.inject_list f vargs vargs' ->
   external_call ef ge2 vargs' m1' t vres' m2' ->
   Mem.inject f' m2 m2' ->
-  Mem.stack (Mem.support m1) = Mem.stack (Mem.support m1') ->
-  Mem.stack (Mem.support m2) = Mem.stack (Mem.support m2').
+  Mem.stackeq m1 m1' ->
+  Mem.stackeq m2 m2'.
 Proof.
-  intros. apply external_call_stack in H0. rewrite H0.
-  apply external_call_stack in H3. rewrite H3.
-  exploit external_call_mem_inject_stree; eauto.
-  intro. rewrite H6. destr.
+  intros. unfold Mem.stackeq.
+  apply external_call_stack in H0 as H0'. rewrite H0'.
+  apply external_call_stack in H3 as H3'. rewrite H3'.
+  apply external_call_mem_sid in H0.
+  apply external_call_mem_sid in H3.
+  exploit external_call_mem_inject_stree; eauto. intro.
+  inv H5.
+  split. rewrite H6. destr. congruence.
 Qed.
 
 
@@ -1755,11 +1767,14 @@ Lemma external_call_mem_inject_gen_stackseq:
   Mem.stackseq m1 m1' -> Mem.stackseq m2 m2'.
 Proof.
   intros. unfold Mem.stackseq in *.
-  apply external_call_stack in H0. rewrite H0.
-  apply external_call_stack in H3. rewrite H3.
+  apply external_call_stack in H0 as H0'. rewrite H0'.
+  apply external_call_stack in H3 as H3'. rewrite H3'.
+  apply external_call_mem_sid in H0.
+  apply external_call_mem_sid in H3.
   exploit external_call_mem_inject_stree; eauto.
-  intro. rewrite H6. destr.
+  intro. rewrite H6. destr. inv H5. split.
   apply struct_eq_add_dead_substree; eauto.
+  congruence.
 Qed.
 
 (** Special case of [external_call_mem_inject_gen] (for backward compatibility) *)
@@ -1850,8 +1865,8 @@ Lemma external_call_mem_inject_stackeq:
   Val.inject_list f vargs vargs' ->
   external_call ef ge vargs' m1' t vres' m2' ->
   Mem.inject f' m2 m2' ->
-  Mem.stack (Mem.support m1) = Mem.stack (Mem.support m1') ->
-  Mem.stack (Mem.support m2) = Mem.stack (Mem.support m2').
+  Mem.stackeq m1 m1' ->
+  Mem.stackeq m2 m2'.
 Proof.
   intros. eapply external_call_mem_inject_gen_stackeq; eauto.
   eapply meminj_preserves_globals_symbols_inject; eauto.

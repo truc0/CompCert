@@ -829,7 +829,8 @@ Proof.
   inv STREE. simpl. constructor. simpl.
   erewrite <- Mem.sdepth_free in H8; eauto.
   erewrite <- Mem.sdepth_return_frame in H8; eauto.
-  unfold Mem.sdepth in *. simpl in *.  congruence.
+  unfold Mem.sdepth in *. rewrite Mem.stack_push_stage.
+  simpl in *.  congruence. rewrite Mem.astack_push_stage.
   simpl. apply tc_sizes_upstar. apply Mem.astack_return_frame in RETURN.
   apply Mem.support_free in FREE. congruence.
   apply regs_inject; auto.
@@ -842,7 +843,9 @@ Proof.
   eapply exec_Icall; eauto. eapply ros_is_ident_translated; eauto.
   apply sig_preserved.
   econstructor. constructor; eauto.
-  constructor. simpl. rewrite Nat.sub_0_r. auto.
+  constructor. simpl. rewrite Nat.sub_0_r.
+  unfold Mem.sdepth. rewrite Mem.stack_push_stage. rewrite Mem.stack_push_stage.
+  auto. rewrite Mem.astack_push_stage. rewrite Mem.astack_push_stage.
   apply tc_sizes_up. auto.
   apply regs_inject; auto. eapply Mem.push_stage_inject; eauto.
 
@@ -878,7 +881,7 @@ Proof.
   intros [f' [v' [m'1 [A [B [C [D [E [F [G I]]]]]]]]]].
   exploit Mem.pop_stage_parallel_inject; eauto.
   erewrite <- external_call_astack; eauto.
-  simpl. congruence.
+  rewrite Mem.astack_push_stage. congruence.
   intros (m'2 & Y & EXT').
   left. exists (State s' (transf_function f) (Vptr sp' Ptrofs.zero) pc' (regmap_setres res v' rs') m'2); split.
   eapply exec_Ibuiltin; eauto.
@@ -886,11 +889,16 @@ Proof.
   econstructor. 5 : eauto. all: eauto.
   eapply match_stackframes_incr; eauto.
   apply external_call_sdepth in A. apply external_call_sdepth in H1.
-  unfold Mem.sdepth in *. simpl in *. apply Mem.stack_pop_stage in Y.
-  apply Mem.stack_pop_stage in H2. congruence.
+  unfold Mem.sdepth in *.
+  rewrite Mem.stack_push_stage in A. rewrite Mem.stack_push_stage in H1.
+  apply Mem.stack_pop_stage in Y.
+  apply Mem.stack_pop_stage in H2.
+  congruence.
   apply external_call_astack in A. apply external_call_astack in H1.
   apply Mem.astack_pop_stage in H2. apply Mem.astack_pop_stage in Y.
-  destruct H2. destruct Y. simpl in *. congruence.
+  destruct H2. destruct Y. rewrite Mem.astack_push_stage in A.
+  rewrite Mem.astack_push_stage in H1.
+  congruence.
   apply set_res_inject; eauto. eapply regset_inject_incr; eauto.
 
 - (* cond *)
@@ -959,11 +967,12 @@ Proof.
   apply Mem.astack_alloc_frame in H as AAF.
   apply Mem.astack_alloc_frame in ALLOCF as AAF'.
   exploit Mem.record_frame_parallel_inject; eauto.
-  inv H10. erewrite Mem.support_alloc; eauto. unfold sup_incr. destr.
-  simpl. congruence.
+  inv H10. erewrite Mem.astack_alloc; eauto. congruence.
   apply stack_tc_size_vm in H10.
   erewrite Mem.support_alloc; eauto. apply Mem.support_alloc in H0.
-  unfold sup_incr in *. destr. destr_in H0. simpl in *. rewrite <- AAF'.
+  unfold sup_incr in *. destr. destr_in H0. simpl in *.
+  unfold Mem.astack in *. simpl in *.
+  rewrite <- AAF'.
   rewrite H0. simpl. rewrite <- AAF. lia.
   intros (m'3 & RECORD & INJ'').
   assert (fn_stacksize (transf_function f) = fn_stacksize f /\
@@ -986,14 +995,11 @@ Proof.
   erewrite (Mem.sdepth_alloc _ _ _ _ _ ALLOC); eauto.
   erewrite (Mem.sdepth_alloc_frame _ _ _ _ ALLOCF); eauto.
   apply Mem.astack_alloc_frame in H. apply Mem.astack_alloc_frame in ALLOCF.
-  apply Mem.support_alloc in H0. apply Mem.support_alloc in ALLOC.
+  apply Mem.astack_alloc in H0. apply Mem.astack_alloc in ALLOC.
   apply Mem.astack_record_frame in H1. apply Mem.astack_record_frame in RECORD.
   destruct H1 as (a&b&c&d). destruct RECORD as (w&x&y&z).
   rewrite z. rewrite d.  apply tc_sizes_record. rewrite H in H10.
-  rewrite H0 in c. unfold sup_incr in c. destr_in c. simpl in c.
-  rewrite c in H10. rewrite AAF' in H10. unfold sup_incr in ALLOC.
-  destr_in ALLOC. simpl in ALLOC. rewrite <- y. rewrite ALLOC.
-  simpl. congruence.
+  congruence.
   apply init_regs_inject.
   eapply val_inject_list_incr; eauto. auto. auto.
 
@@ -1063,8 +1069,10 @@ Proof.
   apply n in H4. inv H4.
   intros. unfold Mem.flat_inj in H4. destr_in H4.
   unfold Mem.flat_inj. intro. intros. destr_in H.
-  constructor. simpl. unfold Mem.sdepth. simpl.
+  constructor. simpl. unfold Mem.sdepth.
+  rewrite Mem.stack_push_stage.
   erewrite Genv.init_mem_stack; eauto. simpl. constructor.
+  rewrite Mem.astack_push_stage.
   simpl. erewrite Genv.init_mem_astack; eauto. econstructor; constructor.
 Qed.
 
