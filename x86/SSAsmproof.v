@@ -1589,9 +1589,9 @@ Proof.
       exploit Mem.loadv_inject. apply MINJ. apply LOADRA.
       apply Val.offset_ptr_inject. rewrite <- RSRSP. auto.
       intros (val_ra' & LOADRA' & INJRA). rewrite LOADRA'.
-      exploit Mem.loadv_inject. apply MINJ. apply LOADLINK.
+(*      exploit Mem.loadv_inject. apply MINJ. apply LOADLINK.
       apply Val.offset_ptr_inject. rewrite <- RSRSP. auto.
-      intros (val_link' & LOADLINK' & INJLINK). rewrite LOADLINK'.
+      intros (val_link' & LOADLINK' & INJLINK). rewrite LOADLINK'. *)
       exists j; eexists; eexists; split; [|split]; eauto.
       apply Mem.astack_pop_stage in POP as POPASTK.
       destruct POPASTK as [top POPASTK].
@@ -1611,6 +1611,7 @@ Proof.
       * intros; apply val_inject_nextinstr.
         intros; apply val_inject_set; auto.
         intros; apply val_inject_set; auto.
+        admit.
       (* Stack Injection *)
       * rewrite nextinstr_rsp.
         rewrite Pregmap.gso by congruence.
@@ -1620,22 +1621,33 @@ Proof.
         split.
         erewrite <- Mem.astack_return_frame in POPASTK; eauto.
         erewrite Mem.support_free in POPASTK; eauto.
-        rewrite POPASTK in X. admit. (*ok*)
-        unfold rs1'. rewrite nextinstr_rsp. rewrite Pregmap.gss.
-        rewrite RSPINJ'. simpl.
-        assert (stkofs' =  (Ptrofs.add stkofs (Ptrofs.neg (Ptrofs.repr aligned_sz)))).
-        {
-          rewrite <- Ptrofs.sub_add_opp.
-          unfold Ptrofs.sub.
-          rewrite Heqstkofs'.
-          subst stksize'. subst stksize. subst aligned_sz.
-          rewrite (Ptrofs.unsigned_repr _ ALIGNED_SZ). reflexivity.
-        }
-        rewrite H. auto.
-        admit. (*?*)
+        rewrite POPASTK in X. rewrite X.
+        assert (stack_size (top::Mem.astack (Mem.support m1)) = stagesz + stack_size(Mem.astack(Mem.support m1))).
+        simpl. subst. auto. rewrite H. clear H.
+        assert ((max_stacksize - (stagesz + stack_size (Mem.astack (Mem.support m1))) + stagesz) =  max_stacksize - stack_size (Mem.astack (Mem.support m1))).
+        lia. rewrite H. clear H.
+        rewrite Ptrofs.unsigned_repr. lia.
+        admit. (*ok*)
+        unfold Mem.loadv in LOADRA'. destr_in LOADRA'.
+        unfold Val.offset_ptr in Heqv. destr_in Heqv.
+        simpl. unfold trans_ptr. rewrite pred_dec_false.
+        unfold trans_ptr in Y. destr_in Y. unfold Vnullptr in e.
+        destr_in e. inv Y. unfold Ptrofs.add.
+        assert (align (Z.max 0 sz) 8 = size_of_all_frames top). admit.
+        rewrite <- H. simpl.
+        rewrite (Ptrofs.unsigned_repr (align (Z.max 0 sz) 8)). reflexivity.
+        admit. (*ok*)
+        unfold Vnullptr. destr.
       * intro. intros.
-        exploit STKINJLWBD; eauto.
-        admit.
+        unfold stack_inject_lowbound in STKINJLWBD.
+        erewrite <- Mem.perm_pop_stage in H0. 2: eauto.
+        erewrite <- Mem.perm_return_frame in H0. 2: eauto.
+        eapply Mem.perm_free_3 in H0; eauto.
+        eapply STKINJLWBD in H. 2: eauto.
+        assert (stack_size (Mem.astack (Mem.support m)) =
+                stagesz + stack_size (Mem.astack (Mem.support m1))). admit.
+        rewrite H1 in H. generalize (size_of_all_frames_pos top).
+        intro. admit.
 Admitted.
 
 (* injection in builtin *)
@@ -1756,7 +1768,7 @@ Proof.
   edestruct IHlist_forall2 as (a2 & EA & INJ); eauto.
   eexists; split; econstructor; eauto.
 Qed.
-Search external_call.
+
 Lemma external_perm_stack:
   forall ge ef m1 t res m2 vargs b o k p,
     external_call ef ge vargs m1 t res m2 ->

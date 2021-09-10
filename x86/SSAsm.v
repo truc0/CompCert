@@ -26,13 +26,11 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
       end
     end
   | Pfreeframe sz ofs_ra ofs_link =>
+    let aligned_sz := align (Z.max 0 sz) 8 in
+    let sp := Val.offset_ptr (rs#RSP) (Ptrofs.repr aligned_sz) in
     match Mem.loadv Mptr m (Val.offset_ptr rs#RSP ofs_ra) with
     | None => Stuck
-    | Some ra =>
-      match Mem.loadv Mptr m (Val.offset_ptr rs#RSP ofs_link) with
-      | None => Stuck
-      | Some sp => Next (nextinstr (rs#RSP <- sp #RA <- ra)) m
-      end
+    | Some ra => Next (nextinstr (rs#RSP <- sp #RA <- ra)) m
     end
   | _ => Asm.exec_instr ge f i rs m
   end.
