@@ -609,6 +609,15 @@ Definition exec_store (chunk: memory_chunk) (m: mem)
     the fact that the processor updates some or all of those flags,
     but we do not need to model this precisely.
 *)
+Definition aligned_fsz (sz:Z) := align (Z.max 0 sz) 8.
+Definition check_topframe (sz:Z)(astack:stackadt) : bool :=
+  match astack with
+    |nil => false
+    |top::tl => match top with
+                |fr::nil => if (zeq (aligned_fsz sz) (frame_size_a fr)) then true else false
+                |_ => false
+              end
+  end.
 
 Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : outcome :=
   match i with
@@ -974,6 +983,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
           | Some sp =>
               match rs#RSP with
               | Vptr stk ofs =>
+                  if check_topframe sz (Mem.astack (Mem.support m)) then
                   match Mem.free m stk 0 sz with
                   | None => Stuck
                   | Some m' =>
@@ -986,7 +996,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
                         Next (nextinstr (rs#RSP <- sp #RA <- ra)) m'''
                       end
                     end
-                  end
+                  end else Stuck
               | _ => Stuck
               end
           end
