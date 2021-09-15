@@ -207,6 +207,7 @@ Inductive match_states: meminj -> state -> state -> Prop :=
       (ENVSUP: Mem.sup_include (Genv.genv_sup ge) (Mem.support m))
       (ENVSUP': Mem.sup_include (Genv.genv_sup ge) (Mem.support m'))
    (** Regset Injection *)
+      (RSPzero: forall b i, rs # RSP = Vptr b i -> i = Ptrofs.zero )
       (RINJ: forall r, Val.inject j (rs # r) (rs' # r))
    (** Stack Properties **)
       (STKVB: Mem.valid_block m' stkblock)
@@ -216,9 +217,9 @@ Inductive match_states: meminj -> state -> state -> Prop :=
           (Ptrofs.unsigned stkofs =
            max_stacksize -
            stack_size (Mem.astack (Mem.support m)))
-          /\ trans_ptr (rs'#RSP) = Vptr stkblock stkofs),
-(*        (STKINJLWBD: stack_inject_lowbound j m
-       (max_stacksize - stack_size (Mem.astack (Mem.support m))))*)
+          /\ trans_ptr (rs'#RSP) = Vptr stkblock stkofs)
+        (STKINJLWBD: stack_inject_lowbound j m
+       (max_stacksize - stack_size (Mem.astack (Mem.support m)))),
       match_states j (State rs m) (State rs' m').
 
 (** injection in exec_instr *)
@@ -1293,6 +1294,7 @@ Proof.
     intros b0 delta' ofs k p JB PERM OVERLAP.
     subst. simpl in OVERLAP.
     erewrite <- Mem.perm_alloc_frame in PERM; eauto.
+    inv OVERLAP.
     generalize (STKINJLWBD _ _ _ _ _ JB PERM).
     rewrite <- Heqstkofs. lia.
   }
@@ -1424,6 +1426,9 @@ Proof.
   - eapply Mem.sup_include_trans. apply ENVSUP. auto.
   - eapply Mem.sup_include_trans. apply ENVSUP'. auto.
   (* Regset Injection *)
+  - unfold rs1. intros.
+    rewrite nextinstr_rsp in H.
+    rewrite Pregmap.gss in H. congruence.
   - intros. unfold rs1, rs1'.
     apply val_inject_nextinstr; auto.
     apply val_inject_set; auto.
@@ -1507,9 +1512,8 @@ Proof.
   intros.
   destruct (stk_unrelated_instr i) eqn:NOTSTKINSTR.
   (* Normal Instructions *)
-  - (* Comment for speed *)
-    admit. (*ok*)
-(*
+  - (* Comment for speed *) admit.
+    (*
     inversion MS.
     edestruct exec_instr_inject_normal as (rs1' & m1' & EI' & MINJ' & RINJ'); eauto.
     exists j, m1', rs1'; split; [|split]; eauto.
@@ -1523,6 +1527,7 @@ Proof.
       eapply Mem.sup_include_trans. apply ENVSUP. auto.
      + apply AIUS in EI'.
        eapply Mem.sup_include_trans. apply ENVSUP'. auto.
+     + rewrite (AINR _ _ _ _ _ _ NOTSTKINSTR EI) in RSPzero. auto.
      + apply AIUS in EI'.
        unfold Mem.valid_block. apply EI'. auto.
      + constructor.
@@ -1532,7 +1537,6 @@ Proof.
        ++ intros ofs k p OFS.
           apply STKPERMEQ'.
           apply STKPERMOFS. auto.
-     + rewrite (AINR _ _ _ _ _ _ NOTSTKINSTR EI) in RSPINJ. auto.
      + rewrite (AINR _ _ _ _ _ _ NOTSTKINSTR EI') in RSPINJ'.
        rewrite <- STACKEQ. auto.
      + rewrite <- STACKEQ.
@@ -1625,6 +1629,10 @@ Proof.
         eapply Mem.sup_include_trans. apply ENVSUP.
         eapply Mem.sup_include_trans. 2 : eauto.
         intro. eapply Mem.support_return_frame_1 in RET. apply RET.
+      * rewrite nextinstr_rsp. intros.
+        rewrite Pregmap.gso in H0.
+        rewrite Pregmap.gss in H0.
+        admit. congruence.
       (* Regset Injection *)
       * intros; apply val_inject_nextinstr.
         intros; apply val_inject_set; auto.
@@ -1657,11 +1665,12 @@ Proof.
         unfold Vnullptr. destr.
       * intro. intros.
         unfold stack_inject_lowbound in STKINJLWBD.
-        destruct (eq_block b0 b). subst. Search Mem.free.
+        destruct (eq_block b0 b). subst.
+        ++
         generalize (RINJ RSP). rewrite RSRSP. intro. inv H2. rewrite <- H5 in Y.
         unfold trans_ptr in Y. destr_in Y. inv e. inv Y.
         rewrite H0 in H6. inv H6.
-        Search Ptrofs.add.
+(*
         destruct RSPINJ' as (stkofs).
         unfold single_stack_perm_ofs in STKPERMOFS.
         erewrite <- Mem.perm_pop_stage in H0. 2: eauto.
@@ -1671,7 +1680,8 @@ Proof.
         assert (stack_size (Mem.astack (Mem.support m)) =
                 stagesz + stack_size (Mem.astack (Mem.support m1))). admit.
         rewrite H1 in H. generalize (size_of_all_frames_pos top).
-        intro. admit.
+        intro. admit. *) admit.
+        ++ admit.
 Admitted.
 
 (* injection in builtin *)
@@ -1864,6 +1874,10 @@ Proof.
       ++ intros. exploit symbol_inject; eauto.
     + eapply Mem.sup_include_trans. apply ENVSUP. auto.
     + eapply Mem.sup_include_trans. apply ENVSUP'. auto.
+    + remember (nextinstr_nf (set_res res vres (undef_regs (map preg_of (Machregs.destroyed_by_builtin ef)) rs))) as rs'.
+      destruct prog_unchange_rsp as (INT & BUILTIN & EXTCALL).
+      red in BUILTIN.
+      destruct (BUILTIN b2 ofs f ef args res rs m vargs t vres rs' m'); eauto.
     (* Regset Injection *)
     + intros. apply val_inject_nextinstr_nf.
       apply val_inject_set_res; auto.
@@ -1934,6 +1948,10 @@ Proof.
     + eapply Mem.sup_include_trans. apply ENVSUP. auto.
     + eapply Mem.sup_include_trans. apply ENVSUP'. auto.
     (* Regset Injection *)
+    + remember ((set_pair (loc_external_result (ef_sig ef)) res (undef_caller_save_regs rs)) # PC <- (rs RA)) as rs'.
+      destruct prog_unchange_rsp as (INT & BUILTIN & EXTCALL).
+      red in EXTCALL.
+      destruct (EXTCALL b2 ef args res rs m t rs' m'); eauto.
     + intros; apply val_inject_set.
       intros; apply val_inject_set_pair; auto.
       apply val_inject_undef_caller_save_regs; auto.
@@ -2000,6 +2018,7 @@ Proof.
   rewrite pred_dec_true; auto.
   rewrite SUP. apply Mem.sup_include_refl.
   rewrite SUP. intro. eapply Mem.valid_block_alloc; eauto.
+  + intros. unfold rs0 in H0. rewrite Pregmap.gss in H0. inv H0.
   + intros. unfold rs0.
     repeat (intros; apply val_inject_set; auto). fold ge0.
     ++ unfold ge0. unfold Genv.symbol_address.
