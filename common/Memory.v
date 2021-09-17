@@ -470,10 +470,28 @@ Proof.
     reflexivity.
   - inv H0.
 Qed.
-(*
-Local Set Elimination Schemes.
-Local Set Case Analysis Schemes.
-*)
+
+(* sp from stree *)
+
+Fixpoint top_sp' (st:stree): fid * path :=
+  match st with
+    |Node f bl l (Some t') =>
+     let (fid,path) := top_sp' t' in
+     (fid, (Datatypes.length l)::path)
+    |Node f bl l None => (f,[])
+  end.
+
+Fixpoint parent_sp' (st:stree) : option (fid * path) :=
+  match st with
+    |Node f bl l (Some st') =>
+     let idx := Datatypes.length l in
+     match parent_sp' st' with
+       |Some (fid,path) => Some (fid,idx::path)
+       |None => Some (f,[])
+     end
+    |Node f bl l None => None
+  end.
+
 Inductive struct_eq : stree -> stree -> Prop :=
   |struct_eq_leaf : forall fi bl1 bl2,
       struct_eq (Node fi bl1 nil None) (Node fi bl2 nil None)

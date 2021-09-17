@@ -610,6 +610,7 @@ Definition exec_store (chunk: memory_chunk) (m: mem)
     but we do not need to model this precisely.
 *)
 Definition aligned_fsz (sz:Z) := align (Z.max 0 sz) 8.
+
 Definition check_topframe (sz:Z)(astack:stackadt) : bool :=
   match astack with
     |nil => false
@@ -618,6 +619,49 @@ Definition check_topframe (sz:Z)(astack:stackadt) : bool :=
                 |_ => false
               end
   end.
+
+Fixpoint sp_of_stack' (s:stree) : list fid * path :=
+  match s with
+   |Node fid bl l None => (fid::nil,nil)
+   |Node fid bl l (Some s') =>
+    let (lf',path') := sp_of_stack' s' in let idx := length bl in
+    ((fid::lf'),idx::path')
+  end.
+
+Definition sp_of_stack (s:stree) : list fid * path :=
+  let (lf,path) := (sp_of_stack' s) in (removelast lf,path).
+(* we have to ignore the root node*)
+Definition parent_sp_stree (st:stree) : val :=
+  let (lf,path) := sp_of_stack st in
+  match (lf,path) with
+    |(f1::((Some id)::tl), _::(_::_)) =>
+     Vptr (Stack (Some id) (removelast path) 1%positive) Ptrofs.zero
+    |_ => Vnullptr
+  end.
+
+Definition top_sp_stree (st:stree) : val :=
+  let (lf,path) := sp_of_stack st in
+  match (lf,path) with
+    | (((Some id)::tl), (_::_)) =>
+     Vptr (Stack (Some id) path 1%positive) Ptrofs.zero
+    |_ => Vnullptr
+  end.
+(*
+Definition parent_sp_stree (st:stree) : val :=
+  match parent_sp' st with
+    |Some(Some id,hd::tl) =>
+     Vptr (Stack (Some id) (hd::tl) 1%positive) Ptrofs.zero
+    |_ => Vnullptr
+  end.
+
+Definition top_sp_stree (st:stree) : val :=
+  match top_sp' st with
+    |((Some id),hd::tl) => Vptr (Stack (Some id) (hd::tl) 1%positive) Ptrofs.zero
+    |_ => Vnullptr
+  end.
+*)
+
+(* maybe Vnullptr and Some (None,[]) is needed here*)
 
 Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : outcome :=
   match i with
@@ -984,6 +1028,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
               match rs#RSP with
               | Vptr stk ofs =>
                   if check_topframe sz (Mem.astack (Mem.support m)) then
+                  if Val.eq sp (parent_sp_stree (Mem.stack (Mem.support m))) then
                   match Mem.free m stk 0 sz with
                   | None => Stuck
                   | Some m' =>
@@ -996,7 +1041,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
                         Next (nextinstr (rs#RSP <- sp #RA <- ra)) m'''
                       end
                     end
-                  end else Stuck
+                  end else Stuck else Stuck
               | _ => Stuck
               end
           end
