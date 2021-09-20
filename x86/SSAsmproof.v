@@ -178,6 +178,41 @@ Definition reginj' (j:meminj) (rs rs': regset) :Prop :=
 Definition perm_type :=
   block -> Z -> perm_kind -> permission -> Prop.
 
+Fixpoint in_stack' (f:fid) (p:path) (lf : list fid) (pall:path) : Prop :=
+  match lf,pall with
+  |fid::lf',idx::p' => (f = fid /\ p = pall) \/ (in_stack' f p lf' (removelast pall))
+  |_,nil => False
+  |nil,_ => False
+  end.
+
+Lemma in_stack'_length : forall n pall f p lf,
+    (length pall <= n)%nat ->
+    (length p > length pall)%nat -> ~ in_stack' f p lf pall.
+Proof.
+  induction n; intros; simpl.
+  - destruct pall.
+  destruct lf; simpl. auto. auto. inv H.
+  -
+  destruct pall; destruct lf; simpl; auto.
+  intro.
+  destruct H1. inv H1. extlia. destr_in H1. destruct lf; simpl in H0. auto. auto.
+  assert (n1::l <> nil). congruence. apply exists_last in H2. destruct H2 as (l' & a & H3).
+  rewrite H3 in *.
+  eapply IHn. 3: apply H1.rewrite removelast_app. simpl.
+  simpl in H. setoid_rewrite app_length in H. simpl in H. rewrite app_nil_r. lia.
+  congruence.
+  rewrite removelast_app. simpl. simpl in H0. rewrite app_length in H0.
+  simpl in H0. rewrite app_nil_r. lia. congruence.
+Qed.
+
+Definition current_in_stack' (b:block) (lfp : list fid * path) : Prop :=
+  let (lf,pall) := lfp in
+  match b with
+    |Stack fid path i => i = 1%positive /\ in_stack' fid path lf pall
+    |_ => False
+  end.
+
+(*Search stree_In. *)
 Inductive inject_stack (j:meminj) (P:perm_type): (list fid * path) -> stackadt -> Prop :=
   |inject_stack_nil : inject_stack j P (nil,nil) nil
   |inject_stack_cons : forall b astk fr lf p id idx
@@ -201,6 +236,21 @@ Lemma inject_stack_more_perm:
     inject_stack j P' s l.
 Proof.
   induction 2; econstructor; eauto.
+Qed.
+
+Lemma inject_stack_inv:
+  forall j (P P': perm_type)
+    s l (IS: inject_stack j P s l)
+    (INCR: forall b o k p, current_in_stack' b s -> P b o k p -> P' b o k p),
+    inject_stack j P' s l.
+Proof.
+  induction 1; econstructor; eauto.
+  - eapply IHIS; eauto. intros; eapply INCR; eauto. simpl.
+    simpl in H2. destr_in H2. inv H2. split. auto. destr.
+    destruct p; inv Heql. right. rewrite <- Heql. rewrite removelast_app.
+    simpl. rewrite app_nil_r. auto. congruence.
+  - intros; eapply INCR; eauto. simpl. rewrite H0. simpl.
+    split. auto. destr. destruct p; inv Heql.
 Qed.
 
 (** matching state *)
@@ -1626,6 +1676,7 @@ Proof.
       rename Heqo1 into FREE.
       rename Heqo2 into RET.
       rename Heqo3 into POP.
+      rename e0 into RSPTOP.
       inv MS.
       clear NOTSTKINSTR.
       rename v into val_ra.
@@ -1697,9 +1748,14 @@ Proof.
       * inv RSPINJ.
         exploit sp_of_stack_return; eauto. symmetry. rewrite SF. eauto. intro.
         erewrite <- Mem.stack_pop_stage; eauto. rewrite H1.
-        eapply inject_stack_more_perm with (P:= Mem.perm m); eauto. intros.
+        eapply inject_stack_inv; eauto. intros.
         erewrite <- Mem.perm_pop_stage. 2: eauto.
-        erewrite <- Mem.perm_return_frame. 2: eauto. admit. (*perm*)
+        erewrite <- Mem.perm_return_frame. 2: eauto.
+        eapply Mem.perm_free_inv in H4; eauto. inv H4. inv H6.
+        unfold top_sp_stree in RSPTOP. setoid_rewrite <- H0 in RSPTOP.
+        simpl in RSPTOP. destr_in RSPTOP. destruct p; inv Heql. inv RSPTOP.
+        inv H2. rewrite <- Heql in H6.
+        exfalso. eapply in_stack'_length; eauto. rewrite app_length. simpl. lia. auto.
       (* Stack Injection *)
       * rewrite nextinstr_rsp.
         rewrite Pregmap.gso by congruence.
@@ -1724,8 +1780,16 @@ Proof.
         rewrite X in H0. generalize (stack_size_pos (Mem.astack (Mem.support m1))). intro.
         generalize max_stacksize_lt_max. intro. lia.
         unfold Vnullptr. destr.
-      * intro. intros.
-        unfold stack_inject_lowbound in STKINJLWBD.
+      * unfold stack_inject_lowbound in STKINJLWBD.
+        intro. intros.
+        generalize (RINJ RSP). intro.
+        apply RSPzero in RSRSP as Z. subst.
+        rewrite RSRSP in H2. rewrite Y in H2. inv H2.
+        rewrite Ptrofs.add_zero_l in X.
+        rewrite Ptrofs.add_zero_l in Y. inv RSPINJ.
+        rewrite Ptrofs.unsigned_repr in X.
+        setoid_rewrite X in H6. setoid_rewrite H in H6.
+        inv MINJ.
         destruct (eq_block b0 b). subst.
         ++ admit.
         ++ admit.
@@ -1952,9 +2016,10 @@ Proof.
       ++ intros. exploit stack_offset_perm0; eauto.
          intro. exploit external_perm_stack; eauto.
          simpl. auto. intro. apply H8,H6.
-    + eapply inject_stack_incr; eauto. eapply inject_stack_more_perm with (P:= Mem.perm m); eauto.
-      admit. (*perm*)
+    + eapply inject_stack_incr; eauto.
       erewrite sp_of_stack_external; eauto. erewrite <- external_call_astack; eauto.
+      eapply inject_stack_inv; eauto. intros.
+      admit. (*external perm on stack*)
     + remember (nextinstr_nf (set_res res vres' (undef_regs (map preg_of (Machregs.destroyed_by_builtin ef)) rs'0))) as rs'.
       destruct prog_unchange_rsp as (INT & BUILTIN & EXTCALL).
       red in BUILTIN.
@@ -2031,9 +2096,10 @@ Proof.
          intro. exploit external_perm_stack; eauto.
          unfold stkblock. unfold fresh_block. repeat destr. simpl. auto.
          intro. apply H5,H4.
-    + eapply inject_stack_incr; eauto. eapply inject_stack_more_perm with (P:= Mem.perm m); eauto.
-      admit. (*perm*)
+    + eapply inject_stack_incr; eauto.
       erewrite sp_of_stack_external; eauto. erewrite <- external_call_astack; eauto.
+      eapply inject_stack_inv; eauto. intros.
+      admit. (*external perm*)
     + remember ((set_pair (loc_external_result (ef_sig ef)) vres'
      (undef_caller_save_regs rs'0)) # PC <- (rs'0 RA)) as rs'.
       destruct prog_unchange_rsp as (INT & BUILTIN & EXTCALL).
@@ -2105,7 +2171,7 @@ Proof.
        {
          unfold max_stacksize.
          vm_compute. auto.
-       }.
+       }
        lia.
     ++ intros.
        exploit Mem.perm_alloc_2; eauto. instantiate (1:=k).
