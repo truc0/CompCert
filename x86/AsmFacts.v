@@ -132,18 +132,18 @@ Proof.
 Qed.
 
 (** modify abstract stack *)
-Definition asm_instr_unchange_stk (i : instruction) : Prop :=
+Definition asm_instr_unchange_sup (i : instruction) : Prop :=
   stk_unrelated_instr i = true ->
   forall ge rs m rs' m' f,
     Asm.exec_instr ge f i rs m = Next rs' m' ->
-    Mem.astack (Mem.support m) = Mem.astack (Mem.support m') /\
+    Mem.support m = Mem.support m' /\
     (forall b o k p, Mem.perm m b o k p <-> Mem.perm m' b o k p).
 
 
-Lemma exec_store_astack:
+Lemma exec_store_support:
     forall (ge: Genv.t Asm.fundef unit) k m1 a rs1 rs l rs2 m2,
       exec_store ge k m2 a rs1 rs l = Next rs2 m1 ->
-      Mem.astack (Mem.support m2) = Mem.astack (Mem.support m1) /\ (forall b o k p, Mem.perm m2 b o k p <-> Mem.perm m1 b o k p).
+      Mem.support m2 = Mem.support m1 /\ (forall b o k p, Mem.perm m2 b o k p <-> Mem.perm m1 b o k p).
 Proof.
     intros ge k m1 a rs1 rs l rs2 m2  STORE.
     unfold exec_store in STORE; repeat destr_in STORE.
@@ -155,36 +155,36 @@ Proof.
     eapply Mem.perm_store_2; eauto.
 Qed.
 
-Lemma exec_load_astack:
+Lemma exec_load_support:
     forall (ge: Genv.t Asm.fundef unit) k m1 a rs1 rs rs2 m2,
       exec_load ge k m2 a rs1 rs = Next rs2 m1 ->
-      Mem.astack (Mem.support m2) = Mem.astack (Mem.support m1) /\ (forall b o k p, Mem.perm m2 b o k p <-> Mem.perm m1 b o k p).
+      Mem.support m2 = Mem.support m1 /\ (forall b o k p, Mem.perm m2 b o k p <-> Mem.perm m1 b o k p).
 Proof.
     intros ge k m1 a rs1 rs rs2 m2 LOAD.
     unfold exec_load in LOAD; destr_in LOAD.
 Qed.
 
-Lemma goto_label_astack:
+Lemma goto_label_support:
   forall (ge: Genv.t Asm.fundef unit) f l m1 rs1 rs2 m2,
     goto_label ge f l rs1 m2 = Next rs2 m1 ->
-    Mem.astack (Mem.support m2) = Mem.astack (Mem.support m1) /\
+    Mem.support m2 = Mem.support m1 /\
     (forall b o k p, Mem.perm m2 b o k p <-> Mem.perm m1 b o k p).
 Proof.
     intros ge f l m1 rs1 rs2 m2 GOTO.
     unfold goto_label in GOTO; repeat destr_in GOTO.
 Qed.
 
-Lemma asm_prog_unchange_stk (i : instruction) :
-  asm_instr_unchange_stk i.
+Lemma asm_prog_unchange_sup (i : instruction) :
+  asm_instr_unchange_sup i.
 Proof.
   intro.
     intros ge0 rs1 m1 rs2 m2 f EI.
       destruct i; simpl in H; try discriminate;
         unfold exec_instr in EI; simpl in EI; repeat destr_in EI;
           first [ split;[reflexivity|tauto]
-                | now (eapply exec_load_astack; eauto)
-                | now (eapply exec_store_astack; eauto)
-                | now ( eapply goto_label_astack; eauto)
+                | now (eapply exec_load_support; eauto)
+                | now (eapply exec_store_support; eauto)
+                | now ( eapply goto_label_support; eauto)
                 | idtac ].
     Unshelve. all: auto.
     exact Mint32. exact PC.
@@ -237,4 +237,3 @@ Proof.
     intro. eapply Mem.support_return_frame_1 in Heqo2. apply Heqo2.
     eapply Mem.sup_include_pop_stage; eauto.
 Qed.
-

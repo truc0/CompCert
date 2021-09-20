@@ -165,27 +165,6 @@ Proof.
       repeat apply Z.divide_add_r; auto.
 Qed.
 
-(* Inductive inject_stack (j: meminj): Mem.stackadt -> Prop := *)
-(* | inject_stack_nil: *)
-(*     inject_stack j nil *)
-(* | inject_stack_cons_nil l (INJSTK_REC: inject_stack j l): *)
-(*     inject_stack j ((nil)::l) *)
-(* | inject_stack_cons *)
-(*     l fr b *)
-(*     (INJSTK_REC: inject_stack j l) *)
-(*     (INJBLOCK: j b = Some (stkblock, Mem.max_stacksize - Mem.stack_size l - Mem.frame_size fr)): *)
-(*     (BLOCKS: frame_block fr = b) *)
-(*     inject_stack j ((fr::nil)::l). *)
-
-(* Lemma inject_stack_incr: *)
-(*   forall j j' l *)
-(*     (INCR: inject_incr j j') *)
-(*     (IS: inject_stack j l), *)
-(*     inject_stack j' l. *)
-(* Proof. *)
-(*   induction 2; econstructor; eauto. *)
-(* Qed. *)
-
 Definition stack_inject_lowbound j m stklb:=
   forall b delta ofs k p,
     j b = Some (stkblock, delta) ->
@@ -196,21 +175,17 @@ Definition reginj' (j:meminj) (rs rs': regset) :Prop :=
   forall r, Val.inject j (rs # r) (rs' # r) \/
        (r = RSP /\ rs # r = Vnullptr /\ rs' # r = (Vptr stkblock (Ptrofs.repr (Memory.max_stacksize)))).
 
-
-Parameter top_sp : stree -> block.
-Parameter parent_sp : stree -> block.
-Parameter next_sp : stree -> ident -> (block * stree). (*next_stree followed by next__block_stree*)
 Definition perm_type :=
   block -> Z -> perm_kind -> permission -> Prop.
 
-Inductive inject_stack (j:meminj) (P:perm_type): stree->stackadt -> Prop :=
-  |inject_stack_nil : inject_stack j P (Node None nil nil None) nil
-  |inject_stack_cons : forall b st astk fr id st'
-      (IS_REC: inject_stack j P st astk),
+Inductive inject_stack (j:meminj) (P:perm_type): (list fid * path) -> stackadt -> Prop :=
+  |inject_stack_nil : inject_stack j P (nil,nil) nil
+  |inject_stack_cons : forall b astk fr lf p id idx
+      (IS_REC: inject_stack j P (lf,p) astk),
       j b = Some (stkblock, max_stacksize - stack_size astk - frame_size_a fr) ->
-      next_sp st id = (b,st') ->
+      b = Stack (Some id) (p++(idx::nil)) 1%positive ->
      (forall o k p, 0 <= o < frame_size_a fr -> P b o k p) ->
-     inject_stack j P st' ((fr::nil)::astk).
+     inject_stack j P ((Some id)::lf,p++(idx::nil)) ((fr::nil)::astk).
 
 Lemma inject_stack_incr:
   forall j j' P (INCR: inject_incr j j')
@@ -245,7 +220,9 @@ Inductive match_states: meminj -> state -> state -> Prop :=
       (STKVB: Mem.valid_block m' stkblock)
       (STKPERMOFS: single_stack_perm_ofs m')
    (** Stack Injection *)
-      (RSPINJ: inject_stack j (Mem.perm m) (Mem.stack (Mem.support m)) (Mem.astack (Mem.support m)))
+      (RSPINJ: inject_stack j (Mem.perm m)
+                            (sp_of_stack (Mem.stack (Mem.support m)))
+                            (Mem.astack (Mem.support m)))
       (RSPINJ': exists stkofs,
           (Ptrofs.unsigned stkofs =
            max_stacksize -
@@ -1235,10 +1212,6 @@ Proof.
     repeat simpl_inject.
 Qed.
 
-Lemma genv_empty_stack : forall F V (ge:Genv.t F V),
-    Mem.stack (Genv.genv_sup ge) = Node None nil nil None.
-Admitted.
-
 Lemma allocframe_inject:
   forall j stkb m0 m m1 m2 m3 m4 m' id path rs rs' sz ofs_link ofs_ra
     (MS: match_states j (State rs m0) (State rs' m'))
@@ -1452,7 +1425,7 @@ Proof.
        destruct (eq_block b stkb).
        +++ subst. rewrite EQ1 in JB'. inv JB'.
            apply Genv.genv_defs_range in FD. unfold stkblock in FD.
-           simpl in FD. rewrite genv_empty_stack in FD. inv FD. inv H0.
+           apply Genv.genv_sup_glob in FD. destruct FD. inv H.
        +++ apply EQ2 in n. rewrite <- n in JB1.
            rewrite JB1 in JB'. congruence.
     ++ intros. exploit symbol_inject; eauto.
@@ -1488,9 +1461,10 @@ Proof.
     apply Mem.astack_record_frame in RECORDFR as X.
     destruct X as (hd & tl & ASm1 & ASm2).
     simpl in ASm1. inv ASm1.
-    rewrite ASm2. erewrite Mem.astack_alloc; eauto.
-    erewrite <- Mem.astack_alloc_frame; eauto.
-    econstructor.
+    rewrite ASm2.
+    caseEq (sp_of_stack (Mem.stack (Mem.support m0))). intros.
+    exploit sp_of_stack_alloc. apply ALLOCF. eauto. eauto. intros (idx&X&Y).
+    erewrite <- Mem.stack_record_frame; eauto. simpl. rewrite Y. econstructor.
     eapply inject_stack_incr; eauto.
     eapply inject_stack_more_perm with (P:= Mem.perm m0); eauto.
     intros. eapply Mem.perm_store_1; eauto.
@@ -1498,8 +1472,9 @@ Proof.
     erewrite <- Mem.perm_record_frame. 2: eauto.
     erewrite <- Mem.perm_push_stage. 2: eauto.
     eapply Mem.perm_alloc_1; eauto. erewrite <- Mem.perm_alloc_frame; eauto.
-    rewrite <- Heqstkofs. unfold frame_size_a. eauto.
-    admit.
+    erewrite Mem.astack_alloc; eauto. erewrite <- Mem.astack_alloc_frame; eauto. congruence.
+    instantiate (1:= stkb). rewrite EQ1. rewrite Heqstkofs; eauto. unfold frame_size_a.
+    erewrite Mem.astack_alloc_frame. 2: eauto. erewrite <- Mem.astack_alloc; eauto. auto.
     intros. eapply Mem.perm_store_1; eauto. eapply Mem.perm_store_1; eauto.
     admit. (* alloc_size = frame_size in Asm*)
   - exists stkofs'.
@@ -1554,7 +1529,7 @@ Lemma exec_instr_inject:
     (EI: Asm.exec_instr ge f i rs m = Next rs1 m1)
     (MS: match_states j (State rs m) (State rs' m'))
     (AINR: asm_instr_unchange_rsp i)
-    (AINS: asm_instr_unchange_stk i),
+    (AINS: asm_instr_unchange_sup i),
   exists j' m1' rs1',
     exec_instr ge f i rs' m' = Next rs1' m1'
     /\ match_states j' (State rs1 m1) (State rs1' m1')
@@ -1564,14 +1539,16 @@ Proof.
   destruct (stk_unrelated_instr i) eqn:NOTSTKINSTR.
   (* Normal Instructions *)
   - (* Comment for speed *)
+    admit.
+(*
     inversion MS.
     edestruct exec_instr_inject_normal as (rs1' & m1' & EI' & MINJ' & RINJ'); eauto.
     exists j, m1', rs1'; split; [|split]; eauto.
     destruct i; simpl in *; eauto; try congruence.
     subst.
     generalize (asm_prog_unchange_support i). intro AIUS. red in AIUS.
-    edestruct (AINS NOTSTKINSTR _ _ _ _ _ _ EI) as (STACKEQ & STKPERMEQ).
-    edestruct (AINS NOTSTKINSTR _ _ _ _ _ _ EI') as (STACKEQ' & STKPERMEQ').
+    edestruct (AINS NOTSTKINSTR _ _ _ _ _ _ EI) as (SUPEQ & STKPERMEQ).
+    edestruct (AINS NOTSTKINSTR _ _ _ _ _ _ EI') as (SUPEQ' & STKPERMEQ').
     eapply match_states_intro; eauto.
      + apply AIUS in EI.
       eapply Mem.sup_include_trans. apply ENVSUP. auto.
@@ -1587,12 +1564,14 @@ Proof.
        ++ intros ofs k p OFS.
           apply STKPERMEQ'.
           apply STKPERMOFS. auto.
-     + admit. (*STREEEQ*)
+     + rewrite <- SUPEQ.
+       eapply inject_stack_more_perm with (P:= Mem.perm m); eauto. intros.
+       rewrite <- STKPERMEQ. auto.
      + rewrite (AINR _ _ _ _ _ _ NOTSTKINSTR EI') in RSPINJ'.
-       rewrite <- STACKEQ. auto.
-     + rewrite <- STACKEQ.
+       rewrite <- SUPEQ. auto.
+     + rewrite <- SUPEQ.
       red. intros. apply STKPERMEQ in H0.
-       eapply STKINJLWBD; eauto.
+       eapply STKINJLWBD; eauto. *)
   (* Specail Cases *)
     Opaque Mem.alloc_frame.
   - destruct i; simpl in *; try congruence.
@@ -1650,7 +1629,6 @@ Proof.
       inv MS.
       clear NOTSTKINSTR.
       rename v into val_ra.
-      rename v0 into val_link.
       exploit Mem.loadv_inject. apply MINJ. apply LOADRA.
       apply Val.offset_ptr_inject. rewrite <- RSRSP. auto.
       intros (val_ra' & LOADRA' & INJRA). rewrite LOADRA'.
@@ -1669,6 +1647,9 @@ Proof.
       assert (max_stacksize - (stack_size ((f0::nil)::Mem.astack (Mem.support m1))) =
               max_stacksize - frame_size_a f0 - stack_size (Mem.astack (Mem.support m1))).
       assert (stack_size ((f0::nil)::Mem.astack(Mem.support m1)) = frame_size_a f0 + stack_size (Mem.astack (Mem.support m1))). simpl. lia. rewrite H. lia.
+      unfold trans_ptr in Y. destr_in Y.
+      rewrite e in LOADRA'. simpl in LOADRA'. unfold Val.offset_ptr in LOADRA'.
+      unfold Vnullptr in LOADRA'. repeat destr_in LOADRA'. inv Heqv.
       constructor; eauto.
       (* Memory Injection *)
       * eapply Mem.pop_stage_left_inject. 2: eauto.
@@ -1683,25 +1664,42 @@ Proof.
       * rewrite nextinstr_rsp. intros.
         rewrite Pregmap.gso in H0.
         rewrite Pregmap.gss in H0.
-        admit. (*to be proved in Asmgen*) congruence.
+        unfold parent_sp_stree in H0. repeat destr_in H0.
+        congruence.
       (* Regset Injection *)
       * intros; apply val_inject_nextinstr.
         intros; apply val_inject_set; auto.
         intros; apply val_inject_set; auto.
         inv RSPINJ.
-        assert (val_link = Vptr (parent_sp (Mem.stack (Mem.support m))) Ptrofs.zero). admit.
-        assert (top_sp st = parent_sp (Mem.stack (Mem.support m))). admit.
+        assert (FSZ:0 <= frame_size_a f0 <= Ptrofs.max_unsigned).
+        split. generalize frame_size_a_pos f0. intro. auto.
+        generalize (Ptrofs.unsigned_range_2 offset). intro.
+        rewrite X in H1. setoid_rewrite H in H1.
+        generalize (stack_size_pos (Mem.astack (Mem.support m1))). intro.
+        generalize max_stacksize_lt_max. intro. lia.
         inv IS_REC.
-        -- admit. (*inv H1*)
-        -- assert (b1 = top_sp st). admit. rewrite <- H1. subst.
-           unfold trans_ptr in Y. destr_in Y.
-           ++ inv Y. rewrite Ptrofs.unsigned_repr in X.
-           generalize (stack_size_pos ((f0::nil)::Mem.astack (Mem.support m1))).
-           intro. admit. generalize max_stacksize_lt_max. intro. split. unfold max_stacksize. lia. lia.
-           (*frame_size > 0*)
-           ++ rewrite Y. simpl. econstructor. eauto.
-              setoid_rewrite SZEQ. rewrite <- H3 in X. admit.
-      * inv RSPINJ. (*crucial lemma needed *) admit.
+        -- exploit sp_of_stack_pspnull; eauto. intro. rewrite H1.
+           rewrite Y. simpl.
+           rewrite Ptrofs.add_unsigned.
+           rewrite X. setoid_rewrite SZEQ. rewrite <- H6.
+           rewrite Ptrofs.unsigned_repr.
+           assert (max_stacksize - (stack_size ((f0::nil)::nil)) + frame_size_a f0 = max_stacksize).
+           unfold stack_size. unfold size_of_all_frames. lia.
+           setoid_rewrite H2. admit. (*Vnullptr*) auto.
+        -- exploit sp_of_stack_pspsome; eauto. intro. rewrite H1.
+           rewrite Y. econstructor. eauto. setoid_rewrite SZEQ.
+           rewrite Ptrofs.add_unsigned. rewrite X. rewrite <- H4.
+           rewrite Ptrofs.unsigned_repr. rewrite Ptrofs.add_zero_l.
+           apply f_equal.
+           assert (stack_size ((f0::nil)::(fr::nil)::astk) =frame_size_a f0 + frame_size_a fr + stack_size astk).
+           simpl. lia. setoid_rewrite H2. lia.
+           auto.
+      * inv RSPINJ.
+        exploit sp_of_stack_return; eauto. symmetry. rewrite SF. eauto. intro.
+        erewrite <- Mem.stack_pop_stage; eauto. rewrite H1.
+        eapply inject_stack_more_perm with (P:= Mem.perm m); eauto. intros.
+        erewrite <- Mem.perm_pop_stage. 2: eauto.
+        erewrite <- Mem.perm_return_frame. 2: eauto. admit. (*perm*)
       (* Stack Injection *)
       * rewrite nextinstr_rsp.
         rewrite Pregmap.gso by congruence.
@@ -1709,16 +1707,17 @@ Proof.
         setoid_rewrite H in STKINJLWBD. setoid_rewrite H in X.
         exists (Ptrofs.repr((Ptrofs.unsigned offset) + frame_size_a f0)).
         split.
+        ++
         rewrite Ptrofs.unsigned_repr. lia.
         split. generalize (Ptrofs.unsigned_range offset).
         intro. generalize (frame_size_a_pos f0). intro. lia.
         rewrite X. generalize (stack_size_pos (Mem.astack (Mem.support m1))). intro.
         generalize max_stacksize_lt_max. intro. lia.
+        ++ rewrite Y.
         unfold Mem.loadv in LOADRA'. destr_in LOADRA'.
-        unfold Val.offset_ptr in Heqv. destr_in Heqv.
+        unfold Val.offset_ptr in Heqv. destr_in Heqv. inv Heqv.
         simpl. unfold trans_ptr. rewrite pred_dec_false.
-        unfold trans_ptr in Y. destr_in Y. unfold Vnullptr in e.
-        destr_in e. inv Y. unfold Ptrofs.add. setoid_rewrite SZEQ.
+        unfold Ptrofs.add. setoid_rewrite SZEQ.
         rewrite (Ptrofs.unsigned_repr (frame_size_a f0)). reflexivity.
         split. apply frame_size_a_pos.
         generalize (Ptrofs.unsigned_range_2 offset). intro.
@@ -1728,11 +1727,11 @@ Proof.
       * intro. intros.
         unfold stack_inject_lowbound in STKINJLWBD.
         destruct (eq_block b0 b). subst.
-        ++
-        generalize (RINJ RSP). rewrite RSRSP. intro. inv H2. rewrite <- H5 in Y.
+        ++ admit.
+        ++ admit.
+(*        generalize (RINJ RSP). rewrite RSRSP. intro. inv H2. rewrite <- H5 in Y.
         unfold trans_ptr in Y. destr_in Y. inv e. inv Y.
         rewrite H0 in H6. inv H6.
-(*
         destruct RSPINJ' as (stkofs).
         unfold single_stack_perm_ofs in STKPERMOFS.
         erewrite <- Mem.perm_pop_stage in H0. 2: eauto.
@@ -1742,8 +1741,7 @@ Proof.
         assert (stack_size (Mem.astack (Mem.support m)) =
                 stagesz + stack_size (Mem.astack (Mem.support m1))). admit.
         rewrite H1 in H. generalize (size_of_all_frames_pos top).
-        intro. admit. *) admit.
-        ++ admit.
+        intro. admit. *)
 Admitted.
 
 (* injection in builtin *)
@@ -1895,7 +1893,7 @@ Proof.
     {
       eapply prog_unchange_rsp; eauto.
     }
-    destruct (exec_instr_inject _ _ _ _ _ _ _ _ _ H2 MS H4 (asm_prog_unchange_stk i)) as ( j' & rs2' & m2' & EI' & MS' & INCR).
+    destruct (exec_instr_inject _ _ _ _ _ _ _ _ _ H2 MS H4 (asm_prog_unchange_sup i)) as ( j' & rs2' & m2' & EI' & MS' & INCR).
     do 2 eexists; split.
     eapply exec_step_internal; eauto.
     rewrite Ptrofs.add_zero. eauto.
@@ -1953,8 +1951,10 @@ Proof.
          simpl. auto. auto. intro. eapply H5. eauto.
       ++ intros. exploit stack_offset_perm0; eauto.
          intro. exploit external_perm_stack; eauto.
-         simpl. auto.         intro. apply H8,H6.
-    + 
+         simpl. auto. intro. apply H8,H6.
+    + eapply inject_stack_incr; eauto. eapply inject_stack_more_perm with (P:= Mem.perm m); eauto.
+      admit. (*perm*)
+      erewrite sp_of_stack_external; eauto. erewrite <- external_call_astack; eauto.
     + remember (nextinstr_nf (set_res res vres' (undef_regs (map preg_of (Machregs.destroyed_by_builtin ef)) rs'0))) as rs'.
       destruct prog_unchange_rsp as (INT & BUILTIN & EXTCALL).
       red in BUILTIN.
@@ -2031,6 +2031,9 @@ Proof.
          intro. exploit external_perm_stack; eauto.
          unfold stkblock. unfold fresh_block. repeat destr. simpl. auto.
          intro. apply H5,H4.
+    + eapply inject_stack_incr; eauto. eapply inject_stack_more_perm with (P:= Mem.perm m); eauto.
+      admit. (*perm*)
+      erewrite sp_of_stack_external; eauto. erewrite <- external_call_astack; eauto.
     + remember ((set_pair (loc_external_result (ef_sig ef)) vres'
      (undef_caller_save_regs rs'0)) # PC <- (rs'0 RA)) as rs'.
       destruct prog_unchange_rsp as (INT & BUILTIN & EXTCALL).
@@ -2052,7 +2055,7 @@ Proof.
       eapply Mem.perm_max in PERM.
       eapply external_call_max_perm; eauto.
       eapply Mem.valid_block_inject_1; eauto.
-Qed.
+Admitted.
 
 Lemma transf_initial_states:
   forall st1, Asm.initial_state prog st1 ->
@@ -2107,6 +2110,7 @@ Proof.
     ++ intros.
        exploit Mem.perm_alloc_2; eauto. instantiate (1:=k).
        intro. eauto. eapply Mem.perm_implies; eauto. constructor.
+  + erewrite Genv.init_mem_stack; eauto. erewrite Genv.init_mem_astack; eauto. simpl. constructor.
   + exists(Ptrofs.repr max_stacksize). split.
       erewrite Genv.init_mem_astack; eauto.
       rewrite Pregmap.gss. reflexivity.

@@ -4,6 +4,8 @@ Require Import Locations Conventions.
 Require Import Asm.
 
 Definition stkblock := Stack None nil 1.
+
+(* Vnullptr in SSAsm will be used as stack top pointer, but appear in memory and regset as Vnullptr *)
 Definition trans_ptr (v:val) :=
   if (Val.eq v Vnullptr) then (Vptr stkblock (Ptrofs.repr max_stacksize)) else v.
 
@@ -27,7 +29,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
     end
   | Pfreeframe sz ofs_ra ofs_link =>
     let aligned_sz := align (Z.max 0 sz) 8 in
-    let sp := Val.offset_ptr (rs#RSP) (Ptrofs.repr aligned_sz) in
+    let sp := Val.offset_ptr rs#RSP (Ptrofs.repr aligned_sz) in
     match Mem.loadv Mptr m (Val.offset_ptr rs#RSP ofs_ra) with
     | None => Stuck
     | Some ra => Next (nextinstr (rs#RSP <- sp #RA <- ra)) m

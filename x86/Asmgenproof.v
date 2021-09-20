@@ -388,54 +388,6 @@ Inductive size_consistency :  list (option Z) -> stackadt -> Prop :=
       size_consistency lsz astack ->
       size_consistency ((Some (frame_size_a fr))::lsz) ((fr::nil)::astack).
 
-Lemma sp_of_stack_pspnull : forall st fid idx,
-    sp_of_stack st = (fid::nil,idx::nil) -> parent_sp_stree st = Vnullptr.
-Proof.
-  intros. unfold parent_sp_stree. rewrite H. auto.
-Qed.
-
-Lemma append_nil_right : forall A (l:list A),
-    l++nil = l.
-Proof.
-  induction l. auto. simpl. congruence.
-Qed.
-
-Lemma sp_of_stack_pspsome : forall st f1 lf path idx2 idx1 id,
-    sp_of_stack st = (f1::(Some id)::lf, (path++(idx2::nil))++(idx1::nil)) ->
-    parent_sp_stree st = Vptr (Stack (Some id) (path++(idx2::nil)) 1%positive) Ptrofs.zero.
-Proof.
-  intros. unfold parent_sp_stree. rewrite H. simpl.
-  destruct path. auto. destruct path. auto. rewrite removelast_app. simpl.
-  rewrite append_nil_right. auto. congruence.
-Qed.
-
-Lemma sp_of_stack_return : forall st st' p' fid lf path idx,
-    return_stree st = Some (st',p') ->
-    sp_of_stack st = (fid::lf,path++(idx::nil)) ->
-    sp_of_stack st' = (lf,path).
-Proof.
-  induction st. intros. unfold sp_of_stack in *. destruct st. destruct o.
-  - simpl in *. destr_in H0. destruct p.
-    + admit.
-(*
-
- destr_in H0. inv Heqp0. inv H0. simpl. destr_in H1. inv H1. destr_in Heqp.
-      inv Heqp.
-      exploit H; eauto. rewrite Heqp0.
-      destr_in H1. destr. inv Heqp.
-      destruct l2. simpl in *. inv H1.
-      assert (f::f0::l2 = (f::f0::nil)++l2). reflexivity. rewrite H0 in H1.
-      rewrite removelast_app in H1. simpl in H1. 
-      admit.
-      simpl. destr. intro.
-      simpl in *. destr. destr_in H1. destr_in Heqp1.
-      inv Heqp1. inv H1. *)
-    + destruct s. destruct o. simpl in *. inv H0.
-      repeat destr_in Heqo. inv H0. simpl in *. inv H1.
-      destruct path. simpl in H4. inv H4. auto. inv H4. destruct path; inv H2.
-  - simpl in H1. inv H1.
-Admitted.
-
 Definition sp_of_callstack (l:list stackframe) : list val :=
   (fun x:stackframe =>
      match x with
@@ -785,7 +737,9 @@ Opaque loadind.
   apply agree_set_other; auto. apply agree_nextinstr. apply agree_set_other; auto.
   eapply agree_change_sp; eauto. eapply parent_sp_def; eauto.
   inv SC. rewrite <- SF in H15. rewrite ASR in H15. rewrite ASP in H15. inv H15. auto.
-  inv SPC. admit. (*sp_of_stack and return*)
+  inv SPC.
+  erewrite <- Mem.stack_pop_stage; eauto. exploit sp_of_stack_return. apply H5.
+  erewrite Mem.support_free; eauto. intro. rewrite H13.  eauto.
   Simplifs. rewrite Pregmap.gso; auto.
   generalize (preg_of_not_SP rf). rewrite (ireg_of_eq _ _ EQ1). congruence.
 + (* Direct call *)
@@ -804,7 +758,9 @@ Opaque loadind.
   apply agree_set_other; auto. apply agree_nextinstr. apply agree_set_other; auto.
   eapply agree_change_sp; eauto. eapply parent_sp_def; eauto.
   inv SC. rewrite <- SF in H13. rewrite ASR in H13. rewrite ASP in H13. inv H13. auto.
-  inv SPC. admit.
+  inv SPC.
+  erewrite <- Mem.stack_pop_stage; eauto. exploit sp_of_stack_return. apply H5.
+  erewrite Mem.support_free; eauto. intro. rewrite H11.  eauto.
   rewrite Pregmap.gss. unfold Genv.symbol_address. rewrite symbols_preserved.
   repeat destr_in H0. rewrite H11. auto.
 
@@ -834,7 +790,7 @@ Opaque loadind.
   apply agree_nextinstr_nf. eapply agree_set_res; auto.
   eapply agree_undef_regs; eauto. intros; apply undef_regs_other_2; auto.
   erewrite <- external_call_astack; eauto.
-  admit. (*sp_of_stack and ext stack*)
+  erewrite sp_of_stack_external; eauto.
   congruence.
 
 - (* Mgoto *)
@@ -963,8 +919,10 @@ Transparent destroyed_by_jumptable.
    rewrite pred_dec_true; auto.
   assert (CSP: parent_sp_stree (Mem.stack (Mem.support m'0)) = parent_sp s).
   inv SPC. inv H13.
-  destruct s. simpl. inv MEXT. rewrite <- mext_sup. simpl in H10. admit. (*sp_of_stack with parent_sp*) inv H16.
-  destruct s. simpl. inv H15. simpl. inv H15. inv MEXT. rewrite <- mext_sup. simpl in H10. admit.
+  destruct s. simpl. inv MEXT. rewrite <- mext_sup. simpl in H10.
+  eapply sp_of_stack_pspnull; eauto. inv H16.
+  destruct s. simpl. inv H15. simpl. inv H15. inv MEXT. rewrite <- mext_sup. simpl in H10.
+  eapply sp_of_stack_pspsome; eauto.
   monadInv H8.
   exploit code_tail_next_int; eauto. intro CT1.
   left; econstructor; split.
@@ -982,7 +940,10 @@ Transparent destroyed_by_jumptable.
   inv SC. erewrite <- Mem.support_free in H12; eauto.
   erewrite Mem.astack_return_frame in H12; eauto.
   apply Mem.astack_pop_stage in H4. destruct H4. rewrite H4 in H12. inv H12. auto.
-  inv SPC. admit.
+  inv SPC.
+  erewrite <- Mem.stack_pop_stage; eauto. exploit sp_of_stack_return. apply H3.
+  erewrite Mem.support_free; eauto. intro. rewrite H10. eauto.
+
 - (* internal function *)
   exploit functions_translated; eauto. intros [tf [A B]]. monadInv B.
   generalize EQ; intros EQ'. monadInv EQ'.
@@ -1022,7 +983,11 @@ Transparent destroyed_at_function_entry.
   assert (aligned_fsz (Mach.fn_stacksize f) = frame_size_a (mk_frame (Mach.fn_stacksize f))).
   simpl. auto. rewrite H2. constructor; auto. erewrite Mem.astack_alloc. 2: eauto.
   erewrite <- Mem.astack_alloc_frame; eauto.
-  admit.
+  caseEq (sp_of_stack (Mem.stack (Mem.support m))). intros.
+  exploit sp_of_stack_alloc. apply H0. eauto.  eauto. intros (idx & H6 & H7).
+  erewrite <- Mem.support_storev; eauto. erewrite <- Mem.support_storev; eauto.
+  erewrite <- Mem.stack_record_frame; eauto. simpl. rewrite H7. constructor. congruence.
+  exploit Mem.alloc_frame_alloc; eauto. intro. rewrite H6 in H8. inv H8. reflexivity.
   intros. Simplifs. eapply agree_sp; eauto.
 
 - (* external function *)
@@ -1039,13 +1004,14 @@ Transparent destroyed_at_function_entry.
   unfold loc_external_result. apply agree_set_other; auto. apply agree_set_pair; auto.
   apply agree_undef_caller_save_regs; auto.
   erewrite <- external_call_astack; eauto.
-  admit.
+  erewrite sp_of_stack_external; eauto.
+
 - (* return *)
   inv STACKS. simpl in *.
   right. split. lia. split. auto.
   econstructor; eauto. rewrite ATPC; eauto. rewrite H3 in SC.
   auto. congruence.
-Admitted.
+Qed.
 
 Lemma transf_initial_states:
   forall st1, Mach.initial_state prog st1 ->
