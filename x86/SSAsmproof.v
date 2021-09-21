@@ -198,7 +198,7 @@ Proof.
   destruct H1. inv H1. extlia. destr_in H1. destruct lf; simpl in H0. auto. auto.
   assert (n1::l <> nil). congruence. apply exists_last in H2. destruct H2 as (l' & a & H3).
   rewrite H3 in *.
-  eapply IHn. 3: apply H1.rewrite removelast_app. simpl.
+  eapply IHn. 3: apply H1. rewrite removelast_app. simpl.
   simpl in H. setoid_rewrite app_length in H. simpl in H. rewrite app_nil_r. lia.
   congruence.
   rewrite removelast_app. simpl. simpl in H0. rewrite app_length in H0.
@@ -1266,7 +1266,7 @@ Lemma allocframe_inject:
   forall j stkb m0 m m1 m2 m3 m4 m' id path rs rs' sz ofs_link ofs_ra
     (MS: match_states j (State rs m0) (State rs' m'))
     (ALLOCF: Mem.alloc_frame m0 id = (m,path))
-    (ALLOC: Mem.alloc m 0 sz = (m1, stkb))
+    (ALLOC: Mem.alloc m 0 (align (Z.max 0 sz) 8) = (m1, stkb))
     (RECORDFR: Mem.record_frame (Mem.push_stage m1) (Memory.mk_frame sz) = Some m2)
     (LINKPOS: 0 <= ofs_link <= Ptrofs.max_unsigned)
     (STORELINK: Mem.store Mptr m2 stkb ofs_link (rs RSP) = Some m3 )
@@ -1526,7 +1526,10 @@ Proof.
     instantiate (1:= stkb). rewrite EQ1. rewrite Heqstkofs; eauto. unfold frame_size_a.
     erewrite Mem.astack_alloc_frame. 2: eauto. erewrite <- Mem.astack_alloc; eauto. auto.
     intros. eapply Mem.perm_store_1; eauto. eapply Mem.perm_store_1; eauto.
-    admit. (* alloc_size = frame_size in Asm*)
+    erewrite <- Mem.perm_record_frame; eauto. erewrite <- Mem.perm_push_stage; eauto.
+    exploit Mem.perm_alloc_2; eauto.
+    instantiate (1:= k). intro. eapply Mem.perm_implies; eauto.
+    apply perm_F_any.
   - exists stkofs'.
     split. auto.
     unfold rs1'. rewrite nextinstr_rsp. rewrite Pregmap.gss.
@@ -1564,7 +1567,7 @@ Proof.
          rewrite Heqstksize in STKINJLWBD.
          eapply STKINJLWBD; eauto.
          eapply Mem.perm_alloc_frame; eauto.
-Admitted.
+Qed.
 
 Lemma max_stacksize_lt_max:
   max_stacksize < Ptrofs.max_unsigned.

@@ -408,6 +408,14 @@ Proof.
   rewrite append_nil_right. auto. congruence.
 Qed.
 
+Lemma sp_of_stack_tspsome : forall st id lf path idx,
+    sp_of_stack st = ((Some id)::lf,path++(idx::nil)) ->
+    top_sp_stree st = Vptr (Stack (Some id) (path++(idx::nil)) 1%positive) Ptrofs.zero.
+Proof.
+  intros. unfold top_sp_stree. rewrite H. simpl.
+  destr. destruct path; inv Heql.
+Qed.
+
 Lemma sp_of_stack_return' : forall st st' p' fid lf path idx root,
     return_stree st = Some (st',p') ->
     sp_of_stack' st = (fid::lf++(root::nil),path++(idx::nil)) ->
@@ -1121,7 +1129,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
     |Vptr (Global id) _
      =>
      let (m0,path) := Mem.alloc_frame m id in
-     let (m1, stk) := Mem.alloc m0 0 sz in
+     let (m1, stk) := Mem.alloc m0 0 (align (Z.max 0 sz) 8) in
      match Mem.record_frame (Mem.push_stage m1) (Memory.mk_frame sz) with
      |None => Stuck
      |Some m2 =>
@@ -1148,6 +1156,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
               | Vptr stk ofs =>
                   if check_topframe sz (Mem.astack (Mem.support m)) then
                   if Val.eq sp (parent_sp_stree (Mem.stack (Mem.support m))) then
+                  if Val.eq (Vptr stk ofs) (top_sp_stree (Mem.stack (Mem.support m))) then
                   match Mem.free m stk 0 sz with
                   | None => Stuck
                   | Some m' =>
@@ -1160,7 +1169,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
                         Next (nextinstr (rs#RSP <- sp #RA <- ra)) m'''
                       end
                     end
-                  end else Stuck else Stuck
+                  end else Stuck else Stuck else Stuck
               | _ => Stuck
               end
           end

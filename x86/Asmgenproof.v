@@ -712,6 +712,8 @@ Opaque loadind.
   simpl in H17. inv H17.
   destruct s. simpl. inv H16. simpl. inv H16. inv MEXT. rewrite <- mext_sup. simpl in H11.
   eapply sp_of_stack_pspsome. rewrite <- H11. eauto.
+  assert (CTP: top_sp_stree (Mem.stack (Mem.support m'0)) = rs0 RSP).
+  inv SPC. rewrite H15. inv MEXT. rewrite <- mext_sup. eapply sp_of_stack_tspsome; eauto.
   destruct ros as [rf|fid]; simpl in H; monadInv H9.
 + (* Indirect call *)
   assert (rs rf = Vptr (Global id) Ptrofs.zero).
@@ -727,7 +729,8 @@ Opaque loadind.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
   simpl. replace (chunk_of_type Tptr) with Mptr in * by (unfold Tptr, Mptr; destruct Archi.ptr64; auto).
   rewrite C. rewrite A. rewrite <- (sp_val _ _ _ AG). rewrite CTF. rewrite CSP. rewrite pred_dec_true.
-  rewrite E. eauto. rewrite G. rewrite J. eauto. eauto.
+  rewrite (sp_val _ _ _ AG). rewrite pred_dec_true.
+  rewrite E. eauto. rewrite G. rewrite J. eauto. eauto. eauto.
   apply star_one. eapply exec_step_internal.
   transitivity (Val.offset_ptr rs0#PC Ptrofs.one). auto.
   rewrite <- H. simpl. eauto.
@@ -749,7 +752,8 @@ Opaque loadind.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
   simpl. replace (chunk_of_type Tptr) with Mptr in * by (unfold Tptr, Mptr; destruct Archi.ptr64; auto).
   rewrite C. rewrite A. rewrite <- (sp_val _ _ _ AG). rewrite CTF. rewrite pred_dec_true.
-  rewrite E. eauto. rewrite G. rewrite J. eauto. eauto.
+  rewrite (sp_val _ _ _ AG). rewrite pred_dec_true.
+  rewrite E. eauto. rewrite G. rewrite J. eauto. eauto. eauto.
   apply star_one. eapply exec_step_internal.
   transitivity (Val.offset_ptr rs0#PC Ptrofs.one). auto. rewrite <- H. simpl. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
@@ -923,13 +927,16 @@ Transparent destroyed_by_jumptable.
   eapply sp_of_stack_pspnull; eauto. inv H16.
   destruct s. simpl. inv H15. simpl. inv H15. inv MEXT. rewrite <- mext_sup. simpl in H10.
   eapply sp_of_stack_pspsome; eauto.
+  assert (CTP: top_sp_stree (Mem.stack (Mem.support m'0)) = rs0 RSP).
+  inv SPC. rewrite H14. inv MEXT. rewrite <- mext_sup. eapply sp_of_stack_tspsome; eauto.
   monadInv H8.
   exploit code_tail_next_int; eauto. intro CT1.
   left; econstructor; split.
   eapply plus_left. eapply exec_step_internal. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
   simpl. rewrite C. rewrite A. rewrite <- (sp_val _ _ _ AG). rewrite CTF. rewrite pred_dec_true.
-  rewrite E. eauto. rewrite G. rewrite J. eauto. eauto.
+  rewrite (sp_val _ _ _ AG). rewrite pred_dec_true.
+  rewrite E. eauto. rewrite G. rewrite J. eauto. eauto. eauto.
   apply star_one. eapply exec_step_internal.
   transitivity (Val.offset_ptr rs0#PC Ptrofs.one). auto. rewrite <- H5. simpl. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
@@ -951,7 +958,9 @@ Transparent destroyed_by_jumptable.
   monadInv EQ0. rewrite transl_code'_transl_code in EQ1.
   unfold store_stack in *.
   exploit Mem.alloc_frame_extends; eauto. intros [m0' [A' B']].
-  exploit Mem.alloc_extends. eauto. eauto. apply Z.le_refl. apply Z.le_refl.
+  exploit Mem.alloc_extends. eauto. eauto. apply Z.le_refl.
+  instantiate (1:= align(Z.max 0 (Mach.fn_stacksize f))8).
+  etransitivity. 2: apply align_le. lia. lia.
   intros [m1' [C D]].
   apply Mem.push_stage_extends in D.
   exploit Mem.record_frame_extends. apply D. eauto. intros [m2' [C' D']].
