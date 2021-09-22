@@ -1517,31 +1517,29 @@ Proof.
     eapply inject_stack_incr; eauto. rewrite <- H.
     erewrite Mem.astack_alloc; eauto. erewrite <- Mem.astack_alloc_frame; eauto.
     eapply inject_stack_inv with (P:= Mem.perm m0); eauto.
-    intros. assert (b <> stkb).
-    {
-      (*stkb not in m0*) admit. (*ok*)
-    }
-    admit. (*perm lemma*)
+    intros.
+    destruct (eq_block b stkb).
+    subst. unfold current_in_stack' in H0. destr_in H0. inv H0. inv H.
+    exploit in_stack'_length; eauto. rewrite app_length. simpl. lia. intro. inv H.
+    erewrite Mem.perm_alloc_frame; eauto.
+    transitivity (Mem.perm m1 b o k p0).
+    split. eapply Mem.perm_alloc_1; eauto.
+    intro. exploit Mem.perm_alloc_inv; eauto. rewrite pred_dec_false. auto. auto.
+    erewrite Mem.perm_push_stage; eauto.
+    erewrite Mem.perm_record_frame; eauto.
+    etransitivity. split. eapply Mem.perm_store_1; eauto. eapply Mem.perm_store_2; eauto.
+    split. eapply Mem.perm_store_1; eauto. eapply Mem.perm_store_2; eauto.
     rewrite EQ1. rewrite Heqstkofs; eauto. unfold frame_size_a.
     erewrite Mem.astack_alloc_frame. 2: eauto. erewrite <- Mem.astack_alloc; eauto.
-(*
-
-    eapply inject_stack_more_perm with (P:= Mem.perm m0); eauto.
-    intros. eapply Mem.perm_store_1; eauto.
-    eapply Mem.perm_store_1; eauto.
-    erewrite <- Mem.perm_record_frame. 2: eauto.
-    erewrite <- Mem.perm_push_stage. 2: eauto.
-    eapply Mem.perm_alloc_1; eauto. erewrite <- Mem.perm_alloc_frame; eauto.
-*)
     intros. etransitivity. instantiate (1:= Mem.perm m2 stkb o k p0).
     erewrite <- Mem.perm_record_frame; eauto. erewrite <- Mem.perm_push_stage; eauto.
     assert (frame_size_a (mk_frame sz) = align (Z.max 0 sz) 8). reflexivity.
     rewrite H0.
-    Search Mem.alloc.
     split. intro. eapply Mem.perm_implies. eapply Mem.perm_alloc_2; eauto.
     apply perm_F_any.
     eapply Mem.perm_alloc_3; eauto.
-    admit. (*perm lemma*)
+    etransitivity. split. eapply Mem.perm_store_1; eauto. eapply Mem.perm_store_2; eauto.
+    split. eapply Mem.perm_store_1; eauto. eapply Mem.perm_store_2; eauto.
   - exists stkofs'.
     split. auto.
     unfold rs1'. rewrite nextinstr_rsp. rewrite Pregmap.gss.
@@ -1568,7 +1566,12 @@ Proof.
       inversion JB. subst delta. clear JB.
       rewrite <- STKOFS'. rewrite Heqstkofs'.
       rewrite (Ptrofs.unsigned_repr _ NEWSTKSIZE). split. lia.
-      admit. (*sos lemma*)
+      caseEq (sp_of_stack (Mem.stack (Mem.support m0))). intros.
+      exploit sp_of_stack_alloc; eauto. intros (idx&X&Y).
+      unfold current_in_stack. rewrite X.
+      erewrite Mem.support_store; eauto. erewrite Mem.support_store; eauto.
+      erewrite <- Mem.stack_record_frame; eauto. rewrite <- Heqm1x. simpl.
+      rewrite Y. simpl. split. auto. destr. destruct p0; inv Heql0.
     * split. rewrite <- STKOFS'.
       transitivity (Ptrofs.unsigned stkofs).
       ** rewrite Heqstkofs'.
@@ -1580,7 +1583,22 @@ Proof.
          rewrite Heqstksize in STKINJLWBD.
          eapply STKINJLWBD; eauto.
          eapply Mem.perm_alloc_frame; eauto.
-Admitted. (*Qed. *)
+      ** unfold stack_inject_lowbound in STKINJLWBD.
+         rewrite <- Heqstkofs in STKINJLWBD.
+         rewrite Heqstksize in STKINJLWBD.
+         exploit STKINJLWBD; eauto. rewrite EQ2 in JB. eauto. auto.
+         erewrite Mem.perm_alloc_frame; eauto. intros (X & Y).
+         caseEq (sp_of_stack (Mem.stack (Mem.support m0))). intros.
+         exploit sp_of_stack_alloc; eauto. intros (idx&X'&Y').
+         unfold current_in_stack.
+         erewrite Mem.support_store. 2: eauto. erewrite Mem.support_store. 2: eauto.
+         erewrite <- Mem.stack_record_frame. 2: eauto. rewrite <- Heqm1x. simpl.
+         rewrite Y'. unfold current_in_stack in Y. unfold current_in_stack' in Y.
+         repeat destr_in Y. inv H. split. auto.
+         simpl. destr. destruct p0; inv Heql0.
+         right. rewrite <- Heql0. rewrite removelast_app. simpl. rewrite app_nil_r.
+         auto. congruence.
+Qed.
 
 Lemma max_stacksize_lt_max:
   max_stacksize < Ptrofs.max_unsigned.
@@ -1590,15 +1608,27 @@ Proof.
   unfold max_stacksize. destr; simpl; lia.
 Qed.
 
-
-Lemma cis_perm : forall b0 m delta ofs k p j,
-    inject_stack j (Mem.perm m) (sp_of_stack (Mem.stack (Mem.support m))) (Mem.astack (Mem.support m)) ->
-    current_in_stack b0 m ->
+Lemma cis_perm : forall b0 m delta ofs k p j stk astk,
+    inject_stack j (Mem.perm m) (sp_of_stack stk) astk ->
+    current_in_stack' b0 (sp_of_stack stk)->
     j b0  = Some (stkblock,delta) ->
     Mem.perm m b0 ofs k p ->
-    delta >= (max_stacksize - stack_size (Mem.astack (Mem.support m))) /\
+    delta >= (max_stacksize - stack_size astk) /\
     0 <= ofs.
-Admitted.
+Proof.
+  induction 1; intros.
+  + unfold current_in_stack' in H. destr_in H. inv H. inv H3.
+  + assert (ASTK:stack_size ((fr::nil)::astk) = frame_size_a fr + stack_size astk). simpl. lia.
+    destruct (eq_block b b0).
+    ++ subst. rewrite H0 in H4.
+       assert (delta = max_stacksize - stack_size astk - frame_size_a fr). congruence.
+       rewrite H1. split. lia.
+       apply H2 in H5. lia.
+    ++ exploit IHinject_stack; eauto. simpl in H3. destr_in H3. inv H3. destr_in H7.
+       destruct H7. inv H1. congruence. unfold current_in_stack'. rewrite <- Heql in H1.
+       split. auto. rewrite removelast_app in H1. simpl in H1. rewrite app_nil_r in H1. auto.
+       congruence. intros [X Y]. split. rewrite ASTK. generalize (frame_size_a_pos fr). intro. lia. lia.
+Qed.
 
 Lemma exec_instr_inject:
   forall j m m' rs rs' f i m1 rs1
@@ -1773,17 +1803,20 @@ Proof.
            auto.
       * inv RSPINJ.
         exploit sp_of_stack_return; eauto. symmetry. rewrite SF. eauto. intro.
-        erewrite <- Mem.stack_pop_stage; eauto. rewrite H1.
+        erewrite Mem.stack_pop_stage in H1; eauto. setoid_rewrite <- H1 in IS_REC.
         eapply inject_stack_inv; eauto.
-        admit. (*b not in cstack + permlemma *)
-(*        intros.
-        erewrite <- Mem.perm_pop_stage. 2: eauto.
-        erewrite <- Mem.perm_return_frame. 2: eauto.
-        eapply Mem.perm_free_inv in H4; eauto. inv H4. inv H6.
-        unfold top_sp_stree in RSPTOP. setoid_rewrite <- H0 in RSPTOP.
-        simpl in RSPTOP. destr_in RSPTOP. destruct p; inv Heql. inv RSPTOP.
-        inv H2. rewrite <- Heql in H6.
-        exfalso. eapply in_stack'_length; eauto. rewrite app_length. simpl. lia. auto. *)
+        {(*cin_perm*)
+          intros.
+          transitivity (Mem.perm m0 b0 o k p0).
+          split. intro. eapply Mem.perm_free_1; eauto. left.
+          destruct (eq_block b0 b). subst. unfold top_sp_stree in RSPTOP.
+          setoid_rewrite <- H0 in RSPTOP. destr_in RSPTOP. destruct p; inv Heql.
+          inv RSPTOP. rewrite H1 in H2. rewrite <- Heql in H2. unfold current_in_stack' in H2.
+          inv H2. exploit in_stack'_length; eauto. rewrite app_length. simpl. lia. auto.
+          eapply Mem.perm_free_3; eauto.
+          erewrite Mem.perm_return_frame; eauto.
+          erewrite Mem.perm_pop_stage; eauto. reflexivity.
+        }
       (* Stack Injection *)
       * rewrite nextinstr_rsp.
         rewrite Pregmap.gso by congruence.
@@ -1813,10 +1846,7 @@ Proof.
         generalize (RINJ RSP). intro.
         apply RSPzero in RSRSP as Z. subst.
         rewrite RSRSP in H2. rewrite Y in H2. inv H2.
-        rewrite Ptrofs.add_zero_l in X.
-        rewrite Ptrofs.add_zero_l in Y. inv RSPINJ.
-        rewrite Ptrofs.unsigned_repr in X.
-        setoid_rewrite X in H6. setoid_rewrite H in H6.
+        inv RSPINJ.
         assert (BEQ: b = Stack (Some id) (p0++idx::nil) 1).
         exploit sp_of_stack_tspsome; eauto. intro.
         rewrite <- RSPTOP in H3. inv H3. auto.
@@ -1830,20 +1860,40 @@ Proof.
            exploit Mem.perm_free_2; eauto.
            assert (sz = frame_size_a f0). admit. (*change ASM*)
            lia. intro. inv H3.
-        ++
-           exploit STKINJLWBD. apply H0. eauto.
+        ++ exploit STKINJLWBD. apply H0. eauto.
            intros (SIZE & CIN).
-           assert (current_in_stack b0 m1). admit. (*CIN lemma*)
-           split. 2: auto.
            exploit sp_of_stack_return; eauto. rewrite SF.
-           eauto. intro. setoid_rewrite <- H4 in IS_REC.
+           eauto. intro.
+           assert (current_in_stack b0 m1).
+           { unfold current_in_stack in *.
+           erewrite <- Mem.stack_pop_stage. 2: eauto. rewrite H3.
+           rewrite <- H2 in CIN. unfold current_in_stack' in *.
+           destr_in CIN. inv CIN. simpl in H7. destr_in H7. destr_in H7.
+           inv H4. congruence. split. auto. rewrite <- Heql in H4. simpl in H4.
+           rewrite removelast_app in H4. simpl in H4. rewrite app_nil_r in H4. auto.
+           congruence. }
+           split. 2: auto.
+           setoid_rewrite <- H3 in IS_REC.
            erewrite Mem.stack_pop_stage in IS_REC; eauto.
            eapply inject_stack_inv in IS_REC. 2: instantiate (1:= Mem.perm m1).
            exploit cis_perm; eauto.
            erewrite <- Mem.perm_pop_stage. 2: eauto.
            erewrite <- Mem.perm_return_frame. 2: eauto. eauto.
            intros (X1 & Y1). lia.
-           admit. (*CIN lemma*)
+        {(*cin_perm*)
+          intros.
+          transitivity (Mem.perm m0 b1 o k0 p1).
+          split. intro. eapply Mem.perm_free_1; eauto. left.
+          destruct (eq_block b1 b). subst. unfold top_sp_stree in RSPTOP.
+          setoid_rewrite <- H2 in RSPTOP. destr_in RSPTOP. destruct p0; inv Heql.
+          inv RSPTOP. rewrite <- Heql in H7. erewrite <- Mem.stack_pop_stage in H7; eauto.
+          rewrite H3 in H7.
+          unfold current_in_stack' in H7.
+          inv H7. exploit in_stack'_length; eauto. rewrite app_length. simpl. lia. auto.
+          eapply Mem.perm_free_3; eauto.
+          erewrite Mem.perm_return_frame; eauto.
+          erewrite Mem.perm_pop_stage; eauto. reflexivity.
+        }
 Admitted.
 
 (* injection in builtin *)
