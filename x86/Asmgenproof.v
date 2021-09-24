@@ -305,7 +305,7 @@ Lemma transl_find_label:
   end.
 Proof.
   intros. monadInv H. destruct (zlt Ptrofs.max_unsigned (list_length_z (fn_code x))); inv EQ0.
-  monadInv EQ. simpl. eapply transl_code_label; eauto. rewrite transl_code'_transl_code in EQ0; eauto.
+  monadInv EQ. destr_in EQ1. inv EQ1. simpl. eapply transl_code_label; eauto. rewrite transl_code'_transl_code in EQ0; eauto.
 Qed.
 
 End TRANSL_LABEL.
@@ -349,7 +349,7 @@ Proof.
   destruct i; try (intros [A B]; apply A). intros. subst c0. repeat constructor.
 - intros. monadInv H0.
   destruct (zlt Ptrofs.max_unsigned (list_length_z (fn_code x))); inv EQ0.
-  monadInv EQ. rewrite transl_code'_transl_code in EQ0.
+  monadInv EQ. destr_in EQ1. inv EQ1. rewrite transl_code'_transl_code in EQ0.
   exists x; exists true; split; auto. unfold fn_code. repeat constructor.
 - exact transf_function_no_overflow.
 Qed.
@@ -729,8 +729,8 @@ Opaque loadind.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
   simpl. replace (chunk_of_type Tptr) with Mptr in * by (unfold Tptr, Mptr; destruct Archi.ptr64; auto).
   rewrite C. rewrite A. rewrite <- (sp_val _ _ _ AG). rewrite CTF. rewrite CSP. rewrite pred_dec_true.
-  rewrite (sp_val _ _ _ AG). rewrite pred_dec_true.
-  rewrite E. eauto. rewrite G. rewrite J. eauto. eauto. eauto.
+  rewrite (sp_val _ _ _ AG). rewrite pred_dec_true. rewrite Z.max_r.
+  rewrite E. eauto. rewrite G. rewrite J. eauto. eapply transf_function_stacksize_pos;eauto. eauto. eauto.
   apply star_one. eapply exec_step_internal.
   transitivity (Val.offset_ptr rs0#PC Ptrofs.one). auto.
   rewrite <- H. simpl. eauto.
@@ -752,8 +752,8 @@ Opaque loadind.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
   simpl. replace (chunk_of_type Tptr) with Mptr in * by (unfold Tptr, Mptr; destruct Archi.ptr64; auto).
   rewrite C. rewrite A. rewrite <- (sp_val _ _ _ AG). rewrite CTF. rewrite pred_dec_true.
-  rewrite (sp_val _ _ _ AG). rewrite pred_dec_true.
-  rewrite E. eauto. rewrite G. rewrite J. eauto. eauto. eauto.
+  rewrite (sp_val _ _ _ AG). rewrite pred_dec_true. rewrite Z.max_r.
+  rewrite E. eauto. rewrite G. rewrite J. eauto. eapply transf_function_stacksize_pos; eauto. eauto. eauto.
   apply star_one. eapply exec_step_internal.
   transitivity (Val.offset_ptr rs0#PC Ptrofs.one). auto. rewrite <- H. simpl. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
@@ -935,8 +935,8 @@ Transparent destroyed_by_jumptable.
   eapply plus_left. eapply exec_step_internal. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
   simpl. rewrite C. rewrite A. rewrite <- (sp_val _ _ _ AG). rewrite CTF. rewrite pred_dec_true.
-  rewrite (sp_val _ _ _ AG). rewrite pred_dec_true.
-  rewrite E. eauto. rewrite G. rewrite J. eauto. eauto. eauto.
+  rewrite (sp_val _ _ _ AG). rewrite pred_dec_true. rewrite Z.max_r.
+  rewrite E. eauto. rewrite G. rewrite J. eauto. eapply transf_function_stacksize_pos;eauto. eauto. eauto.
   apply star_one. eapply exec_step_internal.
   transitivity (Val.offset_ptr rs0#PC Ptrofs.one). auto. rewrite <- H5. simpl. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
@@ -955,12 +955,12 @@ Transparent destroyed_by_jumptable.
   exploit functions_translated; eauto. intros [tf [A B]]. monadInv B.
   generalize EQ; intros EQ'. monadInv EQ'.
   destruct (zlt Ptrofs.max_unsigned (list_length_z (fn_code x0))); inv EQ1.
-  monadInv EQ0. rewrite transl_code'_transl_code in EQ1.
+  monadInv EQ0. rewrite transl_code'_transl_code in EQ1. destr_in EQ2. inv EQ2.
   unfold store_stack in *.
   exploit Mem.alloc_frame_extends; eauto. intros [m0' [A' B']].
-  exploit Mem.alloc_extends. eauto. eauto. apply Z.le_refl.
-  instantiate (1:= align(Z.max 0 (Mach.fn_stacksize f))8).
-  etransitivity. 2: apply align_le. lia. lia.
+  exploit Mem.alloc_extends. eauto. eauto. apply Z.le_refl. apply Z.le_refl.
+(*  instantiate (1:= align(Z.max 0 (Mach.fn_stacksize f))8).
+  etransitivity. 2: apply align_le. lia. lia. *)
   intros [m1' [C D]].
   apply Mem.push_stage_extends in D.
   exploit Mem.record_frame_extends. apply D. eauto. intros [m2' [C' D']].
@@ -972,10 +972,10 @@ Transparent destroyed_by_jumptable.
   apply plus_one. econstructor; eauto.
   simpl. rewrite Ptrofs.unsigned_zero. simpl. eauto.
   Opaque Mem.alloc_frame.
-  simpl. rewrite ATPC. rewrite A'. rewrite C. rewrite C'.  simpl in F, P.
+  simpl. rewrite ATPC. rewrite A'. rewrite Z.max_r. rewrite C. rewrite C'.  simpl in F, P.
   replace (chunk_of_type Tptr) with Mptr in F, P by (unfold Tptr, Mptr; destruct Archi.ptr64; auto).
   rewrite (sp_val _ _ _ AG) in F. rewrite F.
-  rewrite ATLR. rewrite P. eauto.
+  rewrite ATLR. rewrite P. eauto. eapply transf_function_stacksize_pos; eauto.
   econstructor; eauto.
   unfold nextinstr. rewrite Pregmap.gss. repeat rewrite Pregmap.gso; auto with asmgen.
   rewrite ATPC. simpl. constructor; eauto.
@@ -1069,3 +1069,4 @@ Proof.
 Qed.
 
 End PRESERVATION.
+

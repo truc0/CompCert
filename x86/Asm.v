@@ -1129,7 +1129,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
     |Vptr (Global id) _
      =>
      let (m0,path) := Mem.alloc_frame m id in
-     let (m1, stk) := Mem.alloc m0 0 (align (Z.max 0 sz) 8) in
+     let (m1, stk) := Mem.alloc m0 0 (Z.max 0 sz) in
      match Mem.record_frame (Mem.push_stage m1) (Memory.mk_frame sz) with
      |None => Stuck
      |Some m2 =>
@@ -1157,7 +1157,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
                   if check_topframe sz (Mem.astack (Mem.support m)) then
                   if Val.eq sp (parent_sp_stree (Mem.stack (Mem.support m))) then
                   if Val.eq (Vptr stk ofs) (top_sp_stree (Mem.stack (Mem.support m))) then
-                  match Mem.free m stk 0 sz with
+                  match Mem.free m stk 0 (Z.max 0 sz) with
                   | None => Stuck
                   | Some m' =>
                     match Mem.return_frame m' with

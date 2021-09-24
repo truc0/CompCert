@@ -771,8 +771,10 @@ Definition transl_code' (f: Mach.function) (il: list Mach.instruction) (axp: boo
 
 Definition transl_function (f: Mach.function) :=
   do c <- transl_code' f f.(Mach.fn_code) true;
+  if zle 0 f.(Mach.fn_stacksize) then
   OK (mkfunction f.(Mach.fn_sig)
-        (Pallocframe f.(Mach.fn_stacksize) f.(fn_retaddr_ofs) f.(fn_link_ofs) :: c) f.(Mach.fn_stacksize)).
+        (Pallocframe f.(Mach.fn_stacksize) f.(fn_retaddr_ofs) f.(fn_link_ofs) :: c) f.(Mach.fn_stacksize))
+  else Error (msg "negative function stacksize").
 
 Definition transf_function (f: Mach.function) : res Asm.function :=
   do tf <- transl_function f;
@@ -787,7 +789,17 @@ Lemma transl_function_stacksize :
 Proof.
   intros.
   unfold transl_function in H. unfold bind in H.
-  destr_in H. inv H. simpl. auto.
+  destr_in H. destr_in H. inv H. simpl. auto.
+Qed.
+
+Lemma transf_function_stacksize_pos :
+  forall f tf,
+    transf_function f = OK tf ->
+    0 <= Mach.fn_stacksize f.
+Proof.
+  intros. unfold transf_function in H. monadInv H.
+  unfold transl_function in EQ. destr_in EQ.
+  monadInv EQ.
 Qed.
 
 Definition transf_fundef (f: Mach.fundef) : res Asm.fundef :=
