@@ -2023,6 +2023,12 @@ Lemma external_perm_stack:
     Mem.perm m2 b o k p <-> Mem.perm m1 b o k p.
 Admitted.
 
+Lemma external_call_active_stack: forall m1 m2 b ef vargs t vres o k p,
+          external_call ef ge vargs m1 t vres m2 ->
+          current_in_stack b m1 ->
+          Mem.perm m1 b o k p <-> Mem.perm m2 b o k p.
+Admitted.
+
 (** Step Simulation *)
 Theorem step_simulation:
   forall S1 t S2,
@@ -2107,7 +2113,7 @@ Proof.
     + eapply inject_stack_incr; eauto.
       erewrite sp_of_stack_external; eauto. erewrite <- external_call_astack; eauto.
       eapply inject_stack_inv; eauto. intros.
-      admit. (*external perm on stack*)
+      eapply external_call_active_stack; eauto.
     + remember (nextinstr_nf (set_res res vres' (undef_regs (map preg_of (Machregs.destroyed_by_builtin ef)) rs'0))) as rs'.
       destruct prog_unchange_rsp as (INT & BUILTIN & EXTCALL).
       red in BUILTIN.
@@ -2188,7 +2194,7 @@ Proof.
     + eapply inject_stack_incr; eauto.
       erewrite sp_of_stack_external; eauto. erewrite <- external_call_astack; eauto.
       eapply inject_stack_inv; eauto. intros.
-      admit. (*external perm*)
+      eapply external_call_active_stack; eauto.
     + remember ((set_pair (loc_external_result (ef_sig ef)) vres'
      (undef_caller_save_regs rs'0)) # PC <- (rs'0 RA)) as rs'.
       destruct prog_unchange_rsp as (INT & BUILTIN & EXTCALL).
@@ -2211,7 +2217,7 @@ Proof.
       eapply Mem.perm_max in PERM.
       eapply external_call_max_perm; eauto.
       eapply Mem.valid_block_inject_1; eauto.
-Admitted.
+Qed.
 
 Lemma transf_initial_states:
   forall st1, Asm.initial_state prog st1 ->
