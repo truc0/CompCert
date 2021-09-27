@@ -706,7 +706,7 @@ Lemma transf_initial_states:
   exists st2, initial_state tprog st2 /\ match_states st1 st2.
 Proof.
   intros. inversion H.
-  exists (Callstate nil (tunnel_fundef f) (Locmap.init Vundef) m0 (prog_main tprog)); split.
+  exists (Callstate nil (tunnel_fundef f) (Locmap.init Vundef) m1 (prog_main tprog)); split.
   econstructor; eauto.
   apply (Genv.init_mem_transf TRANSL); auto.
   rewrite (match_program_main TRANSL).

@@ -78,7 +78,7 @@ Inductive initial_state (p: program): state -> Prop :=
         (Pregmap.init Vundef)
         # PC <- (Genv.symbol_address ge p.(prog_main) Ptrofs.zero)
         # RA <- Vnullptr
-        # RSP <- Vnullptr in
+        # RSP <- (Vptr stkblock (Ptrofs.repr max_stacksize)) in
       initial_state p (State rs0 m1).
 
 (** The same final_state as defined in the Asm.v *)

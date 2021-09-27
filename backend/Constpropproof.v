@@ -618,9 +618,9 @@ Lemma transf_initial_states:
 Proof.
   intros. inversion H.
   exploit function_ptr_translated; eauto. intros (cu & FIND & LINK).
-  exists O; exists (Callstate nil (transf_fundef (romem_for cu) f) nil m0 tprog.(prog_main)); split.
+  exists O; exists (Callstate nil (transf_fundef (romem_for cu) f) nil m1 tprog.(prog_main)); split.
   econstructor; eauto.
-  apply (Genv.init_mem_match TRANSL); auto.
+  apply (Genv.init_mem_match TRANSL); auto. eauto.
   replace (prog_main tprog) with (prog_main prog).
   rewrite symbols_preserved. eauto.
   symmetry; eapply match_program_main; eauto.

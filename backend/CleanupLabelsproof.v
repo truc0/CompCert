@@ -336,7 +336,7 @@ Proof.
   eapply (Genv.init_mem_transf TRANSL); eauto.
   rewrite (match_program_main TRANSL), symbols_preserved; eauto.
   apply function_ptr_translated; auto.
-  rewrite sig_function_translated. auto.
+  rewrite sig_function_translated. auto. eauto.
   rewrite (match_program_main TRANSL).
   constructor; auto. constructor.
 Qed.

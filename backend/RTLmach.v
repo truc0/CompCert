@@ -168,13 +168,14 @@ End RELSEM.
   without arguments and with an empty call stack. *)
 
 Inductive initial_state (p: program): state -> Prop :=
-  | initial_state_intro: forall b f m0,
+  | initial_state_intro: forall b f m0 m1 b0,
       let ge := Genv.globalenv p in
       Genv.init_mem p = Some m0 ->
       Genv.find_symbol ge p.(prog_main) = Some b ->
       Genv.find_funct_ptr ge b = Some f ->
       funsig f = signature_main ->
-      initial_state p (Callstate nil f nil m0 (prog_main p)).
+      Mem.alloc m0 0 0 = (m1,b0) ->
+      initial_state p (Callstate nil f nil m1 (prog_main p)).
 
 (** A final state is a [Returnstate] with an empty call stack. *)
 

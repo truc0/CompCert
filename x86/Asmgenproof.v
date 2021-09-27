@@ -1029,7 +1029,7 @@ Proof.
   intros. inversion H. unfold ge0 in *.
   econstructor; split.
   econstructor.
-  eapply (Genv.init_mem_transf_partial TRANSF); eauto.
+  eapply (Genv.init_mem_transf_partial TRANSF); eauto. eauto.
   replace (Genv.symbol_address (Genv.globalenv tprog) (prog_main tprog) Ptrofs.zero)
      with (Vptr fb Ptrofs.zero).
   econstructor; eauto.
@@ -1037,9 +1037,10 @@ Proof.
   apply Mem.extends_refl.
   split. reflexivity. simpl.
   unfold Vnullptr; destruct Archi.ptr64; congruence.
-  intros. rewrite Regmap.gi. auto.
+  intros. rewrite Regmap.gi. auto. erewrite Mem.astack_alloc; eauto.
   erewrite Genv.init_mem_astack; eauto. simpl. constructor.
-  erewrite Genv.init_mem_stack; eauto. simpl. constructor.
+  apply Mem.stack_alloc in H2 as H4.
+  apply Genv.init_mem_stack in H0. rewrite H0 in H4. simpl in H4. rewrite H4. simpl. constructor.
   apply Genv.genv_vars_eq in H1 as H1'. auto.
   unfold Genv.symbol_address.
   rewrite (match_program_main TRANSF).

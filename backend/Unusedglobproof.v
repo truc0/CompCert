@@ -1491,17 +1491,44 @@ Proof.
   exploit defs_inject. eauto. eexact Q. exact H2.
   intros (R & S & T).
   rewrite <- Genv.find_funct_ptr_iff in R.
-  exists (Callstate nil f nil tm (prog_main tp)); split.
+  exploit Genv.init_mem_stack; eauto. intro STK2.
+  exploit Genv.init_mem_stack. apply H0. intro STK1.
+  exploit Mem.alloc_parallel_inject; eauto. apply Z.le_refl. apply Z.le_refl.
+  intros (f' & tm' & b' & U &V &W&X&Y).
+  apply Mem.alloc_result in H4 as H5. unfold Mem.nextblock in H5. unfold fresh_block in H5.
+  rewrite STK1 in H5. simpl in H5. subst.
+  apply Mem.alloc_result in U as U'.  unfold Mem.nextblock in U'. unfold fresh_block in U'.
+  rewrite STK2 in U'. simpl in U'. subst.
+  apply Mem.valid_new_block in H4 as H6.
+  apply Mem.valid_new_block in U as U''.
+  apply Mem.stack_alloc in H4 as STK3. rewrite STK1 in STK3. simpl in STK3.
+  apply Mem.stack_alloc in U as STK4. rewrite STK2 in STK4. simpl in STK4.
+  assert (f' = struct_meminj (Mem.support m1)).
+    apply Axioms.extensionality. intros.
+    destruct (eq_block x (Stack None nil 1)). subst. unfold struct_meminj. unfold check_block.
+    destr. destr_in Heqb0. apply n in H6. inv H6.
+    rewrite Y. 2:auto.  erewrite sinj_init. 2: eauto.
+    unfold struct_meminj. unfold check_block. destruct x.
+    destr. destr_in Heqb0. simpl in s. rewrite STK1 in s.
+    destruct p0; simpl in s. inv s. inv H5. destruct n0; inv s.
+    destr_in Heqb0. destr. destr_in Heqb1.
+    simpl in s. rewrite STK3 in s. destruct p0; simpl in s. inv s. inv H5. congruence. inv H.
+    destruct n1; inv s. reflexivity. subst.
+  exists (Callstate nil f nil tm' (prog_main tp)); split.
   econstructor; eauto.
   fold tge. erewrite match_prog_main by eauto. auto.
   erewrite <- match_prog_main; eauto.
   econstructor; eauto.
-  constructor. erewrite <- sinj_init; eauto.
+  eapply match_stacks_bound. 2: eapply Mem.sup_include_alloc; eauto. 2: eapply Mem.sup_include_alloc; eauto.
+  eapply match_stacks_incr. eauto.
+  constructor. auto.
   erewrite <- Genv.init_mem_genv_sup by eauto. apply Mem.sup_include_refl.
   erewrite <- Genv.init_mem_genv_sup by eauto. apply Mem.sup_include_refl.
-  erewrite Genv.init_mem_stack; eauto. erewrite Genv.init_mem_stack; eauto.
+  intros. destruct (eq_block b1 (Stack None nil 1)). subst. rewrite X in H5. inv H5.
+  simpl. rewrite STK1. rewrite STK2. simpl. split. lia. lia. rewrite Y in H5. congruence. auto.
+  congruence.
+  erewrite Mem.astack_alloc. 2: eauto. apply Mem.astack_alloc in U. rewrite U.
   erewrite Genv.init_mem_astack; eauto. erewrite Genv.init_mem_astack; eauto.
-  erewrite <- sinj_init; eauto.
 Qed.
 
 Lemma transf_final_states:

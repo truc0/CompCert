@@ -1593,7 +1593,7 @@ Proof.
   replace (prog_main tprog) with (prog_main prog). rewrite symbols_preserved; eauto.
   symmetry; eapply match_program_main; eauto.
   eexact A.
-  rewrite <- H2. apply sig_transl_function; auto.
+  rewrite <- H2. apply sig_transl_function; auto. eauto.
   setoid_rewrite (match_program_main TRANSL).
   constructor. auto. constructor.
   constructor. apply Mem.extends_refl.

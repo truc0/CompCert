@@ -1501,7 +1501,7 @@ Lemma match_stacks_type_sp:
   match_stacks j cs cs' sg ->
   Val.has_type (parent_sp cs') Tptr.
 Proof.
-  induction 1; unfold parent_sp. apply Val.Vnullptr_has_type. apply Val.Vptr_has_type.
+  induction 1; unfold parent_sp. apply Val.Vptr_has_type. apply Val.Vptr_has_type.
 Qed.
 
 Lemma match_stacks_type_retaddr:
@@ -2341,18 +2341,26 @@ Proof.
   econstructor.
   eapply (Genv.init_mem_transf_partial TRANSF); eauto.
   rewrite (match_program_main TRANSF).
-  rewrite symbols_preserved. eauto.
+  rewrite symbols_preserved. eauto. eauto.
   set (j := Mem.flat_inj (Mem.support m0)).
+  set (j' := Mem.flat_inj (Mem.support m1)).
+  assert (INCR:inject_incr j j'). admit.
   rewrite (match_program_main TRANSF).
   apply Genv.genv_vars_eq in H1. subst.
-  eapply match_states_call with (j := j); eauto.
+  eapply match_states_call with (j := j'); eauto.
+  eapply match_stacks_change_meminj; eauto.
   constructor. red; intros. rewrite H3, loc_arguments_main in H. contradiction.
-  red; simpl; auto. unfold Mem.flat_inj in j. unfold struct_meminj.
-  subst j. apply Axioms.extensionality. intro. destr. destruct x.
+  eapply agree_regs_inject_incr; eauto.
+  red; simpl; auto.
+  admit. admit.
+(*
+  unfold Mem.flat_inj in j'. unfold struct_meminj. admit.
+(*  subst j'. apply Axioms.extensionality. intro. destr. destruct x.
   apply Genv.init_mem_stack in H0. simpl in s. rewrite H0 in s.
-  destruct p; simpl in s. inv s. inv H1. destruct n; inv s. unfold unchecked_meminj. auto.
+  destruct p; simpl in s. inv s. inv H1. destruct n; inv s. unfold unchecked_meminj. auto. *)
   simpl. rewrite sep_pure. split; auto. split;[|split].
-  eapply Genv.initmem_inject; eauto.
+  admit.
+(*  eapply Genv.initmem_inject; eauto. *)
   simpl. exists (Mem.support m0); split. apply Mem.sup_include_refl.
   unfold j, Mem.flat_inj; constructor; intros.
     apply pred_dec_true; auto.
@@ -2360,8 +2368,8 @@ Proof.
     change (Mem.valid_block m0 b). eapply Genv.find_symbol_not_fresh; eauto.
     change (Mem.valid_block m0 b). eapply Genv.find_funct_ptr_not_fresh; eauto.
     change (Mem.valid_block m0 b). eapply Genv.find_var_info_not_fresh; eauto.
-  red; simpl; tauto.
-Qed.
+  red; simpl; tauto. *)
+Admitted.
 
 Lemma transf_final_states:
   forall st1 st2 r,

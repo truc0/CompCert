@@ -376,7 +376,7 @@ Definition parent_sp_stree (st:stree) : val :=
   match (lf,path) with
     |(f1::((Some id)::tl), _::(_::_)) =>
      Vptr (Stack (Some id) (removelast path) 1%positive) Ptrofs.zero
-    |_ => Vnullptr
+    |_ => Vptr (Stack None nil 1) Ptrofs.zero
   end.
 
 Definition top_sp_stree (st:stree) : val :=
@@ -384,11 +384,11 @@ Definition top_sp_stree (st:stree) : val :=
   match (lf,path) with
     | (((Some id)::tl), (_::_)) =>
      Vptr (Stack (Some id) path 1%positive) Ptrofs.zero
-    |_ => Vnullptr
+    |_ => Vptr (Stack None nil 1) Ptrofs.zero
   end.
 
 Lemma sp_of_stack_pspnull : forall st fid idx,
-    sp_of_stack st = (fid::nil,idx::nil) -> parent_sp_stree st = Vnullptr.
+    sp_of_stack st = (fid::nil,idx::nil) -> parent_sp_stree st = Vptr (Stack None nil 1) Ptrofs.zero.
 Proof.
   intros. unfold parent_sp_stree. rewrite H. auto.
 Qed.
@@ -1334,15 +1334,16 @@ End RELSEM.
 (** Execution of whole programs. *)
 
 Inductive initial_state (p: program): state -> Prop :=
-  | initial_state_intro: forall m0,
+  | initial_state_intro: forall m0 m1 b0,
       Genv.init_mem p = Some m0 ->
+      Mem.alloc m0 0 0 = (m1,b0) ->
       let ge := Genv.globalenv p in
       let rs0 :=
         (Pregmap.init Vundef)
         # PC <- (Genv.symbol_address ge p.(prog_main) Ptrofs.zero)
         # RA <- Vnullptr
-        # RSP <- Vnullptr in
-      initial_state p (State rs0 m0).
+        # RSP <- (Vptr (Stack None nil 1) Ptrofs.zero) in
+      initial_state p (State rs0 m1).
 
 Inductive final_state: state -> int -> Prop :=
   | final_state_intro: forall rs m r,

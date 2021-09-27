@@ -3129,6 +3129,13 @@ Proof.
   destr. intro. rewrite H. reflexivity.
 Qed.
 
+Theorem stack_alloc :
+  stack (support m2) = snd (next_block_stree (stack (support m1))).
+Proof.
+  generalize support_alloc. unfold sup_incr.
+  destr. simpl. intro. rewrite H. reflexivity.
+Qed.
+
 Theorem alloc_result:
   b = nextblock m1.
 Proof.

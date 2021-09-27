@@ -291,12 +291,12 @@ Lemma transf_initial_states:
   exists S2, initial_state tprog S2 /\ match_states S1 S2.
 Proof.
   intros. inv TRANSL. inv H.
-  exists (Callstate nil f nil m0 (prog_main tprog)).
+  exists (Callstate nil f nil m1 (prog_main tprog)).
   split.
   econstructor; eauto.
   econstructor; eauto.
   eapply Mem.push_stage_left_iff. apply Mem.iff_refl.
-  simpl. reflexivity.
+  simpl. reflexivity. erewrite Mem.astack_alloc; eauto.
   apply Genv.init_mem_astack in H0. rewrite H0.
   constructor.
 Qed.
