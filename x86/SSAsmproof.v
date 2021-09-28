@@ -273,9 +273,10 @@ Inductive match_states: meminj -> state -> state -> Prop :=
       (RSPzero: forall b i, rs # RSP = Vptr b i -> i = Ptrofs.zero )
       (RINJ: forall r, Val.inject j (rs # r) (rs' # r))
    (** Stack Properties **)
-      (STKROOT: forall ofs k p,Mem.perm m stkblock ofs k p -> ofs =0)
-      (STKVB: Mem.valid_block m' stkblock)
-      (STKPERMOFS: single_stack_perm_ofs m')
+      (STKVB: Mem.valid_block m stkblock)
+      (STKPERMOFS: forall ofs k p, Mem.perm m stkblock ofs k p <-> ofs =0)
+      (STKVB': Mem.valid_block m' stkblock)
+      (STKPERMOFS': single_stack_perm_ofs m')
    (** Stack Injection *)
       (RSPINJ: inject_stack j (Mem.perm m)
                             (sp_of_stack (Mem.stack (Mem.support m)))
@@ -1294,7 +1295,7 @@ Proof.
   remember (stksize - aligned_sz) as stksize'.
   exploit Mem.alloc_frame_left_inject; eauto. intro MINJ'.
   (* reuse alloc_inject lemmas in memory *)
-  generalize (Mem.alloc_left_mapped_inject _ _ _ _ _ _ _ _ stksize' MINJ' ALLOC STKVB).
+  generalize (Mem.alloc_left_mapped_inject _ _ _ _ _ _ _ _ stksize' MINJ' ALLOC STKVB').
   (* assert some properties about stack size *)
   assert (ALGIN_SZ_ORDER: sz <= align sz 8). apply align_le. lia.
   remember (Memory.mk_frame sz) as fr.
@@ -1323,10 +1324,10 @@ Proof.
   (* prove for its premise *)
   intro A.
   trim A. lia.
-  trim A. intros. right. eapply STKPERMOFS. eauto.
+  trim A. intros. right. eapply STKPERMOFS'. eauto.
   trim A.
   {
-    intros. eapply STKPERMOFS.
+    intros. eapply STKPERMOFS'.
     split. rewrite Heqstksize'. lia.
     rewrite Heqstksize'. rewrite Heqstksize.
     eapply Z.lt_le_trans with stksize. lia.
@@ -1505,7 +1506,15 @@ Proof.
     rewrite <- Ptrofs.sub_add_opp. unfold Ptrofs.sub.
     rewrite Ptrofs.unsigned_repr; auto.
   (* Stack Injection *)
-  - intros. eapply STKROOT. admit.
+  - unfold Mem.valid_block. apply SUPINCALL. auto.
+  - intros. exploit STKPERMOFS; eauto. intros.
+    etransitivity. 2: apply H.
+    etransitivity. split. eapply Mem.perm_store_2; eauto. eapply Mem.perm_store_1; eauto.
+    etransitivity. split. eapply Mem.perm_store_2; eauto. eapply Mem.perm_store_1; eauto.
+    erewrite <- Mem.perm_record_frame; eauto. erewrite <- Mem.perm_push_stage; eauto.
+    etransitivity. 2: erewrite Mem.perm_alloc_frame; eauto. 2: reflexivity.
+    
+    eapply STKROOT. admit.
   - unfold Mem.valid_block. apply SUPINCALL'. auto.
   - constructor.
     intros ofs k p PERM.
@@ -2120,10 +2129,13 @@ Proof.
       apply val_inject_undef_regs; auto.
       intros; eapply val_inject_incr; eauto.
     (* Stack Injection *)
+    + intros. eapply STKROOT.
+      eapply external_perm_stack in H3; eauto.
+      apply H3,H5. simpl. auto. admit.
     + unfold Mem.valid_block. apply SUPINCMEM1. auto.
     + inv STKPERMOFS. constructor.
       ++ intros ofs0 k p PERM. eapply stack_perm_offset0.
-         exploit external_perm_stack; eauto.
+         exploit external_perm_stack. eauto. 
          simpl. auto. auto. intro. eapply H5. eauto.
       ++ intros. exploit stack_offset_perm0; eauto.
          intro. exploit external_perm_stack; eauto.
