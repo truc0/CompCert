@@ -6,8 +6,8 @@ Require Import Asm.
 Definition stkblock := Stack None nil 1.
 
 (* Vnullptr in SSAsm will be used as stack top pointer, but appear in memory and regset as Vnullptr *)
-Definition trans_ptr (v:val) :=
-  if (Val.eq v Vnullptr) then (Vptr stkblock (Ptrofs.repr max_stacksize)) else v.
+(*Definition trans_ptr (v:val) :=
+  if (Val.eq v Vnullptr) then (Vptr stkblock (Ptrofs.repr max_stacksize)) else v. *)
 
 Section SSASM.
 
@@ -17,8 +17,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
   match i with
   | Pallocframe sz ofs_ra ofs_link =>
     let aligned_sz := align (Z.max 0 sz) 8 in
-    let RSP' := trans_ptr (rs#RSP) in
-    let sp := Val.offset_ptr RSP' (Ptrofs.neg (Ptrofs.repr aligned_sz)) in
+    let sp := Val.offset_ptr (rs#RSP) (Ptrofs.neg (Ptrofs.repr aligned_sz)) in
     match Mem.storev Mptr m (Val.offset_ptr sp ofs_link) (rs#RSP) with
     | None => Stuck
     | Some m1 =>

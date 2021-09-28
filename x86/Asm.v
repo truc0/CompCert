@@ -348,7 +348,7 @@ Definition check_topframe (sz:Z)(astack:stackadt) : bool :=
   match astack with
     |nil => false
     |top::tl => match top with
-                |fr::nil => if (zeq (aligned_fsz sz) (frame_size_a fr)) then true else false
+                |fr::nil => if (zeq sz (frame_size fr)) then true else false
                 |_ => false
               end
   end.
@@ -1125,11 +1125,12 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
   | Plabel lbl =>
       Next (nextinstr rs) m
   | Pallocframe sz ofs_ra ofs_link =>
+    if zle 0 sz then
     match rs # PC with
     |Vptr (Global id) _
      =>
      let (m0,path) := Mem.alloc_frame m id in
-     let (m1, stk) := Mem.alloc m0 0 (Z.max 0 sz) in
+     let (m1, stk) := Mem.alloc m0 0 sz in
      match Mem.record_frame (Mem.push_stage m1) (Memory.mk_frame sz) with
      |None => Stuck
      |Some m2 =>
@@ -1144,8 +1145,9 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
       end
      end
     |_ => Stuck
-    end
+    end else Stuck
   | Pfreeframe sz ofs_ra ofs_link =>
+    if zle 0 sz then
       match Mem.loadv Mptr m (Val.offset_ptr rs#RSP ofs_ra) with
       | None => Stuck
       | Some ra =>
@@ -1157,7 +1159,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
                   if check_topframe sz (Mem.astack (Mem.support m)) then
                   if Val.eq sp (parent_sp_stree (Mem.stack (Mem.support m))) then
                   if Val.eq (Vptr stk ofs) (top_sp_stree (Mem.stack (Mem.support m))) then
-                  match Mem.free m stk 0 (Z.max 0 sz) with
+                  match Mem.free m stk 0 sz with
                   | None => Stuck
                   | Some m' =>
                     match Mem.return_frame m' with
@@ -1173,7 +1175,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
               | _ => Stuck
               end
           end
-      end
+      end else Stuck
   | Pbuiltin ef args res =>
       Stuck                             (**r treated specially below *)
   (** The following instructions and directives are not generated

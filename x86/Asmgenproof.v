@@ -377,7 +377,7 @@ Definition size_of_callstack (l: list stackframe): list (option Z) :=
      match x with
        |Stackframe fb _ _ _ =>
         match Genv.find_funct_ptr ge fb with
-          |Some (Internal tf) => Some (aligned_fsz (Mach.fn_stacksize tf))
+          |Some (Internal tf) => Some (Mach.fn_stacksize tf)
           |_ => None
         end
      end) ## l.
@@ -386,7 +386,7 @@ Inductive size_consistency :  list (option Z) -> stackadt -> Prop :=
   |size_consistency_nil : size_consistency nil nil
   |size_consistency_cons : forall lsz astack fr,
       size_consistency lsz astack ->
-      size_consistency ((Some (frame_size_a fr))::lsz) ((fr::nil)::astack).
+      size_consistency ((Some (frame_size fr))::lsz) ((fr::nil)::astack).
 
 Definition sp_of_callstack (l:list stackframe) : list val :=
   (fun x:stackframe =>
@@ -422,7 +422,7 @@ Inductive match_states: Mach.state -> Asm.state -> Prop :=
         (AT: transl_code_at_pc ge (rs PC) fb f c ep tf tc)
         (AG: agree ms sp rs)
         (SC: size_consistency
-               ((Some (aligned_fsz (Mach.fn_stacksize f)))::(size_of_callstack s))
+               ((Some (Mach.fn_stacksize f))::(size_of_callstack s))
                (Mem.astack(Mem.support m)))
         (SPC: sp_consistency (sp_of_stack (Mem.stack (Mem.support m))) (sp:: sp_of_callstack s))
         (AXP: ep = true -> rs#RAX = parent_sp s),
@@ -457,7 +457,7 @@ Lemma exec_straight_steps:
   Mem.extends m2 m2' ->
   Genv.find_funct_ptr ge fb = Some (Internal f) ->
   size_consistency
-    ((Some (aligned_fsz (Mach.fn_stacksize f)))::(size_of_callstack s))
+    ((Some (Mach.fn_stacksize f))::(size_of_callstack s))
     (Mem.astack(Mem.support m2)) ->
   sp_consistency (sp_of_stack (Mem.stack (Mem.support m2))) (sp:: sp_of_callstack s) ->
   transl_code_at_pc ge (rs1 PC) fb f (i :: c) ep tf tc ->
@@ -483,7 +483,7 @@ Lemma exec_straight_steps_goto:
   Mem.extends m2 m2' ->
   Genv.find_funct_ptr ge fb = Some (Internal f) ->
   size_consistency
-    (Some (aligned_fsz (Mach.fn_stacksize f))::(size_of_callstack s))
+    (Some (Mach.fn_stacksize f)::(size_of_callstack s))
     (Mem.astack(Mem.support m2)) ->
   sp_consistency (sp_of_stack (Mem.stack (Mem.support m2))) (sp:: sp_of_callstack s) ->
   Mach.find_label lbl f.(Mach.fn_code) = Some c' ->
@@ -704,7 +704,7 @@ Opaque loadind.
   apply Mem.astack_pop_stage in H6 as ASP. destruct ASP as (topfr & ASP).
   assert (CTF:check_topframe (Mach.fn_stacksize f) (Mem.astack (Mem.support m'0)) = true).
    unfold check_topframe. inv SC.   inv MEXT. rewrite <- mext_sup. rewrite <- H14.
-   rewrite pred_dec_true; auto.
+   rewrite pred_dec_true; auto. unfold frame_size_a. unfold aligned_fsz. 
   assert (CSP:(parent_sp_stree (Mem.stack (Mem.support m'0)) = (parent_sp s))).
   inv SPC. inv H14.
   destruct s. simpl. inv MEXT. rewrite <- mext_sup. simpl in H11.
@@ -728,9 +728,12 @@ Opaque loadind.
   eapply plus_left. eapply exec_step_internal. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
   simpl. replace (chunk_of_type Tptr) with Mptr in * by (unfold Tptr, Mptr; destruct Archi.ptr64; auto).
-  rewrite C. rewrite A. rewrite <- (sp_val _ _ _ AG). rewrite CTF. rewrite CSP. rewrite pred_dec_true.
-  rewrite (sp_val _ _ _ AG). rewrite pred_dec_true. rewrite Z.max_r.
-  rewrite E. eauto. rewrite G. rewrite J. eauto. eapply transf_function_stacksize_pos;eauto. eauto. eauto.
+  apply transf_function_stacksize_pos in H8 as H8'.
+  destr.
+  rewrite C. rewrite A. rewrite <- (sp_val _ _ _ AG).
+  rewrite CTF. rewrite CSP. rewrite pred_dec_true.
+  rewrite (sp_val _ _ _ AG). rewrite pred_dec_true.
+  rewrite E. eauto. rewrite G. rewrite J. eauto. eauto.  eauto.
   apply star_one. eapply exec_step_internal.
   transitivity (Val.offset_ptr rs0#PC Ptrofs.one). auto.
   rewrite <- H. simpl. eauto.
@@ -751,9 +754,10 @@ Opaque loadind.
   eapply plus_left. eapply exec_step_internal. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
   simpl. replace (chunk_of_type Tptr) with Mptr in * by (unfold Tptr, Mptr; destruct Archi.ptr64; auto).
+  apply transf_function_stacksize_pos in H8 as H8'. destr.
   rewrite C. rewrite A. rewrite <- (sp_val _ _ _ AG). rewrite CTF. rewrite pred_dec_true.
-  rewrite (sp_val _ _ _ AG). rewrite pred_dec_true. rewrite Z.max_r.
-  rewrite E. eauto. rewrite G. rewrite J. eauto. eapply transf_function_stacksize_pos; eauto. eauto. eauto.
+  rewrite (sp_val _ _ _ AG). rewrite pred_dec_true.
+  rewrite E. eauto. rewrite G. rewrite J. eauto. eauto. eauto.
   apply star_one. eapply exec_step_internal.
   transitivity (Val.offset_ptr rs0#PC Ptrofs.one). auto. rewrite <- H. simpl. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
@@ -934,9 +938,10 @@ Transparent destroyed_by_jumptable.
   left; econstructor; split.
   eapply plus_left. eapply exec_step_internal. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
-  simpl. rewrite C. rewrite A. rewrite <- (sp_val _ _ _ AG). rewrite CTF. rewrite pred_dec_true.
-  rewrite (sp_val _ _ _ AG). rewrite pred_dec_true. rewrite Z.max_r.
-  rewrite E. eauto. rewrite G. rewrite J. eauto. eapply transf_function_stacksize_pos;eauto. eauto. eauto.
+  simpl. apply transf_function_stacksize_pos in H7 as H7'. destr.
+  rewrite C. rewrite A. rewrite <- (sp_val _ _ _ AG). rewrite CTF. rewrite pred_dec_true.
+  rewrite (sp_val _ _ _ AG). rewrite pred_dec_true.
+  rewrite E. eauto. rewrite G. rewrite J. eauto. eauto. eauto.
   apply star_one. eapply exec_step_internal.
   transitivity (Val.offset_ptr rs0#PC Ptrofs.one). auto. rewrite <- H5. simpl. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
@@ -972,10 +977,11 @@ Transparent destroyed_by_jumptable.
   apply plus_one. econstructor; eauto.
   simpl. rewrite Ptrofs.unsigned_zero. simpl. eauto.
   Opaque Mem.alloc_frame.
-  simpl. rewrite ATPC. rewrite A'. rewrite Z.max_r. rewrite C. rewrite C'.  simpl in F, P.
+  simpl. eapply transf_function_stacksize_pos in EQ as EQ'. destr.
+  rewrite ATPC. rewrite A'. rewrite C. rewrite C'.  simpl in F, P.
   replace (chunk_of_type Tptr) with Mptr in F, P by (unfold Tptr, Mptr; destruct Archi.ptr64; auto).
   rewrite (sp_val _ _ _ AG) in F. rewrite F.
-  rewrite ATLR. rewrite P. eauto. eapply transf_function_stacksize_pos; eauto.
+  rewrite ATLR. rewrite P. eauto.
   econstructor; eauto.
   unfold nextinstr. rewrite Pregmap.gss. repeat rewrite Pregmap.gso; auto with asmgen.
   rewrite ATPC. simpl. constructor; eauto.
@@ -989,8 +995,10 @@ Transparent destroyed_at_function_entry.
   erewrite <- Mem.support_storev; eauto. erewrite <- Mem.support_storev; eauto.
   apply Mem.astack_record_frame in H2. destruct H2 as (hd & tl & AS1 & AS2).
   simpl in AS1. inv AS1. rewrite AS2. simpl.
-  assert (aligned_fsz (Mach.fn_stacksize f) = frame_size_a (mk_frame (Mach.fn_stacksize f))).
-  simpl. auto. rewrite H2. constructor; auto. erewrite Mem.astack_alloc. 2: eauto.
+  assert ((Mach.fn_stacksize f) = frame_size (mk_frame (Mach.fn_stacksize f))).
+  simpl. rewrite Z.max_r. auto. lia. rewrite H2. simpl. rewrite Z.max_r. 2: auto.
+  remember (mk_frame (Mach.fn_stacksize f)) as fr. rewrite H2.
+  constructor; auto. erewrite Mem.astack_alloc. 2: eauto.
   erewrite <- Mem.astack_alloc_frame; eauto.
   caseEq (sp_of_stack (Mem.stack (Mem.support m))). intros.
   exploit sp_of_stack_alloc. apply H0. eauto.  eauto. intros (idx & H6 & H7).
