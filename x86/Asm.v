@@ -515,12 +515,10 @@ Proof.
   rewrite H0. simpl. rewrite A. simpl. inv H1. destr.
 Qed.
 
-Lemma sp_of_stack_external : forall m1 m2 ge ef vargs t vres,
+(* external call will not change the active stack frames*)
+Axiom sp_of_stack_external : forall m1 m2 ge ef vargs t vres,
       external_call ef ge vargs m1 t vres m2 ->
       sp_of_stack (Mem.stack (Mem.support m2)) = sp_of_stack (Mem.stack (Mem.support m1)).
-Admitted.
-
-(* maybe Vnullptr and Some (None,[]) is needed here*)
 
 Section RELSEM.
 

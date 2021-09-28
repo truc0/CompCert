@@ -2304,7 +2304,7 @@ Proof.
   setoid_rewrite B.
   rewrite symbols_preserved. eauto.
   eexact FIND.
-  rewrite <- H3. apply type_of_fundef_preserved. auto.
+  rewrite <- H3. apply type_of_fundef_preserved. auto. eauto.
   setoid_rewrite B.
   constructor. auto. constructor.
 Qed.

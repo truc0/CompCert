@@ -2806,14 +2806,17 @@ Lemma initial_states_simulation:
 Proof.
   intros. inv H.
   exploit function_ptr_translated; eauto. intros [tf [A B]].
-  assert (struct_meminj (Mem.support m0) = Mem.flat_inj (Mem.support m0)).
+  apply Genv.init_mem_stack in H0 as STK.
+  apply Mem.stack_alloc in H4 as STK1. rewrite STK in STK1. simpl in STK1.
+  exploit Genv.initmem_inject; eauto. intro MINJ.
+  exploit Genv.init_mem_init_sp_inject; eauto. intro MINJ1.
+  assert (struct_meminj (Mem.support m1) = Mem.flat_inj (Mem.support m1)).
   apply Axioms.extensionality. intro x.
   unfold struct_meminj. unfold Mem.flat_inj.
-  destruct (Mem.sup_dec x (Mem.support m0)); auto.
+  destruct (Mem.sup_dec x (Mem.support m1)); auto.
   unfold unchecked_meminj. destruct x. simpl in s.
-  erewrite Genv.init_mem_stack in s; eauto.
-  destruct p. inv s. inv H4. simpl in s. destruct n; simpl in s; inv s.
-  auto.
+  rewrite STK1 in s; eauto.
+  destruct p. inv s. inv H5. auto. inv H. simpl in s. destruct n; simpl in s; inv s. auto.
   econstructor; split.
   econstructor.
   eapply (Genv.init_mem_transf_partial (proj1 TRANSF)). eauto.
@@ -2821,23 +2824,23 @@ Proof.
   instantiate (1 := b). rewrite <- H1. apply symbols_preserved.
   generalize (match_program_main (proj1 TRANSF)). simpl; auto.
   eauto.
-  rewrite <- H3; apply type_of_fundef_preserved; auto.
+  rewrite <- H3; apply type_of_fundef_preserved; auto. eauto.
   replace (prog_main tprog) with (prog_main prog).
   econstructor; eauto.
   intros.
-  rewrite H.
-  econstructor. instantiate (1 := Mem.support m0).
+  econstructor. instantiate (1 := Mem.support m1).
   constructor; intros.
   unfold Mem.flat_inj. apply pred_dec_true; auto.
-  unfold Mem.flat_inj in H4. destruct (Mem.sup_dec b1 (Mem.support m0)); inv H4.
+  unfold Mem.flat_inj in H5. destruct (Mem.sup_dec b1 (Mem.support m1)); inv H5.
   auto.
+  eapply Mem.valid_block_alloc; eauto.
   eapply Genv.find_symbol_not_fresh; eauto.
+  eapply Mem.valid_block_alloc; eauto.
   eapply Genv.find_funct_ptr_not_fresh; eauto.
+  eapply Mem.valid_block_alloc; eauto.
   eapply Genv.find_var_info_not_fresh; eauto.
   apply Mem.sup_include_refl. apply Mem.sup_include_refl.
   apply Genv.genv_vars_eq in H1. subst. auto.
-  rewrite H.
-  eapply Genv.initmem_inject; eauto.
   apply struct_eq_refl.
   constructor.
   generalize (match_program_main (proj1 TRANSF)). simpl; auto.

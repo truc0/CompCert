@@ -2342,9 +2342,15 @@ Proof.
   eapply (Genv.init_mem_transf_partial TRANSF); eauto.
   rewrite (match_program_main TRANSF).
   rewrite symbols_preserved. eauto. eauto.
+  apply Genv.init_mem_stack in H0 as STK.
+  apply Mem.stack_alloc in H4 as STK1. rewrite STK in STK1. simpl in STK1.
+  exploit Genv.initmem_inject; eauto. intro MINJ.
+  exploit Genv.init_mem_init_sp_inject; eauto. intros MINJ1.
   set (j := Mem.flat_inj (Mem.support m0)).
   set (j' := Mem.flat_inj (Mem.support m1)).
-  assert (INCR:inject_incr j j'). admit.
+  assert (INCR:inject_incr j j').
+  intro. unfold j. unfold j'. unfold Mem.flat_inj. intros. destr_in H. inv H.
+  eapply Mem.valid_block_alloc in s; eauto. destr. apply n in s. inv s.
   rewrite (match_program_main TRANSF).
   apply Genv.genv_vars_eq in H1. subst.
   eapply match_states_call with (j := j'); eauto.
@@ -2352,24 +2358,25 @@ Proof.
   constructor. red; intros. rewrite H3, loc_arguments_main in H. contradiction.
   eapply agree_regs_inject_incr; eauto.
   red; simpl; auto.
-  admit. admit.
-(*
-  unfold Mem.flat_inj in j'. unfold struct_meminj. admit.
-(*  subst j'. apply Axioms.extensionality. intro. destr. destruct x.
-  apply Genv.init_mem_stack in H0. simpl in s. rewrite H0 in s.
-  destruct p; simpl in s. inv s. inv H1. destruct n; inv s. unfold unchecked_meminj. auto. *)
+  unfold Mem.flat_inj in j'. unfold struct_meminj.
+  subst j'. apply Axioms.extensionality. intro. destr. destruct x. simpl in s.
+  rewrite STK1 in s.
+  destruct p; simpl in s. inv s. inv H1. reflexivity. inv H.
+  destruct n; inv s. unfold unchecked_meminj. auto.
   simpl. rewrite sep_pure. split; auto. split;[|split].
-  admit.
-(*  eapply Genv.initmem_inject; eauto. *)
-  simpl. exists (Mem.support m0); split. apply Mem.sup_include_refl.
-  unfold j, Mem.flat_inj; constructor; intros.
+  eauto.
+  simpl. exists (Mem.support m1); split. apply Mem.sup_include_refl.
+  unfold j', Mem.flat_inj; constructor; intros.
     apply pred_dec_true; auto.
-    destruct (Mem.sup_dec b1 (Mem.support m0)); congruence.
-    change (Mem.valid_block m0 b). eapply Genv.find_symbol_not_fresh; eauto.
-    change (Mem.valid_block m0 b). eapply Genv.find_funct_ptr_not_fresh; eauto.
-    change (Mem.valid_block m0 b). eapply Genv.find_var_info_not_fresh; eauto.
-  red; simpl; tauto. *)
-Admitted.
+    destruct (Mem.sup_dec b1 (Mem.support m1)); congruence.
+    change (Mem.valid_block m1 b).
+    eapply Mem.valid_block_alloc; eauto. eapply Genv.find_symbol_not_fresh; eauto.
+    change (Mem.valid_block m1 b).
+    eapply Mem.valid_block_alloc; eauto. eapply Genv.find_funct_ptr_not_fresh; eauto.
+    change (Mem.valid_block m1 b).
+    eapply Mem.valid_block_alloc; eauto. eapply Genv.find_var_info_not_fresh; eauto.
+  red; simpl; tauto.
+Qed.
 
 Lemma transf_final_states:
   forall st1 st2 r,

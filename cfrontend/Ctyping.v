@@ -2208,7 +2208,7 @@ Theorem wt_initial_state:
 Proof.
   intros. inv H. econstructor. constructor.
   apply Genv.find_funct_ptr_prop with (p := prog) (b := b); auto.
-  intros. inv WTPROG. apply H4 with id; auto.
+  intros. inv WTPROG. apply H5 with id; auto.
   instantiate (1 := (Vptr b Ptrofs.zero)). rewrite Genv.find_funct_find_funct_ptr. auto.
 Qed.
 

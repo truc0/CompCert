@@ -2853,20 +2853,31 @@ Proof.
   symmetry. unfold transl_program in TRANSL.
   eapply match_program_main; eauto.
   eexact FIND.
-  rewrite <- H2. apply sig_preserved; auto.
+  rewrite <- H2. apply sig_preserved; auto. eauto.
   replace (prog_main tprog) with (prog_main prog).
-  eapply match_callstate with (f := Mem.flat_inj (Mem.support m0)) (cs := @nil frame) (cenv := PTree.empty Z).
+  apply Genv.init_mem_stack in H as STK.
+  apply Mem.stack_alloc in H3 as STK1. rewrite STK in STK1. simpl in STK1.
+  exploit Genv.initmem_inject; eauto. intro MINJ.
+  exploit Genv.init_mem_init_sp_inject; eauto. intro MINJ1.
+  eapply match_callstate with (f := Mem.flat_inj (Mem.support m1)) (cs := @nil frame) (cenv := PTree.empty Z).
   auto.
-  eapply Mem.push_stage_right_inject.
-  eapply Genv.initmem_inject; eauto.
+  eapply Mem.push_stage_right_inject. auto.
   subst ge0. apply Genv.genv_vars_eq in H0. subst. auto.
   subst ge0. apply Genv.genv_vars_eq in H0. subst. auto.
   apply Genv.genv_vars_eq in H0. subst. auto.
   unfold Mem.flat_inj. unfold struct_meminj. apply Axioms.extensionality.
-  intro. destr. destruct x. apply Genv.init_mem_stack in H.
-  simpl in s. rewrite H in s. destruct p; simpl in s. inv s. inv H4.
+  intro. destr. destruct x.
+  simpl in s. rewrite STK1 in s. destruct p; simpl in s. inv s. inv H5. reflexivity. inv H4.
   destruct n; simpl in s; inv s. reflexivity.
-  apply mcs_nil with (Mem.support m0). apply match_globalenvs_init; auto.
+  apply mcs_nil with (Mem.support m1).
+  constructor; unfold Mem.flat_inj; intros.
+  destr. destr_in H4.
+  eapply Mem.valid_block_alloc; eauto.
+  eapply Genv.find_symbol_not_fresh; eauto.
+  eapply Mem.valid_block_alloc; eauto.
+  eapply Genv.find_funct_ptr_not_fresh; eauto.
+  eapply Mem.valid_block_alloc; eauto.
+  eapply Genv.find_var_info_not_fresh; eauto.
   apply struct_eq_refl.
   apply Mem.sup_include_refl.
   simpl. unfold Mem.sup_push_stage. intro. destruct b0; eauto.

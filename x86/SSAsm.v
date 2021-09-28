@@ -5,10 +5,6 @@ Require Import Asm.
 
 Definition stkblock := Stack None nil 1.
 
-(* Vnullptr in SSAsm will be used as stack top pointer, but appear in memory and regset as Vnullptr *)
-(*Definition trans_ptr (v:val) :=
-  if (Val.eq v Vnullptr) then (Vptr stkblock (Ptrofs.repr max_stacksize)) else v. *)
-
 Section SSASM.
 
 Variable ge: genv.
