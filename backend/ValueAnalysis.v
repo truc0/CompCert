@@ -2047,17 +2047,58 @@ Qed.
 End INITIAL.
 
 Require Import Axioms.
+Lemma mmatch_alloc:
+  forall bc m lo hi m' b
+    (MMATCH: mmatch bc m mtop)
+    (ALLOC: Mem.alloc m lo hi = (m',b))
+    (BELOW: bc_below bc (Mem.support m))
+    (NOSTACK: bc_nostack bc),
+    mmatch bc m' mtop.
+Proof.
+  intros.
+  assert (SM: forall b p, bc b <> BCinvalid -> smatch bc m b p -> smatch bc m' b Nonstack).
+  {
+    intros.
+    apply smatch_inv with m.
+    apply smatch_no_stack with p; auto.
+    intros. eapply Mem.loadbytes_alloc_unchanged; eauto. eapply mmatch_below; eauto.
+  }
+  assert (SMSTACK: smatch bc m' b Pbot).
+  {
+    split; intros.
+    exploit Mem.load_alloc_same; eauto. intros EQ. subst v. constructor.
+    exploit Mem.loadbytes_alloc_same; eauto with coqlib. congruence.
+  }
+  inv MMATCH; constructor; simpl; intros.
+  + (* stack *)
+    apply ablock_init_sound.
+    elim (NOSTACK b0); auto.
+  + (* globals *)
+    rewrite PTree.gempty in H0; discriminate.
+  + (* nonstack *)
+    destruct (eq_block b0 b). subst. apply BELOW in H0.
+    exploit Mem.alloc_result; eauto. intros; subst. apply freshness in H0. inv H0.
+    eapply smatch_ge. eapply SM; auto. constructor.
+  + (* top *)
+    destruct (eq_block b b0).
+    subst b. apply smatch_ge with Pbot. apply SMSTACK. constructor.
+    eapply smatch_ge. eapply SM; auto. constructor. 
+  + (* below *)
+    red; simpl; intros. eapply Mem.valid_block_alloc in ALLOC; eauto.
+    apply BELOW in H.  auto.
+Qed.
 
 Theorem sound_initial:
   forall prog st, initial_state prog st -> sound_state prog st.
 Proof.
   destruct 1.
   exploit initial_mem_matches; eauto. intros (bc & GE & BELOW & NOSTACK & RM & VALID).
-  constructor; intros. apply sound_call_state with bc.
+  constructor; intros. eapply sound_call_state with bc.
 - constructor.
 - simpl; tauto.
-- apply RM; auto.
-- apply mmatch_inj_top with m0.
+- eapply romatch_alloc; eauto.
+- eapply mmatch_alloc; eauto.
+  apply mmatch_inj_top with m0.
   replace (inj_of_bc bc) with (Mem.flat_inj (Mem.support m0)).
   eapply Genv.initmem_inject; eauto.
   symmetry; apply extensionality; unfold Mem.flat_inj; intros x.

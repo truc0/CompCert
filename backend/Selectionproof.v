@@ -1493,7 +1493,7 @@ Proof.
   eapply (Genv.init_mem_match TRANSF); eauto.
   rewrite (match_program_main TRANSF). fold tge. rewrite symbols_preserved. eauto.
   eexact A.
-  rewrite <- H2. eapply sig_function_translated; eauto.
+  rewrite <- H2. eapply sig_function_translated; eauto. eauto.
   rewrite (match_program_main TRANSF).
   econstructor; eauto. constructor.
   apply Mem.push_stage_extends; apply Mem.extends_refl.

@@ -1644,6 +1644,13 @@ Axiom external_call_stack:
     |None => (Mem.stack (Mem.support m1))
   end.
 
+Axiom external_perm_stack:
+  forall ge ef m1 t res m2 vargs b o k p,
+    external_call ef ge vargs m1 t res m2 ->
+    is_stack b ->
+    sup_In b (Mem.support m1) ->
+    Mem.perm m2 b o k p <-> Mem.perm m1 b o k p.
+
 Axiom external_call_mem_inject_stree:
   forall ge1 ge2 vargs m1 f m1' vargs',
   symbols_inject f ge1 ge2 ->

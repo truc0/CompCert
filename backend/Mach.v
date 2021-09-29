@@ -281,7 +281,7 @@ Inductive state: Type :=
 
 Definition parent_sp (s: list stackframe) : val :=
   match s with
-  | nil => Vnullptr
+  | nil => Vptr (Stack None nil 1) Ptrofs.zero
   | Stackframe f sp ra c :: s' => sp
   end.
 
@@ -436,11 +436,12 @@ Inductive step: state -> trace -> state -> Prop :=
 End RELSEM.
 
 Inductive initial_state (p: program): state -> Prop :=
-  | initial_state_intro: forall fb m0,
+  | initial_state_intro: forall fb m0 m1 b0,
       let ge := Genv.globalenv p in
       Genv.init_mem p = Some m0 ->
       Genv.find_symbol ge p.(prog_main) = Some fb ->
-      initial_state p (Callstate nil fb (Regmap.init Vundef) m0 p.(prog_main)).
+      Mem.alloc m0 0 0 = (m1,b0) ->
+      initial_state p (Callstate nil fb (Regmap.init Vundef) m1 p.(prog_main)).
 
 Inductive final_state: state -> int -> Prop :=
   | final_state_intro: forall rs m r retcode,

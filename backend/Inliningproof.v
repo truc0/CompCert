@@ -1070,7 +1070,7 @@ Proof.
   intros. inv SIZES.
   destruct n; simpl in *. inv H0.
   econstructor; simpl; auto. etransitivity. apply H1.
-  simpl. generalize (Memory.frame_size_pos fr). intro. lia.
+  simpl. generalize (Memory.frame_size_a_pos fr). intro. lia.
   econstructor; simpl; eauto.
 Qed.
 
@@ -1992,33 +1992,49 @@ Lemma transf_initial_states:
 Proof.
   intros. inv H.
   exploit function_ptr_translated; eauto. intros (cu & tf & FIND & TR & LINK).
-  exists (Callstate nil tf nil (Mem.push_stage m0) (prog_main tprog)); split.
+  exists (Callstate nil tf nil (Mem.push_stage m1) (prog_main tprog)); split.
   econstructor; eauto.
     eapply (Genv.init_mem_match TRANSF); eauto.
     rewrite symbols_preserved. replace (prog_main tprog) with (prog_main prog). auto.
     symmetry; eapply match_program_main; eauto.
     rewrite <- H3. eapply sig_function_translated; eauto.
   replace (prog_main tprog) with (prog_main prog).
+  2:  symmetry; eapply match_program_main; eauto.
+  exploit Genv.initmem_inject; eauto. intro.
+  exploit Mem.alloc_parallel_inject; eauto. apply Z.le_refl. apply Z.le_refl.
+  intros (f' & m2 & b2 & A & B &C & D& F).
+  rewrite H4 in A. inv A.
+  assert (f' = Mem.flat_inj (Mem.support m2)).
+    apply Axioms.extensionality. intro x.
+    destruct (eq_block x b2).
+    apply Mem.valid_new_block in H4 as H5.
+    subst. rewrite D. unfold Mem.flat_inj. destr. apply n in H5. inv H5.
+    rewrite F; auto. unfold Mem.flat_inj. destr; destr.
+    eapply Mem.valid_block_alloc in H4; eauto. apply n0 in H4. inv H4.
+    eapply Mem.valid_block_alloc_inv with (b' := x) in H4 as H5. inv H5. congruence. apply n0 in H6. inv H6.
+    auto. subst.
   econstructor; eauto.
-  instantiate (2 := Mem.flat_inj (Mem.support m0)).
-  apply match_stacks_nil with (Mem.support m0).
+  instantiate (2 := Mem.flat_inj (Mem.support m2)).
+  apply match_stacks_nil with (Mem.support m2).
   constructor; intros.
     unfold Mem.flat_inj. apply pred_dec_true; auto.
-    unfold Mem.flat_inj in H. destruct (Mem.sup_dec b1 (Mem.support m0)); congruence.
+    unfold Mem.flat_inj in H5. destruct (Mem.sup_dec b1 (Mem.support m2)); congruence.
+    eapply Mem.valid_block_alloc; eauto.
     eapply Genv.find_symbol_not_fresh; eauto.
+    eapply Mem.valid_block_alloc; eauto.
     eapply Genv.find_funct_ptr_not_fresh; eauto.
+    eapply Mem.valid_block_alloc; eauto.
     eapply Genv.find_var_info_not_fresh; eauto.
     intro. eapply Mem.valid_block_push_stage_1; eauto.
-  intro. unfold Mem.flat_inj. intro. intros. destr_in H.
-  eapply Mem.push_stage_inject.
-  eapply Genv.initmem_inject; eauto.
-  constructor. simpl. rewrite Nat.sub_0_r. unfold Mem.sdepth.
-  rewrite Mem.stack_push_stage.
-  erewrite Genv.init_mem_stack; eauto. simpl. constructor.
-  erewrite Mem.astack_push_stage.
+  intro. unfold Mem.flat_inj. intro. intros. destr_in H5.
+  eapply Mem.push_stage_inject; eauto.
+  constructor. simpl. rewrite Nat.sub_0_r. erewrite Mem.sdepth_push_stage; eauto.
+  erewrite Mem.sdepth_alloc; eauto.
+  unfold Mem.sdepth.   rewrite Mem.stack_push_stage.
+  simpl. erewrite Genv.init_mem_stack; eauto. simpl. constructor.
+  simpl. erewrite Mem.astack_alloc; eauto.
   econstructor; simpl; eauto. erewrite Genv.init_mem_astack; eauto.
   constructor. simpl. lia.
-    symmetry; eapply match_program_main; eauto.
 Qed.
 
 Lemma transf_final_states:

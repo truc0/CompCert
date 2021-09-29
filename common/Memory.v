@@ -470,10 +470,28 @@ Proof.
     reflexivity.
   - inv H0.
 Qed.
-(*
-Local Set Elimination Schemes.
-Local Set Case Analysis Schemes.
-*)
+
+(* sp from stree *)
+
+Fixpoint top_sp' (st:stree): fid * path :=
+  match st with
+    |Node f bl l (Some t') =>
+     let (fid,path) := top_sp' t' in
+     (fid, (Datatypes.length l)::path)
+    |Node f bl l None => (f,[])
+  end.
+
+Fixpoint parent_sp' (st:stree) : option (fid * path) :=
+  match st with
+    |Node f bl l (Some st') =>
+     let idx := Datatypes.length l in
+     match parent_sp' st' with
+       |Some (fid,path) => Some (fid,idx::path)
+       |None => Some (f,[])
+     end
+    |Node f bl l None => None
+  end.
+
 Inductive struct_eq : stree -> stree -> Prop :=
   |struct_eq_leaf : forall fi bl1 bl2,
       struct_eq (Node fi bl1 nil None) (Node fi bl2 nil None)
@@ -668,10 +686,13 @@ Definition mk_frame (sz:Z) :=
 
 Definition stage := list frame.
 
+Definition frame_size_a (f:frame) : Z :=
+  align (frame_size f) 8.
+
 Fixpoint size_of_all_frames (t:stage) : Z :=
   match t with
     |nil => 0
-    |hd :: tl => (frame_size hd) + size_of_all_frames tl
+    |hd :: tl => (frame_size_a hd) + size_of_all_frames tl
   end.
 (*
 Definition size_of_head_frame (t:stage) : Z :=
@@ -694,14 +715,22 @@ Proof.
   intros. induction s1. auto. simpl. lia.
 Qed.
 
+Lemma frame_size_a_pos : forall f,
+  ( 0<= frame_size_a f)%Z.
+Proof.
+  intros. generalize (frame_size_pos f). intro.
+  unfold frame_size_a.
+  generalize (align_le (frame_size f) 8). intro.
+  assert (8>0) by lia. apply H0 in H1. lia.
+Qed.
+
 Lemma size_of_all_frames_pos:
   forall t,
     (0 <= size_of_all_frames t)%Z.
 Proof.
   intros. induction t.
   simpl. lia.
-  simpl. generalize (frame_size_pos a). intro.
-  lia.
+  simpl. generalize (frame_size_a_pos a). intro. lia.
 Qed.
 
 Lemma stack_size_pos:
@@ -1621,7 +1650,7 @@ Proof.
 Qed.
 
 Program Definition record_frame (m:mem)(fr:frame) :=
-  if (zle (frame_size fr + (stack_size (astack (support m)))) max_stacksize) then
+  if (zle (frame_size_a fr + (stack_size (astack (support m)))) max_stacksize) then
   match astack (support m) with
     |hd::tl =>
        Some (mkmem m.(mem_contents)
@@ -3271,6 +3300,12 @@ Proof.
   injection ALLOC; intros. rewrite <- H0; auto.
 Qed.
 
+Lemma sup_include_alloc :
+  sup_include (support m1) (support m2).
+Proof.
+  rewrite support_alloc. intro. apply mem_incr_2.
+Qed.
+
 Theorem sdepth_alloc:
   sdepth m2 = sdepth m1.
 Proof.
@@ -3294,6 +3329,20 @@ Lemma sid_alloc:
   sid (support m2) = sid (support m1).
 Proof.
   rewrite support_alloc. unfold sup_incr. destr.
+Qed.
+
+Theorem astack_alloc:
+  astack (support m2) = astack (support m1).
+Proof.
+  generalize support_alloc. unfold sup_incr.
+  destr. intro. rewrite H. reflexivity.
+Qed.
+
+Theorem stack_alloc :
+  stack (support m2) = snd (next_block_stree (stack (support m1))).
+Proof.
+  generalize support_alloc. unfold sup_incr.
+  destr. simpl. intro. rewrite H. reflexivity.
 Qed.
 
 Theorem alloc_result:
@@ -3997,7 +4046,7 @@ Local Hint Resolve valid_block_pop_stage_1 valid_block_pop_stage_2
 
 Lemma request_record_frame : forall m1 fr,
    astack (support m1) <> nil  ->
-    frame_size fr  + stack_size (astack(support m1)) <= max_stacksize
+    frame_size_a fr  + stack_size (astack(support m1)) <= max_stacksize
    -> {m2:mem| record_frame m1 fr = Some m2}.
 Proof.
   intros; unfold record_frame. rewrite zle_true.
@@ -4022,7 +4071,7 @@ Proof.
 Qed.
 
 Lemma record_frame_size1:
-  (frame_size fr + stack_size (astack (support m1))) <= max_stacksize.
+  (frame_size_a fr + stack_size (astack (support m1))) <= max_stacksize.
 Proof.
   intros. unfold record_frame in RECORD_FRAME.   repeat destr_in RECORD_FRAME.
 Qed.

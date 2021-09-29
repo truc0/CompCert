@@ -28,6 +28,7 @@ Require LTL.
 Require Linear.
 Require Mach.
 Require Asm.
+Require SSAsm.
 (** Translation passes. *)
 Require Initializers.
 Require SimplExpr.
@@ -50,6 +51,7 @@ Require CleanupLabels.
 Require Debugvar.
 Require Stacking.
 Require Asmgen.
+
 (** Proofs of semantic preservation. *)
 Require SimplExprproof.
 Require SimplLocalsproof.
@@ -72,6 +74,7 @@ Require CleanupLabelsproof.
 Require Debugvarproof.
 Require Stackingproof.
 Require Asmgenproof.
+Require SSAsmproof.
 (** Command-line flags. *)
 Require Import Compopts.
 
@@ -124,7 +127,7 @@ Definition transf_rtl_program (f: RTL.program) : res Asm.program :=
    @@ print (print_RTL 0)
    @@ total_if Compopts.optim_tailcalls (time "Tail calls" Tailcall.transf_program)
    @@ print (print_RTL 1)
-  @@@ time "Inlining" Inlining.transf_program 
+  @@@ time "Inlining" Inlining.transf_program
    @@ time "RTLmach" RTLmachproof.transf_program
    @@ print (print_RTL 2)
    @@ time "Renumbering" Renumber.transf_program
@@ -147,7 +150,8 @@ Definition transf_rtl_program (f: RTL.program) : res Asm.program :=
   @@@ partial_if Compopts.debug (time "Debugging info for local variables" Debugvar.transf_program)
   @@@ time "Mach generation" Stacking.transf_program
    @@ print print_Mach
-  @@@ time "Asm generation" Asmgen.transf_program.
+  @@@ time "Asm generation" Asmgen.transf_program
+   @@ time "SSAsm" SSAsmproof.transf_program.
 
 Definition transf_cminor_program (p: Cminor.program) : res Asm.program :=
    OK p
@@ -254,6 +258,7 @@ Definition CompCert's_passes :=
   ::: mkpass (match_if Compopts.debug Debugvarproof.match_prog)
   ::: mkpass Stackingproof.match_prog
   ::: mkpass Asmgenproof.match_prog
+  ::: mkpass SSAsmproof.match_prog
   ::: pass_nil _.
 
 (** Composing the [match_prog] relations above, we obtain the relation
@@ -297,6 +302,7 @@ Proof.
   set (p18 := CleanupLabels.transf_program p17) in *.
   destruct (partial_if debug Debugvar.transf_program p18) as [p19|e] eqn:P19; simpl in T; try discriminate.
   destruct (Stacking.transf_program p19) as [p20|e] eqn:P20; simpl in T; try discriminate.
+  destruct (Asmgen.transf_program p20) as [p21|e] eqn:P21; simpl in T; try discriminate. inv T.
   unfold match_prog; simpl.
   exists p1; split. apply SimplExprproof.transf_program_match; auto.
   exists p2; split. apply SimplLocalsproof.match_transf_program; auto.
@@ -319,7 +325,8 @@ Proof.
   exists p18; split. apply CleanupLabelsproof.transf_program_match; auto.
   exists p19; split. eapply partial_if_match; eauto. apply Debugvarproof.transf_program_match.
   exists p20; split. apply Stackingproof.transf_program_match; auto.
-  exists tp; split. apply Asmgenproof.transf_program_match; auto.
+  exists p21; split. apply Asmgenproof.transf_program_match; auto.
+  exists p21; split. eapply SSAsmproof.transf_program_match; auto.
   reflexivity.
 Qed.
 
@@ -410,8 +417,8 @@ Qed.
 Theorem cstrategy_semantic_preservation:
   forall p tp,
   match_prog p tp ->
-  forward_simulation (Cstrategy.semantics (fn_stack_requirements tp) p) (Asm.semantics tp)
-  /\ backward_simulation (atomic (Cstrategy.semantics (fn_stack_requirements tp) p)) (Asm.semantics tp).
+  forward_simulation (Cstrategy.semantics (fn_stack_requirements tp) p) (SSAsm.semantics tp)
+  /\ backward_simulation (atomic (Cstrategy.semantics (fn_stack_requirements tp) p)) (SSAsm.semantics tp).
 Proof.
   intros p tp M. unfold match_prog, pass_match in M; simpl in M.
 Ltac DestructM :=
@@ -421,7 +428,7 @@ Ltac DestructM :=
       destruct H as (p & M & MM); clear H
   end.
   repeat DestructM. subst tp.
-  assert (F: forward_simulation (Cstrategy.semantics (fn_stack_requirements p22) p) (Asm.semantics p22)).
+  assert (F: forward_simulation (Cstrategy.semantics (fn_stack_requirements p22) p) (SSAsm.semantics p22)).
   {
   eapply compose_forward_simulations.
     eapply SimplExprproof.transl_program_correct; eassumption.
@@ -467,23 +474,27 @@ Ltac DestructM :=
     exact Asmgenproof.return_address_exists.
     eassumption.
     eapply Asmgen_fn_stack_requirements_match; eauto.
+  eapply compose_forward_simulations.
   eapply Asmgenproof.transf_program_correct; eassumption.
-  }
-  split. auto.
+  eapply SSAsmproof.transf_program_correct.
+  eapply AsmFacts.asmgen_prog_unchange_rsp; eauto. }
+  split. inv M21. auto.
   apply forward_to_backward_simulation.
-  apply factor_forward_simulation. auto. eapply sd_traces. eapply Asm.semantics_determinate.
+  inv M21.
+  apply factor_forward_simulation. auto. eapply sd_traces.
+  eapply SSAsm.semantics_determinate.
   apply atomic_receptive. apply Cstrategy.semantics_strongly_receptive.
-  apply Asm.semantics_determinate.
+  apply SSAsm.semantics_determinate.
 Qed.
 
 Theorem c_semantic_preservation:
   forall p tp,
   match_prog p tp ->
-  backward_simulation (Csem.semantics (fn_stack_requirements tp) p) (Asm.semantics tp).
+  backward_simulation (Csem.semantics (fn_stack_requirements tp) p) (SSAsm.semantics tp).
 Proof.
   intros.
   apply compose_backward_simulation with (atomic (Cstrategy.semantics (fn_stack_requirements tp) p)).
-  eapply sd_traces; eapply Asm.semantics_determinate.
+  eapply sd_traces; eapply SSAsm.semantics_determinate.
   apply factor_backward_simulation.
   apply Cstrategy.strategy_simulation.
   apply Csem.semantics_single_events.
@@ -506,7 +517,7 @@ Qed.
 Theorem transf_c_program_correct:
   forall p tp,
   transf_c_program p = OK tp ->
-  backward_simulation (Csem.semantics (fn_stack_requirements tp) p) (Asm.semantics tp).
+  backward_simulation (Csem.semantics (fn_stack_requirements tp) p) (SSAsm.semantics tp).
 Proof.
   intros. apply c_semantic_preservation. apply transf_c_program_match; auto.
 Qed.
@@ -529,7 +540,7 @@ Theorem separate_transf_c_program_correct:
   link_list c_units = Some c_program ->
   exists asm_program,
       link_list asm_units = Some asm_program
-   /\ backward_simulation (Csem.semantics (fn_stack_requirements asm_program) c_program) (Asm.semantics asm_program).
+   /\ backward_simulation (Csem.semantics (fn_stack_requirements asm_program) c_program) (SSAsm.semantics asm_program).
 Proof.
   intros.
   assert (nlist_forall2 match_prog c_units asm_units).
