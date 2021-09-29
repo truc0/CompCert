@@ -1,6 +1,6 @@
 Require Import Coqlib Coqlib Maps.
 Require Import AST Integers Floats Values Memory Events Globalenvs Smallstep.
-Require Import Asm Asmgenproof0.
+Require Import Asm Asmgen Asmgenproof0 Asmgenproof.
 
 (** instructions which have no relationship with stack *)
 Definition stk_unrelated_instr (i: instruction) :=
@@ -130,6 +130,10 @@ Proof.
   repeat rewrite Pregmap.gso by (congruence).
   rewrite set_pair_no_rsp; eauto.
 Qed.
+
+
+Lemma asmgen_prog_unchange_rsp: forall p tp, match_prog p tp -> AsmFacts.asm_prog_unchange_rsp (Globalenvs.Genv.globalenv tp).
+Admitted.
 
 (** modify abstract stack *)
 Definition asm_instr_unchange_sup (i : instruction) : Prop :=

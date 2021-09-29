@@ -1963,7 +1963,7 @@ Proof.
           erewrite Mem.perm_return_frame; eauto.
           erewrite Mem.perm_pop_stage; eauto. reflexivity.
         }
-Admitted.
+Qed.
 
 (* injection in builtin *)
 Lemma eval_builtin_arg_inject:

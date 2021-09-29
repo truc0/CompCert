@@ -476,8 +476,8 @@ Ltac DestructM :=
     eapply Asmgen_fn_stack_requirements_match; eauto.
   eapply compose_forward_simulations.
   eapply Asmgenproof.transf_program_correct; eassumption.
-  eapply SSAsmproof.transf_program_correct. admit. (* eassumption. *)
-  }
+  eapply SSAsmproof.transf_program_correct.
+  eapply AsmFacts.asmgen_prog_unchange_rsp; eauto. }
   split. inv M21. auto.
   apply forward_to_backward_simulation.
   inv M21.
@@ -485,7 +485,7 @@ Ltac DestructM :=
   eapply SSAsm.semantics_determinate.
   apply atomic_receptive. apply Cstrategy.semantics_strongly_receptive.
   apply SSAsm.semantics_determinate.
-Admitted.
+Qed.
 
 Theorem c_semantic_preservation:
   forall p tp,
