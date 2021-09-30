@@ -2030,9 +2030,9 @@ Proof.
   eapply Mem.push_stage_inject; eauto.
   constructor. simpl. rewrite Nat.sub_0_r. erewrite Mem.sdepth_push_stage; eauto.
   erewrite Mem.sdepth_alloc; eauto.
-  unfold Mem.sdepth.   rewrite Mem.stack_push_stage.
+  unfold Mem.sdepth.
   simpl. erewrite Genv.init_mem_stack; eauto. simpl. constructor.
-  simpl. erewrite Mem.astack_alloc; eauto.
+  rewrite Mem.astack_push_stage. erewrite Mem.astack_alloc; eauto.
   econstructor; simpl; eauto. erewrite Genv.init_mem_astack; eauto.
   constructor. simpl. lia.
 Qed.

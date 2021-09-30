@@ -3331,18 +3331,14 @@ Proof.
   rewrite support_alloc. unfold sup_incr. destr.
 Qed.
 
-Theorem astack_alloc:
-  astack (support m2) = astack (support m1).
-Proof.
-  generalize support_alloc. unfold sup_incr.
-  destr. intro. rewrite H. reflexivity.
-Qed.
-
 Theorem stack_alloc :
   stack (support m2) = snd (next_block_stree (stack (support m1))).
 Proof.
   generalize support_alloc. unfold sup_incr.
-  destr. simpl. intro. rewrite H. reflexivity.
+  destr. simpl. intro. rewrite H.
+  unfold stack. simpl.
+  rewrite setstack_stack. auto.
+  apply sid_valid.
 Qed.
 
 Theorem alloc_result:

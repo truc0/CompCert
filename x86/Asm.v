@@ -370,25 +370,26 @@ Qed.
 (* we have to ignore the root node*)
 Definition sp_of_stack (s:stree) : list fid * path :=
   let (lf,path) := (sp_of_stack' s) in (removelast lf,path).
-
+Section root_sp.
+Variable sid: nat.
 Definition parent_sp_stree (st:stree) : val :=
   let (lf,path) := sp_of_stack st in
   match (lf,path) with
     |(f1::((Some id)::tl), _::(_::_)) =>
-     Vptr (Stack (Some id) (removelast path) 1%positive) Ptrofs.zero
-    |_ => Vptr (Stack None nil 1) Ptrofs.zero
+     Vptr (Stack sid (Some id) (removelast path) 1%positive) Ptrofs.zero
+    |_ => Vptr (Stack sid None nil 1) Ptrofs.zero
   end.
 
 Definition top_sp_stree (st:stree) : val :=
   let (lf,path) := sp_of_stack st in
   match (lf,path) with
     | (((Some id)::tl), (_::_)) =>
-     Vptr (Stack (Some id) path 1%positive) Ptrofs.zero
-    |_ => Vptr (Stack None nil 1) Ptrofs.zero
+     Vptr (Stack sid (Some id) path 1%positive) Ptrofs.zero
+    |_ => Vptr (Stack sid None nil 1) Ptrofs.zero
   end.
 
 Lemma sp_of_stack_pspnull : forall st fid idx,
-    sp_of_stack st = (fid::nil,idx::nil) -> parent_sp_stree st = Vptr (Stack None nil 1) Ptrofs.zero.
+    sp_of_stack st = (fid::nil,idx::nil) -> parent_sp_stree st = Vptr (Stack sid None nil 1) Ptrofs.zero.
 Proof.
   intros. unfold parent_sp_stree. rewrite H. auto.
 Qed.
@@ -401,7 +402,7 @@ Qed.
 
 Lemma sp_of_stack_pspsome : forall st f1 lf path idx2 idx1 id,
     sp_of_stack st = (f1::(Some id)::lf, (path++(idx2::nil))++(idx1::nil)) ->
-    parent_sp_stree st = Vptr (Stack (Some id) (path++(idx2::nil)) 1%positive) Ptrofs.zero.
+    parent_sp_stree st = Vptr (Stack sid (Some id) (path++(idx2::nil)) 1%positive) Ptrofs.zero.
 Proof.
   intros. unfold parent_sp_stree. rewrite H. simpl.
   destruct path. auto. destruct path. auto. rewrite removelast_app. simpl.
@@ -410,12 +411,13 @@ Qed.
 
 Lemma sp_of_stack_tspsome : forall st id lf path idx,
     sp_of_stack st = ((Some id)::lf,path++(idx::nil)) ->
-    top_sp_stree st = Vptr (Stack (Some id) (path++(idx::nil)) 1%positive) Ptrofs.zero.
+    top_sp_stree st = Vptr (Stack sid (Some id) (path++(idx::nil)) 1%positive) Ptrofs.zero.
 Proof.
   intros. unfold top_sp_stree. rewrite H. simpl.
   destr. destruct path; inv Heql.
 Qed.
 
+End root_sp.
 Lemma sp_of_stack_return' : forall st st' p' fid lf path idx root,
     return_stree st = Some (st',p') ->
     sp_of_stack' st = (fid::lf++(root::nil),path++(idx::nil)) ->
@@ -468,8 +470,10 @@ Proof.
   destruct l2. congruence. inv H1. intro. destruct l2; inv H0.
   inv Heqo.
   apply exists_last in H0. destruct H0 as (l' & idx' & H0). subst.
-  exploit sp_of_stack_return'; eauto. intro. inv H. simpl. rewrite H0.
-  simpl in H2. destr_in H2. inv H2. auto.
+  exploit sp_of_stack_return'; eauto. intro. inv H. simpl. unfold Mem.stack. simpl.
+  rewrite Mem.setstack_stack.
+  rewrite H0.
+  simpl in H2. destr_in H2. inv H2. auto. apply Mem.sid_valid.
 Qed.
 
 Lemma sp_of_stack_alloc' : forall st st' st'' path path0 path1 f lf pos id root,
@@ -495,10 +499,11 @@ Lemma sp_of_stack_alloc : forall m1 m2 m3 id path lo hi b lf path',
     Mem.alloc_frame m1 id = (m2,path) ->
     Mem.alloc m2 lo hi = (m3,b) ->
     sp_of_stack (Mem.stack (Mem.support m1)) = (lf,path') ->
-    exists idx, b = Stack (Some id) (path'++(idx::nil)) 1%positive /\
+    exists idx, b = Stack (Mem.sid (Mem.support m1))(Some id) (path'++(idx::nil)) 1%positive /\
     sp_of_stack (Mem.stack (Mem.support m3)) = ((Some id)::lf,path'++(idx::nil)).
 Proof.
   intros.
+  apply Mem.sid_alloc_frame in H as SID1. apply Mem.sid_alloc in H0 as SID2.
   exploit Mem.alloc_frame_alloc; eauto. intro.
   apply Mem.path_alloc_frame in H as H'. unfold Mem.sup_npath in H'. unfold npath in H'.
   apply Mem.support_alloc_frame in H. unfold Mem.sup_incr_frame in H.
@@ -508,11 +513,13 @@ Proof.
   unfold sp_of_stack in *. destr_in H1.
   apply sp_of_stack'_nonempty in Heqp2 as H3.
   edestruct (exists_last H3) as (a & l' & H4). subst.
+  unfold Mem.stack in Heqp0. simpl in Heqp0. rewrite Mem.setstack_stack in Heqp0.
   exploit sp_of_stack_alloc'; eauto. intros (idx & A& B).
   exploit next_stree_next_block_stree; eauto. intros (X & Y & Z).
   subst.
-  exists idx. split. inv H1. auto.
-  rewrite H0. simpl. rewrite A. simpl. inv H1. destr.
+  exists idx. split. inv H1. congruence.
+  rewrite H0. unfold Mem.stack. simpl. rewrite Mem.setstack_stack. simpl. rewrite A. simpl. inv H1. destr.
+  apply Mem.sid_valid. apply Mem.sid_valid.
 Qed.
 
 (* external call will not change the active stack frames*)
@@ -1155,8 +1162,8 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
               match rs#RSP with
               | Vptr stk ofs =>
                   if check_topframe sz (Mem.astack (Mem.support m)) then
-                  if Val.eq sp (parent_sp_stree (Mem.stack (Mem.support m))) then
-                  if Val.eq (Vptr stk ofs) (top_sp_stree (Mem.stack (Mem.support m))) then
+                  if Val.eq sp (parent_sp_stree (Mem.sid (Mem.support m))(Mem.stack (Mem.support m))) then
+                  if Val.eq (Vptr stk ofs) (top_sp_stree (Mem.sid (Mem.support m))(Mem.stack (Mem.support m))) then
                   match Mem.free m stk 0 sz with
                   | None => Stuck
                   | Some m' =>
@@ -1342,7 +1349,7 @@ Inductive initial_state (p: program): state -> Prop :=
         (Pregmap.init Vundef)
         # PC <- (Genv.symbol_address ge p.(prog_main) Ptrofs.zero)
         # RA <- Vnullptr
-        # RSP <- (Vptr (Stack None nil 1) Ptrofs.zero) in
+        # RSP <- (Vptr (Stack 0 None nil 1) Ptrofs.zero) in
       initial_state p (State rs0 m1).
 
 Inductive final_state: state -> int -> Prop :=

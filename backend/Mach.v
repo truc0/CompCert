@@ -279,9 +279,9 @@ Inductive state: Type :=
              (m: mem),                 (**r memory state *)
       state.
 
-Definition parent_sp (s: list stackframe) : val :=
+Definition parent_sp (sid: nat)(s: list stackframe): val :=
   match s with
-  | nil => Vptr (Stack None nil 1) Ptrofs.zero
+  | nil => Vptr (Stack sid None nil 1) Ptrofs.zero
   | Stackframe f sp ra c :: s' => sp
   end.
 
@@ -316,8 +316,8 @@ Inductive step: state -> trace -> state -> Prop :=
   | exec_Mgetparam:
       forall s fb f sp ofs ty dst c rs m v rs',
       Genv.find_funct_ptr ge fb = Some (Internal f) ->
-      load_stack m sp Tptr f.(fn_link_ofs) = Some (parent_sp s) ->
-      load_stack m (parent_sp s) ty ofs = Some v ->
+      load_stack m sp Tptr f.(fn_link_ofs) = Some (parent_sp (Mem.sid (Mem.support m)) s) ->
+      load_stack m (parent_sp (Mem.sid (Mem.support m ))s) ty ofs = Some v ->
       rs' = (rs # temp_for_parent_frame <- Vundef # dst <- v) ->
       step (State s fb sp (Mgetparam ofs ty dst :: c) rs m)
         E0 (State s fb sp c rs' m)
@@ -355,7 +355,7 @@ Inductive step: state -> trace -> state -> Prop :=
       f' = Global id ->
       find_function_ptr ge ros rs = Some f' ->
       Genv.find_funct_ptr ge fb = Some (Internal f) ->
-      load_stack m (Vptr stk soff) Tptr f.(fn_link_ofs) = Some (parent_sp s) ->
+      load_stack m (Vptr stk soff) Tptr f.(fn_link_ofs) = Some (parent_sp (Mem.sid (Mem.support m)) s) ->
       load_stack m (Vptr stk soff) Tptr f.(fn_retaddr_ofs) = Some (parent_ra s) ->
       Mem.free m stk 0 f.(fn_stacksize) = Some m' ->
       Mem.return_frame m' = Some m'' ->
@@ -401,7 +401,7 @@ Inductive step: state -> trace -> state -> Prop :=
   | exec_Mreturn:
       forall s fb stk soff c rs m f m' m'' m''',
       Genv.find_funct_ptr ge fb = Some (Internal f) ->
-      load_stack m (Vptr stk soff) Tptr f.(fn_link_ofs) = Some (parent_sp s) ->
+      load_stack m (Vptr stk soff) Tptr f.(fn_link_ofs) = Some (parent_sp (Mem.sid (Mem.support m)) s) ->
       load_stack m (Vptr stk soff) Tptr f.(fn_retaddr_ofs) = Some (parent_ra s) ->
       Mem.free m stk 0 f.(fn_stacksize) = Some m' ->
       Mem.return_frame m' = Some m'' ->
@@ -415,7 +415,7 @@ Inductive step: state -> trace -> state -> Prop :=
       Mem.alloc m0 0 f.(fn_stacksize) = (m1, stk) ->
       Mem.record_frame (Mem.push_stage m1) (Memory.mk_frame (fn_stacksize f)) = Some m2 ->
       let sp := Vptr stk Ptrofs.zero in
-      store_stack m2 sp Tptr f.(fn_link_ofs) (parent_sp s) = Some m3 ->
+      store_stack m2 sp Tptr f.(fn_link_ofs) (parent_sp (Mem.sid (Mem.support m)) s) = Some m3 ->
       store_stack m3 sp Tptr f.(fn_retaddr_ofs) (parent_ra s) = Some m4 ->
       rs' = undef_regs destroyed_at_function_entry rs ->
       step (Callstate s fb rs m id)
@@ -423,7 +423,7 @@ Inductive step: state -> trace -> state -> Prop :=
   | exec_function_external:
       forall s fb rs m t rs' ef args res m' id,
       Genv.find_funct_ptr ge fb = Some (External ef) ->
-      extcall_arguments rs m (parent_sp s) (ef_sig ef) args ->
+      extcall_arguments rs m (parent_sp (Mem.sid (Mem.support m)) s) (ef_sig ef) args ->
       external_call ef ge args m t res m' ->
       rs' = set_pair (loc_result (ef_sig ef)) res (undef_caller_save_regs rs) ->
       step (Callstate s fb rs m id)

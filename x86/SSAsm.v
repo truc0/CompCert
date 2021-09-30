@@ -3,7 +3,7 @@ Require Import AST Integers Floats Values Memory Events Globalenvs Smallstep.
 Require Import Locations Conventions.
 Require Import Asm.
 
-Definition stkblock := Stack None nil 1.
+Definition stkblock (sid:nat) := Stack sid None nil 1.
 
 Section SSASM.
 
@@ -73,7 +73,7 @@ Inductive initial_state (p: program): state -> Prop :=
         (Pregmap.init Vundef)
         # PC <- (Genv.symbol_address ge p.(prog_main) Ptrofs.zero)
         # RA <- Vnullptr
-        # RSP <- (Vptr stkblock (Ptrofs.repr max_stacksize)) in
+        # RSP <- (Vptr (stkblock 0) (Ptrofs.repr max_stacksize)) in
       initial_state p (State rs0 m1).
 
 (** The same final_state as defined in the Asm.v *)

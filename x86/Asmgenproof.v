@@ -394,12 +394,12 @@ Definition sp_of_callstack (l:list stackframe) : list val :=
        |Stackframe _ sp _ _ => sp
      end) ## l.
 
-Inductive sp_consistency : (list fid * path) -> list val -> Prop :=
-  |sp_consistency_nil : sp_consistency (nil,nil) nil
+Inductive sp_consistency (sid:nat) :(list fid * path) -> list val -> Prop :=
+  |sp_consistency_nil :  sp_consistency sid (nil,nil) nil
   |sp_consistency_cons : forall id sp lf path ls idx,
-      sp_consistency (lf,path) ls ->
-      sp = Vptr (Stack (Some id) (path++(idx::nil)) 1%positive) Ptrofs.zero ->
-      sp_consistency (((Some id)::lf),(path++(idx::nil))) (sp::ls).
+      sp_consistency sid (lf,path) ls ->
+      sp = Vptr (Stack sid (Some id) (path++(idx::nil)) 1%positive) Ptrofs.zero ->
+      sp_consistency sid (((Some id)::lf),(path++(idx::nil))) (sp::ls).
 (*
 Inductive astack_consistency : Mach.state -> Prop :=
   |astack_consistency_state: forall fb tf m cs c rs sp
@@ -424,17 +424,17 @@ Inductive match_states: Mach.state -> Asm.state -> Prop :=
         (SC: size_consistency
                ((Some (Mach.fn_stacksize f))::(size_of_callstack s))
                (Mem.astack(Mem.support m)))
-        (SPC: sp_consistency (sp_of_stack (Mem.stack (Mem.support m))) (sp:: sp_of_callstack s))
-        (AXP: ep = true -> rs#RAX = parent_sp s),
+        (SPC: sp_consistency (Mem.sid (Mem.support m))(sp_of_stack (Mem.stack (Mem.support m))) (sp:: sp_of_callstack s))
+        (AXP: ep = true -> rs#RAX = parent_sp  (Mem.sid (Mem.support m)) s),
       match_states (Mach.State s fb sp c ms m)
                    (Asm.State rs m')
   | match_states_call:
       forall s fb ms m m' rs id
         (STACKS: match_stack ge s)
         (MEXT: Mem.extends m m')
-        (AG: agree ms (parent_sp s) rs)
+        (AG: agree ms (parent_sp  (Mem.sid (Mem.support m)) s) rs)
         (SC: size_consistency (size_of_callstack s) (Mem.astack(Mem.support m)))
-        (SPC: sp_consistency (sp_of_stack (Mem.stack (Mem.support m))) (sp_of_callstack s))
+        (SPC: sp_consistency  (Mem.sid (Mem.support m)) (sp_of_stack (Mem.stack (Mem.support m))) (sp_of_callstack s))
         (FB: fb = Global id)
         (ATPC: rs PC = Vptr fb Ptrofs.zero)
         (ATLR: rs RA = parent_ra s),
@@ -444,9 +444,9 @@ Inductive match_states: Mach.state -> Asm.state -> Prop :=
       forall s ms m m' rs
         (STACKS: match_stack ge s)
         (MEXT: Mem.extends m m')
-        (AG: agree ms (parent_sp s) rs)
+        (AG: agree ms (parent_sp  (Mem.sid (Mem.support m)) s) rs)
         (SC: size_consistency (size_of_callstack s) (Mem.astack(Mem.support m)))
-        (SPC: sp_consistency (sp_of_stack (Mem.stack (Mem.support m))) (sp_of_callstack s))
+        (SPC: sp_consistency  (Mem.sid (Mem.support m)) (sp_of_stack (Mem.stack (Mem.support m))) (sp_of_callstack s))
         (ATPC: rs PC = parent_ra s),
       match_states (Mach.Returnstate s ms m)
                    (Asm.State rs m').
@@ -459,13 +459,13 @@ Lemma exec_straight_steps:
   size_consistency
     ((Some (Mach.fn_stacksize f))::(size_of_callstack s))
     (Mem.astack(Mem.support m2)) ->
-  sp_consistency (sp_of_stack (Mem.stack (Mem.support m2))) (sp:: sp_of_callstack s) ->
+  sp_consistency  (Mem.sid (Mem.support m2)) (sp_of_stack (Mem.stack (Mem.support m2))) (sp:: sp_of_callstack s) ->
   transl_code_at_pc ge (rs1 PC) fb f (i :: c) ep tf tc ->
   (forall k c (TR: transl_instr f i ep k = OK c),
    exists rs2,
        exec_straight tge tf c rs1 m1' k rs2 m2'
     /\ agree ms2 sp rs2
-    /\ (it1_is_parent ep i = true -> rs2#RAX = parent_sp s)) ->
+    /\ (it1_is_parent ep i = true -> rs2#RAX = parent_sp  (Mem.sid (Mem.support m2))s)) ->
   exists st',
   plus step tge (State rs1 m1') E0 st' /\
   match_states (Mach.State s fb sp c ms2 m2) st'.
@@ -485,7 +485,7 @@ Lemma exec_straight_steps_goto:
   size_consistency
     (Some (Mach.fn_stacksize f)::(size_of_callstack s))
     (Mem.astack(Mem.support m2)) ->
-  sp_consistency (sp_of_stack (Mem.stack (Mem.support m2))) (sp:: sp_of_callstack s) ->
+  sp_consistency  (Mem.sid (Mem.support m2))(sp_of_stack (Mem.stack (Mem.support m2))) (sp:: sp_of_callstack s) ->
   Mach.find_label lbl f.(Mach.fn_code) = Some c' ->
   transl_code_at_pc ge (rs1 PC) fb f (i :: c) ep tf tc ->
   it1_is_parent ep i = false ->
@@ -570,7 +570,7 @@ Proof.
   exists rs'; split. eauto.
   split. eapply agree_undef_regs; eauto.
   simpl; intros. rewrite Q; auto with asmgen.
-Local Transparent destroyed_by_setstack.
+Local Transparent destroyed_by_setstack. erewrite <- Mem.support_storev; eauto.
   destruct ty; simpl; intuition congruence.
 
 - (* Mgetparam *)
@@ -704,16 +704,17 @@ Opaque loadind.
   apply Mem.astack_pop_stage in H6 as ASP. destruct ASP as (topfr & ASP).
   assert (CTF:check_topframe (Mach.fn_stacksize f) (Mem.astack (Mem.support m'0)) = true).
    unfold check_topframe. inv SC.   inv MEXT. rewrite <- mext_sup. rewrite <- H14.
-   rewrite pred_dec_true; auto. unfold frame_size_a. unfold aligned_fsz. 
-  assert (CSP:(parent_sp_stree (Mem.stack (Mem.support m'0)) = (parent_sp s))).
+   rewrite pred_dec_true; auto. unfold frame_size_a. unfold aligned_fsz.
+  assert (CSP:(parent_sp_stree  (Mem.sid (Mem.support m'0)) (Mem.stack (Mem.support m'0)) = (parent_sp  (Mem.sid (Mem.support m)) s))).
   inv SPC. inv H14.
   destruct s. simpl. inv MEXT. rewrite <- mext_sup. simpl in H11.
   eapply sp_of_stack_pspnull; eauto.
   simpl in H17. inv H17.
   destruct s. simpl. inv H16. simpl. inv H16. inv MEXT. rewrite <- mext_sup. simpl in H11.
   eapply sp_of_stack_pspsome. rewrite <- H11. eauto.
-  assert (CTP: top_sp_stree (Mem.stack (Mem.support m'0)) = rs0 RSP).
+  assert (CTP: top_sp_stree  (Mem.sid (Mem.support m'0)) (Mem.stack (Mem.support m'0)) = rs0 RSP).
   inv SPC. rewrite H15. inv MEXT. rewrite <- mext_sup. eapply sp_of_stack_tspsome; eauto.
+  apply Mem.sid_return_frame in H5 as SID1. apply Mem.sid_pop_stage in H6 as SID2.
   destruct ros as [rf|fid]; simpl in H; monadInv H9.
 + (* Indirect call *)
   assert (rs rf = Vptr (Global id) Ptrofs.zero).
@@ -733,7 +734,7 @@ Opaque loadind.
   rewrite C. rewrite A. rewrite <- (sp_val _ _ _ AG).
   rewrite CTF. rewrite CSP. rewrite pred_dec_true.
   rewrite (sp_val _ _ _ AG). rewrite pred_dec_true.
-  rewrite E. eauto. rewrite G. rewrite J. eauto. eauto.  eauto.
+  rewrite E. eauto. rewrite G. rewrite J. eauto. eauto. eauto.
   apply star_one. eapply exec_step_internal.
   transitivity (Val.offset_ptr rs0#PC Ptrofs.one). auto.
   rewrite <- H. simpl. eauto.
@@ -741,11 +742,13 @@ Opaque loadind.
   simpl. eauto. traceEq.
   econstructor; eauto.
   apply agree_set_other; auto. apply agree_nextinstr. apply agree_set_other; auto.
+  rewrite <- SID2. rewrite <- SID1. rewrite SF.
   eapply agree_change_sp; eauto. eapply parent_sp_def; eauto.
   inv SC. rewrite <- SF in H15. rewrite ASR in H15. rewrite ASP in H15. inv H15. auto.
   inv SPC.
   erewrite <- Mem.stack_pop_stage; eauto. exploit sp_of_stack_return. apply H5.
   erewrite Mem.support_free; eauto. intro. rewrite H13.  eauto.
+  rewrite <- SID2. rewrite <- SID1. rewrite  SF. auto.
   Simplifs. rewrite Pregmap.gso; auto.
   generalize (preg_of_not_SP rf). rewrite (ireg_of_eq _ _ EQ1). congruence.
 + (* Direct call *)
@@ -764,11 +767,13 @@ Opaque loadind.
   simpl. eauto. traceEq.
   econstructor; eauto.
   apply agree_set_other; auto. apply agree_nextinstr. apply agree_set_other; auto.
+  rewrite <- SID2. rewrite <- SID1. rewrite SF.
   eapply agree_change_sp; eauto. eapply parent_sp_def; eauto.
   inv SC. rewrite <- SF in H13. rewrite ASR in H13. rewrite ASP in H13. inv H13. auto.
   inv SPC.
   erewrite <- Mem.stack_pop_stage; eauto. exploit sp_of_stack_return. apply H5.
   erewrite Mem.support_free; eauto. intro. rewrite H11.  eauto.
+  rewrite <- SID2. rewrite <- SID1. rewrite SF. eauto.
   rewrite Pregmap.gss. unfold Genv.symbol_address. rewrite symbols_preserved.
   repeat destr_in H0. rewrite H11. auto.
 
@@ -799,6 +804,7 @@ Opaque loadind.
   eapply agree_undef_regs; eauto. intros; apply undef_regs_other_2; auto.
   erewrite <- external_call_astack; eauto.
   erewrite sp_of_stack_external; eauto.
+  erewrite <- external_call_mem_sid; eauto.
   congruence.
 
 - (* Mgoto *)
@@ -925,22 +931,26 @@ Transparent destroyed_by_jumptable.
   assert (CTF:check_topframe (Mach.fn_stacksize f) (Mem.astack (Mem.support m'0)) = true).
    unfold check_topframe. inv SC.   inv MEXT. rewrite <- mext_sup. rewrite <- H13.
    rewrite pred_dec_true; auto.
-  assert (CSP: parent_sp_stree (Mem.stack (Mem.support m'0)) = parent_sp s).
+  assert (CSP: parent_sp_stree (Mem.sid (Mem.support m'0))(Mem.stack (Mem.support m'0)) = parent_sp (Mem.sid (Mem.support m))s).
   inv SPC. inv H13.
   destruct s. simpl. inv MEXT. rewrite <- mext_sup. simpl in H10.
   eapply sp_of_stack_pspnull; eauto. inv H16.
   destruct s. simpl. inv H15. simpl. inv H15. inv MEXT. rewrite <- mext_sup. simpl in H10.
   eapply sp_of_stack_pspsome; eauto.
-  assert (CTP: top_sp_stree (Mem.stack (Mem.support m'0)) = rs0 RSP).
+  assert (CTP: top_sp_stree (Mem.sid (Mem.support m'0))(Mem.stack (Mem.support m'0)) = rs0 RSP).
   inv SPC. rewrite H14. inv MEXT. rewrite <- mext_sup. eapply sp_of_stack_tspsome; eauto.
+  apply Mem.sid_pop_stage in H4 as SID1. apply Mem.sid_return_frame in H3 as SID2.
+  apply Mem.support_free in H2 as SF.
   monadInv H8.
   exploit code_tail_next_int; eauto. intro CT1.
   left; econstructor; split.
   eapply plus_left. eapply exec_step_internal. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
   simpl. apply transf_function_stacksize_pos in H7 as H7'. destr.
-  rewrite C. rewrite A. rewrite <- (sp_val _ _ _ AG). rewrite CTF. rewrite pred_dec_true.
-  rewrite (sp_val _ _ _ AG). rewrite pred_dec_true.
+  rewrite C. rewrite A. rewrite <- (sp_val _ _ _ AG). rewrite CTF.
+  rewrite CSP.
+  rewrite pred_dec_true.
+  rewrite (sp_val _ _ _ AG). rewrite CTP. rewrite pred_dec_true.
   rewrite E. eauto. rewrite G. rewrite J. eauto. eauto. eauto.
   apply star_one. eapply exec_step_internal.
   transitivity (Val.offset_ptr rs0#PC Ptrofs.one). auto. rewrite <- H5. simpl. eauto.
@@ -948,13 +958,16 @@ Transparent destroyed_by_jumptable.
   simpl. eauto. traceEq.
   constructor; auto.
   apply agree_set_other; auto. apply agree_nextinstr. apply agree_set_other; auto.
+  rewrite <- SID1. rewrite <- SID2. rewrite SF.
   eapply agree_change_sp; eauto. eapply parent_sp_def; eauto.
   inv SC. erewrite <- Mem.support_free in H12; eauto.
   erewrite Mem.astack_return_frame in H12; eauto.
   apply Mem.astack_pop_stage in H4. destruct H4. rewrite H4 in H12. inv H12. auto.
   inv SPC.
   erewrite <- Mem.stack_pop_stage; eauto. exploit sp_of_stack_return. apply H3.
-  erewrite Mem.support_free; eauto. intro. rewrite H10. eauto.
+  erewrite Mem.support_free; eauto. intro. rewrite H10.
+  rewrite <- SID1. rewrite <- SID2. rewrite SF.
+  eauto.
 
 - (* internal function *)
   exploit functions_translated; eauto. intros [tf [A B]]. monadInv B.
@@ -964,8 +977,6 @@ Transparent destroyed_by_jumptable.
   unfold store_stack in *.
   exploit Mem.alloc_frame_extends; eauto. intros [m0' [A' B']].
   exploit Mem.alloc_extends. eauto. eauto. apply Z.le_refl. apply Z.le_refl.
-(*  instantiate (1:= align(Z.max 0 (Mach.fn_stacksize f))8).
-  etransitivity. 2: apply align_le. lia. lia. *)
   intros [m1' [C D]].
   apply Mem.push_stage_extends in D.
   exploit Mem.record_frame_extends. apply D. eauto. intros [m2' [C' D']].
@@ -973,6 +984,9 @@ Transparent destroyed_by_jumptable.
   intros [m3' [F G]].
   exploit Mem.storev_extends. eexact G. eexact H4. eauto. eauto.
   intros [m4' [P Q]].
+  apply Mem.sid_alloc_frame in H0 as SID1. apply Mem.sid_alloc in H1 as SID2.
+  apply Mem.sid_record_frame in H2 as SID3. apply Mem.support_store in H3 as SF1.
+  apply Mem.support_store in H4 as SF2.
   left; econstructor; split.
   apply plus_one. econstructor; eauto.
   simpl. rewrite Ptrofs.unsigned_zero. simpl. eauto.
@@ -994,18 +1008,23 @@ Transparent destroyed_at_function_entry.
   congruence.
   erewrite <- Mem.support_storev; eauto. erewrite <- Mem.support_storev; eauto.
   apply Mem.astack_record_frame in H2. destruct H2 as (hd & tl & AS1 & AS2).
-  simpl in AS1. inv AS1. rewrite AS2. simpl.
+  rewrite Mem.astack_push_stage in AS1.
+  inv AS1. rewrite AS2. simpl.
   assert ((Mach.fn_stacksize f) = frame_size (mk_frame (Mach.fn_stacksize f))).
   simpl. rewrite Z.max_r. auto. lia. rewrite H2. simpl. rewrite Z.max_r. 2: auto.
   remember (mk_frame (Mach.fn_stacksize f)) as fr. rewrite H2.
-  constructor; auto. erewrite Mem.astack_alloc. 2: eauto.
+  econstructor; auto. erewrite Mem.astack_alloc. 2: eauto.
   erewrite <- Mem.astack_alloc_frame; eauto.
   caseEq (sp_of_stack (Mem.stack (Mem.support m))). intros.
   exploit sp_of_stack_alloc. apply H0. eauto.  eauto. intros (idx & H6 & H7).
   erewrite <- Mem.support_storev; eauto. erewrite <- Mem.support_storev; eauto.
-  erewrite <- Mem.stack_record_frame; eauto. simpl. rewrite H7. constructor. congruence.
-  exploit Mem.alloc_frame_alloc; eauto. intro. rewrite H6 in H8. inv H8. reflexivity.
-  intros. Simplifs. eapply agree_sp; eauto.
+  erewrite <- Mem.stack_record_frame; eauto. rewrite Mem.stack_push_stage; eauto.
+  rewrite H7. constructor. rewrite <- SID3. simpl. rewrite SID2. rewrite <- SID1. congruence.
+  exploit Mem.alloc_frame_alloc; eauto. intro. rewrite H6 in H8. inv H8.
+  rewrite <- SID3. simpl. rewrite SID2. rewrite <- SID1. reflexivity.
+  intros. Simplifs. rewrite SF2. rewrite SF1.
+  rewrite <- SID3. simpl. rewrite SID2. rewrite <- SID1.
+  eapply agree_sp; eauto.
 
 - (* external function *)
   exploit functions_translated; eauto.
@@ -1020,8 +1039,10 @@ Transparent destroyed_at_function_entry.
   econstructor; eauto.
   unfold loc_external_result. apply agree_set_other; auto. apply agree_set_pair; auto.
   apply agree_undef_caller_save_regs; auto.
+  erewrite <- external_call_mem_sid; eauto.
   erewrite <- external_call_astack; eauto.
   erewrite sp_of_stack_external; eauto.
+  erewrite <- external_call_mem_sid; eauto.
 
 - (* return *)
   inv STACKS. simpl in *.
@@ -1035,6 +1056,8 @@ Lemma transf_initial_states:
   exists st2, Asm.initial_state tprog st2 /\ match_states st1 st2.
 Proof.
   intros. inversion H. unfold ge0 in *.
+  apply Genv.init_mem_sid in H0 as SID.
+  apply Mem.sid_alloc in H2 as SID1. rewrite SID in SID1.
   econstructor; split.
   econstructor.
   eapply (Genv.init_mem_transf_partial TRANSF); eauto. eauto.
@@ -1043,7 +1066,7 @@ Proof.
   econstructor; eauto.
   constructor.
   apply Mem.extends_refl.
-  split. reflexivity. simpl.
+  split. rewrite SID1. reflexivity. simpl.
   unfold Vnullptr; destruct Archi.ptr64; congruence.
   intros. rewrite Regmap.gi. auto. erewrite Mem.astack_alloc; eauto.
   erewrite Genv.init_mem_astack; eauto. simpl. constructor.
@@ -1078,4 +1101,3 @@ Proof.
 Qed.
 
 End PRESERVATION.
-

@@ -953,7 +953,7 @@ End STRAIGHTLINE.
 Section MATCH_STACK.
 
 Variable ge: Mach.genv.
-
+Variable sid: nat.
 Inductive match_stack: list Mach.stackframe -> Prop :=
   | match_stack_nil:
       match_stack nil
@@ -964,7 +964,7 @@ Inductive match_stack: list Mach.stackframe -> Prop :=
       match_stack s ->
       match_stack (Stackframe fb sp ra c :: s).
 
-Lemma parent_sp_def: forall s, match_stack s -> parent_sp s <> Vundef.
+Lemma parent_sp_def: forall s, match_stack s -> parent_sp sid s <> Vundef.
 Proof.
   induction 1; simpl.
   unfold Vnullptr; destruct Archi.ptr64; congruence.
@@ -980,7 +980,7 @@ Qed.
 
 Lemma lessdef_parent_sp:
   forall s v,
-  match_stack s -> Val.lessdef (parent_sp s) v -> v = parent_sp s.
+  match_stack s -> Val.lessdef (parent_sp sid s) v -> v = parent_sp sid s.
 Proof.
   intros. inv H0. auto. exploit parent_sp_def; eauto. tauto.
 Qed.

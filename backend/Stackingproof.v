@@ -2396,7 +2396,7 @@ Proof.
   apply frame_contents_exten with rs0 (parent_locset s); auto.
   intros; apply Val.lessdef_same; apply AGCS; red; congruence.
   intros; rewrite (OUTU ty ofs); auto.
-Admitted.
+Qed.
 
 Lemma transf_initial_states:
   forall st1, Linear.initial_state prog st1 ->
