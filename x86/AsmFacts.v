@@ -56,10 +56,10 @@ Definition asm_instr_unchange_rsp (i : instruction) : Prop :=
 (*       simpl. right. auto. *)
 (* Qed. *)
 
-(* Definition asm_code_unchange_rsp (c : Asm.code) : Prop := *)
-(*   forall i, *)
-(*     In i c -> *)
-(*     asm_instr_unchange_rsp i. *)
+ Definition asm_code_unchange_rsp (c : Asm.code) : Prop :=
+   forall i,
+     In i c ->
+     asm_instr_unchange_rsp i.
 
 (* Definition asm_internal_unchange_rsp (ge: Genv.t Asm.fundef unit) : Prop := *)
 (*   forall b f, *)

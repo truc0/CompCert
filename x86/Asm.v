@@ -293,7 +293,7 @@ Inductive instruction: Type :=
   | Psubq_ri (rd: ireg) (n: int64).
 
 Definition code := list instruction.
-Record function : Type := mkfunction { fn_sig: signature; fn_code: code; fn_stacksize:Z }.
+Record function : Type := mkfunction { fn_sig: signature; fn_code: code; fn_stacksize:Z; fn_ofs_link : ptrofs}.
 Definition fundef := AST.fundef function.
 Definition program := AST.program fundef unit.
 
@@ -331,6 +331,12 @@ Definition set_pair (p: rpair preg) (v: val) (rs: regset) : regset :=
   match p with
   | One r => rs#r <- v
   | Twolong rhi rlo => rs#rhi <- (Val.hiword v) #rlo <- (Val.loword v)
+  end.
+
+Fixpoint no_rsp_pair (b: rpair preg) :=
+  match b with
+  | One r => r <> RSP
+  | Twolong hi lo => hi <> RSP /\ lo <> RSP
   end.
 
 (** Assigning the result of a builtin *)
@@ -1300,6 +1306,13 @@ Definition loc_external_result (sg: signature) : rpair preg :=
 
 Inductive state: Type :=
   | State: regset -> mem -> state.
+
+Fixpoint in_builtin_res (b:builtin_res preg) (r:preg) :=
+  match b with
+    |BR b => b =r
+    |BR_none => False
+    |BR_splitlong hi lo => in_builtin_res hi r \/ in_builtin_res lo r
+  end.
 
 Inductive step: state -> trace -> state -> Prop :=
   | exec_step_internal:

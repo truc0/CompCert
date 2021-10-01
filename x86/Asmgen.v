@@ -773,7 +773,8 @@ Definition transl_function (f: Mach.function) :=
   do c <- transl_code' f f.(Mach.fn_code) true;
   if zle 0 f.(Mach.fn_stacksize) then
   OK (mkfunction f.(Mach.fn_sig)
-        (Pallocframe f.(Mach.fn_stacksize) f.(fn_retaddr_ofs) f.(fn_link_ofs) :: c) f.(Mach.fn_stacksize))
+        (Pallocframe f.(Mach.fn_stacksize) f.(fn_retaddr_ofs) f.(fn_link_ofs) :: c)
+        f.(Mach.fn_stacksize) f.(fn_link_ofs))
   else Error (msg "negative function stacksize").
 
 Definition transf_function (f: Mach.function) : res Asm.function :=
