@@ -116,16 +116,13 @@ Require Import Linking.
   Proof.
     simpl; intros s1 s2 IS1 IS2.
     exists s1; split; auto. inv IS1; inv IS2.
-    inv H0; inv H2.
     unfold ge, ge0, ge1, rs0, rs1 in *. rewrite_hyps.
-    constructor; eauto. constructor. reflexivity. simpl. simpl_regs.
-    reflexivity.
     destruct (Genv.find_funct_ptr ge bmain0) eqn:Fmain.
     - destruct f.
       + eapply match_states_call_alloc.
-        * intros. simpl_regs. rewrite (Pregmap.gso _ _ H0). rewrite (Pregmap.gso _ _ H1). auto.
-        * simpl_regs. simpl. f_equal.
-          rewrite Ptrofs.add_assoc. rewrite (Ptrofs.add_commut (Ptrofs.neg _)), Ptrofs.add_neg_zero. rewrite Ptrofs.add_zero. auto.
+        * intros. simpl_regs. rewrite (Pregmap.gso _ _ H2). rewrite (Pregmap.gso _ _ H3). reflexivity.
+        * simpl_regs.  simpl. f_equal.
+(*          rewrite Ptrofs.add_assoc. rewrite (Ptrofs.add_commut (Ptrofs.neg _)), Ptrofs.add_neg_zero. rewrite Ptrofs.add_zero. auto. *)
         * simpl_regs.
           simpl. rewrite <- Ptrofs.sub_add_opp.
           unfold Ptrofs.sub.

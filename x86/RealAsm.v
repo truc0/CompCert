@@ -761,39 +761,21 @@ Section WITHGE.
 End WITHGE.
 
 Inductive initial_state (p: Asm.program): state -> Prop :=
-  | initial_state_intro: forall m0 m1 stk bmain,
+  | initial_state_intro: forall m0 m1 m2 stk bmain,
       Genv.init_mem p = Some m0 ->
-      Mem.alloc m0 0 (Memory.max_stacksize) = (m1, stk) ->
+      Mem.alloc m0 0 (max_stacksize + (align (size_chunk Mptr)8)) = (m1, stk) ->
+      Mem.storev Mptr m1 (Vptr stk (Ptrofs.repr (max_stacksize + align (size_chunk Mptr) 8 - size_chunk Mptr))) Vnullptr = Some m2 ->
       let ge := Genv.globalenv p in
       Genv.find_symbol ge p.(prog_main) = Some bmain ->
       let rs0 :=
         (Pregmap.init Vundef)
         # PC <- (Vptr bmain Ptrofs.zero)
         # RA <- Vnullptr
-        # RSP <- (Vptr (Stack None nil 1) (Ptrofs.repr max_stacksize)) in
-      initial_state p (State rs0 m1).
-(*
-  Inductive initial_state_gen (prog: Asm.program) (rs: regset) m: state -> Prop :=
-  | initial_state_gen_intro:
-      forall m1 bstack m2 m3 m4 bmain
-        (MALLOC: Mem.alloc (Mem.push_new_stage m) 0 (Mem.stack_limit + align (size_chunk Mptr) 8) = (m1,bstack))
-        (MDROP: Mem.drop_perm m1 bstack 0 (Mem.stack_limit + align (size_chunk Mptr) 8) Writable = Some m2)
-        (MRSB: Mem.record_stack_blocks m2 (make_singleton_frame_adt' bstack frame_info_mono 0) = Some m3)
-        (STORE_RETADDR: Mem.storev Mptr m3 (Vptr bstack (Ptrofs.repr (Mem.stack_limit + align (size_chunk Mptr) 8 - size_chunk Mptr))) Vnullptr = Some m4),
-        let ge := Genv.globalenv prog in
-        Genv.find_symbol ge prog.(prog_main) = Some bmain ->
-        let rs0 :=
-            rs #PC <- (Vptr bmain Ptrofs.zero)
-               #RA <- Vnullptr
-               #RSP <- (Val.offset_ptr (Vptr bstack (Ptrofs.repr (Mem.stack_limit + align (size_chunk Mptr) 8))) (Ptrofs.neg (Ptrofs.repr (size_chunk Mptr)))) in
-        initial_state_gen prog rs m (State rs0 m4).
+        # RSP <- (Val.offset_ptr
+                   (Vptr stkblock (Ptrofs.repr (max_stacksize + align (size_chunk Mptr) 8)))
+                   (Ptrofs.neg (Ptrofs.repr (size_chunk Mptr)))) in
+      initial_state p (State rs0 m2).
 
-  Inductive initial_state (prog: Asm.program) (rs: regset) (s: state): Prop :=
-  | initial_state_intro: forall m,
-      Genv.init_mem prog = Some m ->
-      initial_state_gen prog rs m s ->
-      initial_state prog rs s.
-*)
 Definition semantics prog :=
   Semantics step (initial_state prog) final_state (Genv.globalenv prog).
 
@@ -828,6 +810,10 @@ Definition m_state s :=
           (STOP: stack_top_state s),
           real_asm_inv s.
 
+    Lemma storev_perm :
+      forall m chunk addr v m', Mem.storev chunk m addr v = Some m' ->
+                           (forall b o k p, Mem.perm m' b o k p <-> Mem.perm m b o k p).
+      Admitted.
     Lemma real_initial_inv:
       forall is,
         initial_state prog is -> real_asm_inv is.
@@ -839,12 +825,14 @@ Definition m_state s :=
         apply align_Mptr_stack_limit.
       - exploit Mem.alloc_result; eauto. intro. subst.
         unfold Mem.nextblock in H1. unfold Mem.fresh_block in H1.
-        rewrite STK in H1. simpl in H1.
-        red. unfold bstack. unfold stkblock. intros. exploit Mem.perm_alloc_3; eauto.
+        rewrite STK in H1. destr_in H1. simpl in Heqp. inv Heqp.
+        red. unfold bstack. unfold stkblock. intros o k p.
+        repeat erewrite (storev_perm _ _ _ _ _ H2). eauto.
+        intro. exploit Mem.perm_alloc_3; eauto.
         intro. exploit Mem.perm_alloc_2; eauto. simpl. intro. eapply Mem.perm_implies; eauto.
         apply perm_F_any.
       - red. simpl. apply Mem.stack_alloc in H1. rewrite STK in H1.
-        exists nil, None. simpl in H1. congruence.
+        exists nil, None. simpl in H1. erewrite <- Mem.support_storev; eauto.
     Qed.
 
     Lemma exec_instr_invar_same:
@@ -962,10 +950,6 @@ Definition m_state s :=
         Genv.find_funct_ptr ge b = Some (Internal f) ->
         wf_asm_function f.
 
-    Lemma storev_perm :
-      forall m chunk addr v m', Mem.storev chunk m addr v = Some m' ->
-                           (forall b o k p, Mem.perm m' b o k p <-> Mem.perm m b o k p).
-      Admitted.
     Lemma real_asm_inv_inv:
       forall (prog_no_rsp: asm_prog_no_rsp ge) (WF: wf_asm_prog ge) s1 t s2,
         step ge s1 t s2 ->

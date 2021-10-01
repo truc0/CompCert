@@ -67,14 +67,14 @@ End SSASM.
 Inductive initial_state (p: program): state -> Prop :=
   | initial_state_intro: forall m0 m1 stk bmain,
       Genv.init_mem p = Some m0 ->
-      Mem.alloc m0 0 (Memory.max_stacksize) = (m1, stk) ->
+      Mem.alloc m0 0 (max_stacksize + align(size_chunk Mptr) 8) = (m1, stk) ->
       let ge := Genv.globalenv p in
       Genv.find_symbol ge p.(prog_main) = Some bmain ->
       let rs0 :=
         (Pregmap.init Vundef)
         # PC <- (Vptr bmain Ptrofs.zero)
         # RA <- Vnullptr
-        # RSP <- (Vptr stkblock (Ptrofs.repr max_stacksize)) in
+        # RSP <- (Vptr stkblock (Ptrofs.repr (max_stacksize + (align(size_chunk Mptr) 8)))) in
       initial_state p (State rs0 m1).
 
 (** The same final_state as defined in the Asm.v *)

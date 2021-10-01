@@ -14,6 +14,7 @@ Proof.
   intros. reflexivity.
 Qed.
 
+Definition max_stacksize' := max_stacksize + align (size_chunk Mptr) 8.
 Section PRESERVATION.
 
 Variable prog: Asm.program.
@@ -157,7 +158,7 @@ Record single_stack_perm_ofs (m: mem) : Prop :=
   stack_perm_offset: forall (ofs: Z) (k: perm_kind) (p: permission),
       Mem.perm m stkblock ofs k p -> 0 <= ofs < Ptrofs.max_unsigned;
   stack_offset_perm: forall (ofs: Z) (k: perm_kind) (p: permission),
-      0 <= ofs < Memory.max_stacksize -> Mem.perm m stkblock ofs k p;
+      0 <= ofs < max_stacksize' -> Mem.perm m stkblock ofs k p;
   }.
 
 Lemma stack_size_aligned :
@@ -223,17 +224,17 @@ Definition stack_inject_lowbound j m stklb:=
 
 Inductive inject_stack (j:meminj) (P:perm_type): (list fid * path) -> stackadt -> Prop :=
   |inject_stack_nil :
-     j (stkblock) = Some (stkblock,max_stacksize) ->
+     j (stkblock) = Some (stkblock,max_stacksize') ->
      inject_stack j P (nil,nil) nil
   |inject_stack_cons : forall b astk fr lf p id idx
       (IS_REC: inject_stack j P (lf,p) astk),
-      j b = Some (stkblock, max_stacksize - stack_size astk - frame_size_a fr) ->
+      j b = Some (stkblock, max_stacksize' - stack_size astk - frame_size_a fr) ->
       b = Stack (Some id) (p++(idx::nil)) 1%positive ->
      (forall o k p, 0 <= o < frame_size fr <-> P b o k p) ->
      inject_stack j P ((Some id)::lf,p++(idx::nil)) ((fr::nil)::astk).
 
 Lemma inject_stack_initinj:
-  forall j P s l, inject_stack j P s l ->      j (stkblock) = Some (stkblock,max_stacksize).
+  forall j P s l, inject_stack j P s l ->      j (stkblock) = Some (stkblock,max_stacksize').
 Proof.
   intros. induction H; auto.
 Qed.
@@ -294,11 +295,11 @@ Inductive match_states: meminj -> state -> state -> Prop :=
                             (Mem.astack (Mem.support m)))
       (RSPINJ': exists stkofs,
           (Ptrofs.unsigned stkofs =
-           max_stacksize -
+           max_stacksize' -
            stack_size (Mem.astack (Mem.support m)))
           /\ (rs'#RSP) = Vptr stkblock stkofs)
       (STKINJLWBD: stack_inject_lowbound j m
-     (max_stacksize - stack_size (Mem.astack (Mem.support m)))),
+     (max_stacksize' - stack_size (Mem.astack (Mem.support m)))),
       match_states j (State rs m) (State rs' m').
 
 (** injection in exec_instr *)
@@ -1323,7 +1324,9 @@ Proof.
       simpl in H. unfold frame_size_a in H.
       exploit Mem.astack_alloc. apply ALLOC. intros ALLOCSTK.
       apply Mem.astack_alloc_frame in ALLOCF. rewrite ALLOCF.
-      rewrite <- ALLOCSTK. lia.
+      rewrite <- ALLOCSTK. unfold max_stacksize'.
+      unfold Mptr. destr; simpl;
+      unfold max_stacksize in H; lia.
     - rewrite Heqstksize. apply Ptrofs.unsigned_range_2.
   }
   assert (NEWSTKSIZE: 0 <= stksize' <= Ptrofs.max_unsigned).
@@ -1359,7 +1362,8 @@ Proof.
     apply Z.divide_sub_r.
     generalize (stack_size_aligned (Mem.astack (Mem.support m))).
     intro ALI1.
-    assert (ALI2: (8 | Memory.max_stacksize)). unfold Memory.max_stacksize. red. exists 512. lia.
+    assert (ALI2: (8 | max_stacksize')). unfold max_stacksize'. red. exists 513.
+    unfold max_stacksize. unfold Mptr. destr.
     rewrite Heqstkofs.
     apply Z.divide_sub_r; auto.
     erewrite Mem.astack_alloc_frame; eauto.
@@ -1469,7 +1473,7 @@ Proof.
     reflexivity.
   }
   remember (Ptrofs.repr stksize') as stkofs'.
-  assert(STKOFS': Ptrofs.unsigned stkofs' = Memory.max_stacksize - Memory.stack_size (Mem.astack (Mem.support m4))).
+  assert(STKOFS': Ptrofs.unsigned stkofs' = max_stacksize' - Memory.stack_size (Mem.astack (Mem.support m4))).
   {
     generalize (Mem.support_store _ _ _ _ _ _ STORELINK).
     intro SUPSTLINK.
@@ -1647,12 +1651,12 @@ Proof.
          auto. congruence.
 Qed.
 
-Lemma max_stacksize_lt_max:
-  max_stacksize < Ptrofs.max_unsigned.
+Lemma max_stacksize'_lt_max:
+  max_stacksize' < Ptrofs.max_unsigned.
 Proof.
   unfold Ptrofs.max_unsigned. unfold Ptrofs.modulus.
   unfold Ptrofs.wordsize. unfold Wordsize_Ptrofs.wordsize.
-  unfold max_stacksize. destr; simpl; lia.
+  unfold max_stacksize'. unfold max_stacksize. unfold Mptr. destr; simpl; lia.
 Qed.
 
 Lemma cis_perm : forall b0 m delta ofs k p j stk astk,
@@ -1660,7 +1664,7 @@ Lemma cis_perm : forall b0 m delta ofs k p j stk astk,
     current_in_stack' b0 (sp_of_stack stk)->
     j b0  = Some (stkblock,delta) ->
     Mem.perm m b0 ofs k p ->
-    delta >= (max_stacksize - stack_size astk) /\
+    delta >= (max_stacksize' - stack_size astk) /\
     0 <= ofs.
 Proof.
   induction 1; intros.
@@ -1668,7 +1672,7 @@ Proof.
   + assert (ASTK:stack_size ((fr::nil)::astk) = frame_size_a fr + stack_size astk). simpl. lia.
     destruct (eq_block b b0).
     ++ subst. rewrite H0 in H4.
-       assert (delta = max_stacksize - stack_size astk - frame_size_a fr). congruence.
+       assert (delta = max_stacksize' - stack_size astk - frame_size_a fr). congruence.
        rewrite H1. split. lia.
        apply H2 in H5. lia.
     ++ exploit IHinject_stack; eauto. simpl in H3. destr_in H3. inv H3. destr_in H7.
@@ -1802,8 +1806,8 @@ Proof.
       repeat destr_in Heqb0. rewrite <- SF in Heqs. rewrite ASR in Heqs. rewrite ASP in Heqs.
       inv Heqs.
       destruct RSPINJ' as [offset [X Y]].
-      assert (max_stacksize - (stack_size ((f0::nil)::Mem.astack (Mem.support m1))) =
-              max_stacksize - frame_size_a f0 - stack_size (Mem.astack (Mem.support m1))).
+      assert (max_stacksize' - (stack_size ((f0::nil)::Mem.astack (Mem.support m1))) =
+              max_stacksize' - frame_size_a f0 - stack_size (Mem.astack (Mem.support m1))).
       assert (stack_size ((f0::nil)::Mem.astack(Mem.support m1)) = frame_size_a f0 + stack_size (Mem.astack (Mem.support m1))). simpl. lia. rewrite H. lia.
       constructor; eauto.
       (* Memory Injection *)
@@ -1831,14 +1835,14 @@ Proof.
         generalize (Ptrofs.unsigned_range_2 offset). intro.
         rewrite X in H1. setoid_rewrite H in H1.
         generalize (stack_size_pos (Mem.astack (Mem.support m1))). intro.
-        generalize max_stacksize_lt_max. intro. lia.
+        generalize max_stacksize'_lt_max. intro. lia.
         inv IS_REC.
         -- exploit sp_of_stack_pspnull; eauto. intro. rewrite H1.
            rewrite Y. simpl.
            rewrite Ptrofs.add_unsigned.
            rewrite X. rewrite Z.max_r. 2: lia. rewrite <- H6.
            rewrite Ptrofs.unsigned_repr.
-           assert (max_stacksize - (stack_size ((f0::nil)::nil)) + frame_size_a f0 = max_stacksize).
+           assert (max_stacksize' - (stack_size ((f0::nil)::nil)) + frame_size_a f0 = max_stacksize').
            unfold stack_size. unfold size_of_all_frames. lia.
            setoid_rewrite H4. econstructor; eauto. unfold frame_size_a in FSZ. lia.
         -- exploit sp_of_stack_pspsome; eauto. intro. rewrite H1.
@@ -1894,7 +1898,7 @@ Proof.
         split. generalize (Ptrofs.unsigned_range offset).
         intro. generalize (frame_size_a_pos f0). intro. lia.
         rewrite X. generalize (stack_size_pos (Mem.astack (Mem.support m1))). intro.
-        generalize max_stacksize_lt_max. intro. lia.
+        generalize max_stacksize'_lt_max. intro. lia.
         ++ rewrite Y.
         unfold Mem.loadv in LOADRA'. destr_in LOADRA'.
         unfold Val.offset_ptr in Heqv. destr_in Heqv. inv Heqv.
@@ -1904,7 +1908,7 @@ Proof.
         split. apply frame_size_a_pos.
         generalize (Ptrofs.unsigned_range_2 offset). intro.
         rewrite X in H0. generalize (stack_size_pos (Mem.astack (Mem.support m1))). intro.
-        generalize max_stacksize_lt_max. intro. unfold frame_size_a in *. lia.
+        generalize max_stacksize'_lt_max. intro. unfold frame_size_a in *. lia.
       * unfold stack_inject_lowbound in STKINJLWBD.
         intro. intros.
         generalize (RINJ RSP). intro.
@@ -2297,7 +2301,7 @@ Proof.
   rename H into INIT.
   rename H0 into INITMEM.
   exploit Genv.initmem_inject; eauto. intro FLATINJ.
-  caseEq (Mem.alloc m0 0 max_stacksize). intros.
+  caseEq (Mem.alloc m0 0 max_stacksize'). intros.
  exploit Genv.init_mem_genv_sup; eauto. intro SUP. fold ge in SUP.
   exploit Genv.init_mem_stack; eauto. intro STK.
   exploit Mem.stack_alloc; eauto. intro STK1. rewrite STK in STK1. simpl in STK1.
@@ -2315,11 +2319,11 @@ Proof.
   exploit Mem.alloc_right_inject; eauto. intro.
   exploit Mem.alloc_left_mapped_inject. apply H0. apply H1.
   + instantiate (1:= stkblock). apply Mem.valid_new_block in H. auto.
-  + instantiate (1:=max_stacksize). generalize max_stacksize_lt_max. intro.
+  + instantiate (1:=max_stacksize'). generalize max_stacksize'_lt_max. intro.
     split. vm_compute. intro. inv x. lia.
   + intros. right. exploit Mem.perm_alloc_3; eauto.
-    intros. generalize max_stacksize_lt_max. intro. lia.
-  + intros. assert (ofs = 0). lia. subst. exploit Mem.perm_alloc_2; eauto. instantiate (1:= max_stacksize).
+    intros. generalize max_stacksize'_lt_max. intro. lia.
+  + intros. assert (ofs = 0). lia. subst. exploit Mem.perm_alloc_2; eauto. instantiate (1:= max_stacksize').
     lia. intro. rewrite Z.add_0_l. eapply Mem.perm_implies; eauto. apply perm_F_any.
   + intro. intros. destruct chunk; simpl in H3; extlia.
   + intros. unfold Mem.flat_inj in H3. destr_in H3.
@@ -2327,6 +2331,17 @@ Proof.
     inv s. inv H7. destruct n; inv s.
     inv H3.
   + intros (j' & A & B &C &D).
+(*  edestruct (Mem.range_perm_drop_2) with (p:= Writable) as (m3' & DROP).
+  red. intros. eapply Mem.perm_alloc_2; eauto.
+  exploit Mem.drop_outside_inject; eauto. intros.
+  {
+    destruct (eq_block b' stkblock).
+    subst.
+    exploit Mem.perm_alloc_3. 2: apply H4. eauto. intro. lia.
+    rewrite D in H3. unfold Mem.flat_inj in H3. destr_in H3.
+    auto.
+  }
+  intro. *)
   eexists j' ,_. split.
   econstructor; eauto.
   constructor; eauto.
@@ -2367,9 +2382,9 @@ Proof.
   - constructor.
     ++ intros ofs k p PERM. subst.
        exploit Mem.perm_alloc_3; eauto. intro.
-       assert (max_stacksize < Ptrofs.max_unsigned).
+       assert (max_stacksize' < Ptrofs.max_unsigned).
        {
-         unfold max_stacksize.
+         unfold max_stacksize'.
          vm_compute. auto.
        }
        lia.
@@ -2378,7 +2393,7 @@ Proof.
        intro. eauto. eapply Mem.perm_implies; eauto. constructor.
   - rewrite STK2. erewrite Mem.astack_alloc; eauto. erewrite Genv.init_mem_astack; eauto. simpl. constructor.
     auto.
-  - exists(Ptrofs.repr max_stacksize). split.
+  - exists(Ptrofs.repr max_stacksize'). split.
     erewrite Mem.astack_alloc; eauto.
       erewrite Genv.init_mem_astack; eauto.
       rewrite Pregmap.gss. reflexivity.
