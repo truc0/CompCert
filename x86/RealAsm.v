@@ -751,19 +751,24 @@ Section WITHGE.
       extcall_arguments rs m (ef_sig ef) args ->
       external_call ef ge args m t res m' ->
       rs' = (set_pair (loc_external_result (ef_sig ef))
-                      res (undef_caller_save_regs rs)) #PC <- (rs RA) ->
+                      res (undef_caller_save_regs rs))
+              #PC <- (rs RA)
+              #RA <- Vundef
+              #RSP <- (Val.offset_ptr (rs RSP) (Ptrofs.repr (size_chunk Mptr)))
+      ->
       step (State rs m) t (State rs' m').
 
 End WITHGE.
 
 Inductive initial_state (p: Asm.program): state -> Prop :=
-  | initial_state_intro: forall m0 m1 stk,
+  | initial_state_intro: forall m0 m1 stk bmain,
       Genv.init_mem p = Some m0 ->
       Mem.alloc m0 0 (Memory.max_stacksize) = (m1, stk) ->
       let ge := Genv.globalenv p in
+      Genv.find_symbol ge p.(prog_main) = Some bmain ->
       let rs0 :=
         (Pregmap.init Vundef)
-        # PC <- (Genv.symbol_address ge p.(prog_main) Ptrofs.zero)
+        # PC <- (Vptr bmain Ptrofs.zero)
         # RA <- Vnullptr
         # RSP <- (Vptr (Stack None nil 1) (Ptrofs.repr max_stacksize)) in
       initial_state p (State rs0 m1).
@@ -1049,15 +1054,20 @@ Definition m_state s :=
       - inv INV; constructor.
         + Opaque destroyed_at_call.
           red in RSPPTR; red; simpl in *. repeat simpl_regs.
-          destruct RSPPTR as (o & EQ & AL); simpl in *. rewrite <- EQ.
+          destruct RSPPTR as (o & EQ & AL); simpl in *. rewrite EQ.
           simpl. eexists; split; eauto. apply align_Mptr_add; auto.
         + red in BSTACKPERM; red. simpl in *. intros o k p.
-          repeat rewrite_perms. eauto.
-          red in STOP; simpl in STOP. eapply is_stack_top_in_stack; eauto.
-          red in STOP; simpl in STOP. eapply is_stack_top_in_stack; eauto.
-        + red in STOP; red; simpl in *. rewrite_stack_blocks. auto.
+          repeat erewrite (external_perm_stack _ _ _ _ _ _ _ _ _ _ _ H2); eauto.
+           simpl. auto. red in STOP; simpl in STOP. unfold bstack. unfold stkblock.
+           simpl. destruct STOP as (tl & st & STOP). rewrite STOP. split. auto. left. auto.
+           simpl. auto. red in STOP; simpl in STOP. unfold bstack. unfold stkblock.
+           simpl. destruct STOP as (tl & st & STOP). rewrite STOP. split. auto. left. auto.
+        + red in STOP; red; simpl in *. destruct STOP as (tl & st & STOP).
+          exploit external_call_stack; eauto. destr. intros.
+          rewrite STOP in H3. simpl in H3. destruct st. eauto. eauto.
+          intros. rewrite H3. eauto.
     Qed.
-*)
+
 End INVARIANT.
 
 
@@ -1067,8 +1077,8 @@ Section WITHGETGE.
     Hypothesis (SADDR_EQ: forall id ofs, Genv.symbol_address tge id ofs = Genv.symbol_address ge id ofs).
     Hypothesis (FPTR_EQ: forall b, Genv.find_funct_ptr ge b = None <-> Genv.find_funct_ptr tge b = None).
 
-    Lemma fptr_some_eq: 
-      forall b f, Genv.find_funct_ptr ge b = Some f -> 
+    Lemma fptr_some_eq:
+      forall b f, Genv.find_funct_ptr ge b = Some f ->
              exists f', Genv.find_funct_ptr tge b = Some f'.
     Proof.
       intros.
@@ -1076,8 +1086,8 @@ Section WITHGETGE.
       rewrite <- FPTR_EQ in EQ. congruence.
     Qed.
 
-    Lemma funct_some_eq: 
-      forall b f, Genv.find_funct ge b = Some f -> 
+    Lemma funct_some_eq:
+      forall b f, Genv.find_funct ge b = Some f ->
              exists f', Genv.find_funct tge b = Some f'.
     Proof.
       unfold Genv.find_funct.
@@ -1109,19 +1119,19 @@ Section WITHGETGE.
 *)
     Ltac unfold_loadstore :=
       match goal with
-      | [ |- context[ exec_load _ _ _ _ _ _ _] ] =>
+      | [ |- context[ exec_load _ _ _ _ _  _] ] =>
         unfold exec_load
-      | [ |- context[ exec_store _ _ _ _ _ _ _ _] ] =>
+      | [ |- context[ exec_store _ _ _ _  _ _ _] ] =>
         unfold exec_store
       end.
-(*
+
     Ltac rewrite_eval_addrmode :=
       match goal with
       | [ |- context[ eval_addrmode _ _ _ ] ] =>
         erewrite eval_addrmode_same; eauto
       end.
-*)
-  (*  Lemma exec_valid_instr_same : forall (i:instruction) f f' i rs m,
+
+    Lemma exec_valid_instr_same : forall (i:instruction) f f' i rs m,
         instr_valid i ->
         exec_instr ge f i rs m = exec_instr tge f' i rs m.
     Proof.
@@ -1132,48 +1142,33 @@ Section WITHGETGE.
       - congruence.
       - erewrite eval_addrmode32_same; eauto.
       - erewrite eval_addrmode64_same; eauto.
-      - erewrite eval_ros_same; eauto.
-        destr. 
-        exploit funct_some_eq; eauto.
-        intros (f1 & FT). rewrite FT. auto.
-        rewrite funct_none_eq in Heqo. rewrite Heqo. auto.
-      - erewrite eval_ros_same; eauto.
-      - erewrite goto_ofs_eq; eauto.
-      - destr; auto. destr; auto.
-        erewrite goto_ofs_eq; eauto.
-      - destr; eauto.
-        destr; eauto.
-        destr; eauto.
-        destr; eauto.
-        erewrite goto_ofs_eq; eauto.
-      - destr; eauto.
-        destr; eauto.
-        erewrite goto_ofs_eq; eauto.
+      - erewrite SADDR_EQ. auto.
+      - erewrite SADDR_EQ. auto.
     Qed.
-*)
+
     Lemma goto_label_eq : forall (i:instruction) f f' l rs m,
         (forall lbl ofs, label_pos lbl ofs (fn_code f) = label_pos lbl ofs (fn_code f')) ->
         goto_label ge f l rs m = goto_label tge f' l rs m.
     Proof.
       intros.
       unfold goto_label. destr.
-      - rewrite <- H. rewrite Heqo. 
-        destr; auto. 
-        destr. 
+      - rewrite <- H. rewrite Heqo.
+        destr; auto.
+        destr.
         exploit fptr_some_eq; eauto.
         intros (f1 & FT). rewrite FT. auto.
         rewrite FPTR_EQ in Heqo0. rewrite Heqo0. auto.
       - rewrite <- H. rewrite Heqo. auto.
     Qed.
-(*
+
     Lemma exec_instr_same : forall (i:instruction) f f' i rs m,
         (forall lbl ofs, label_pos lbl ofs (fn_code f) = label_pos lbl ofs (fn_code f')) ->
         exec_instr ge f i rs m = exec_instr tge f' i rs m.
     Proof.
       intros i f f' i0 rs m LP.
-(*      destruct (instr_valid_dec i0).
+      destruct (instr_valid_dec i0).
       eapply exec_valid_instr_same; eauto.
-      unfold instr_valid in n. *)
+      unfold instr_valid in n.
       destruct i0; try tauto.
       - cbn. eapply goto_label_eq; eauto.
       - cbn. destr; auto. destr; auto.
@@ -1184,7 +1179,7 @@ Section WITHGETGE.
       - cbn. destr; auto. cbn. destr; auto.
         eapply goto_label_eq; eauto.
     Qed.
-*)
+
 End WITHGETGE.
 
 Section RECEPTIVEDET.
@@ -1239,6 +1234,3 @@ Section RECEPTIVEDET.
   Qed.
 
 End RECEPTIVEDET.
-
-
-

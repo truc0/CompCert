@@ -2303,12 +2303,12 @@ Proof.
   exploit Mem.stack_alloc; eauto. intro STK1. rewrite STK in STK1. simpl in STK1.
   exploit Mem.stack_alloc. apply H1. intro STK2. rewrite STK in STK2. simpl in STK2.
   assert (b = stkblock).
-    apply Mem.alloc_result in H as H2. subst.
+    apply Mem.alloc_result in H as H3. subst.
     unfold Mem.nextblock. unfold Mem.fresh_block.
     erewrite Genv.init_mem_stack; eauto.
     subst.
   assert (b0 = stkblock).
-    apply Mem.alloc_result in H1 as H2. subst.
+    apply Mem.alloc_result in H1 as H3. subst.
     unfold Mem.nextblock. unfold Mem.fresh_block.
     erewrite Genv.init_mem_stack; eauto.
     subst.
@@ -2321,49 +2321,48 @@ Proof.
     intros. generalize max_stacksize_lt_max. intro. lia.
   + intros. assert (ofs = 0). lia. subst. exploit Mem.perm_alloc_2; eauto. instantiate (1:= max_stacksize).
     lia. intro. rewrite Z.add_0_l. eapply Mem.perm_implies; eauto. apply perm_F_any.
-  + intro. intros. destruct chunk; simpl in H2; extlia.
-  + intros. unfold Mem.flat_inj in H2. destr_in H2.
+  + intro. intros. destruct chunk; simpl in H3; extlia.
+  + intros. unfold Mem.flat_inj in H3. destr_in H3.
     destruct b. simpl in s. rewrite STK in s. simpl in s. destruct p0; simpl in s.
-    inv s. inv H6. destruct n; inv s.
-    inv H2.
+    inv s. inv H7. destruct n; inv s.
+    inv H3.
   + intros (j' & A & B &C &D).
   eexists j' ,_. split.
   econstructor; eauto.
   constructor; eauto.
   constructor; intros.
-  - apply Genv.genv_defs_range in H2. destruct (eq_block b stkblock). subst.
-    simpl in H2. rewrite SUP,STK in H2. inv H2. inv H4. rewrite D.
+  - apply Genv.genv_defs_range in H3. destruct (eq_block b stkblock). subst.
+    simpl in H3. rewrite SUP,STK in H3. inv H3. inv H5. rewrite D.
   unfold Mem.flat_inj. rewrite <- SUP.
   rewrite pred_dec_true. auto. auto. auto.
-  - destruct (eq_block b stkblock). subst. rewrite C in H2. inv H2.
-    apply Genv.genv_defs_range in H3. simpl in H3. rewrite SUP,STK in H3. inv H3. inv H4.
-    rewrite D in H2.
-    unfold Mem.flat_inj in H2. rewrite <- SUP in H2. destr_in H2. auto.
-  - destruct (eq_block b stkblock). subst. apply Genv.genv_vars_eq in H2. inv H2.
-    rewrite D. unfold Mem.flat_inj. rewrite <- SUP. apply Genv.genv_symb_range in H2. destr. auto.
+  - destruct (eq_block b stkblock). subst. rewrite C in H3. inv H3.
+    apply Genv.genv_defs_range in H4. simpl in H4. rewrite SUP,STK in H4. inv H4. inv H5.
+    rewrite D in H3.
+    unfold Mem.flat_inj in H3. rewrite <- SUP in H3. destr_in H3. auto.
+  - destruct (eq_block b stkblock). subst. apply Genv.genv_vars_eq in H3. inv H3.
+    rewrite D. unfold Mem.flat_inj. rewrite <- SUP. apply Genv.genv_symb_range in H3. destr. auto.
   - rewrite SUP. eapply Mem.sup_include_alloc; eauto.
   - rewrite SUP. eapply Mem.sup_include_alloc; eauto.
   -
-  intros. unfold rs0 in H2. rewrite Pregmap.gss in H2. inv H2. auto.
+  intros. unfold rs0 in H3. rewrite Pregmap.gss in H3. inv H3. auto.
   - intros. unfold rs0.
     repeat (intros; apply val_inject_set; auto). fold ge0.
     ++ unfold ge0. unfold Genv.symbol_address.
-       destruct (Genv.find_symbol (Genv.globalenv prog) (prog_main prog)) eqn:E.
        econstructor; eauto.
-       destruct (eq_block b stkblock).
-       subst. apply Genv.genv_vars_eq in E. inv E.
-       exploit Genv.genv_symb_range. eauto. intro.
+       destruct (eq_block bmain stkblock). apply Genv.genv_vars_eq in H2.
+       rewrite H2 in e. inv e.
        rewrite D.
        rewrite <- SUP.
        unfold Mem.flat_inj.
        rewrite pred_dec_true. eauto.
-       auto. auto. auto. constructor.
+       eapply Genv.genv_symb_range; eauto.
+       auto. auto.
     ++ constructor.
     ++ econstructor; eauto.
-  - intros. unfold current_in_stack in H2. rewrite STK2 in H2.
-    simpl in H2. destr_in H2.
+  - intros. unfold current_in_stack in H3. rewrite STK2 in H3.
+    simpl in H3. destr_in H3.
   - apply Mem.valid_new_block in H1. auto.
-  - intros. intro. exploit Mem.perm_alloc_3. 2: apply H2. eauto. intro. lia.
+  - intros. intro. exploit Mem.perm_alloc_3. 2: apply H3. eauto. intro. lia.
   - apply Mem.valid_new_block in H. auto.
   - constructor.
     ++ intros ofs k p PERM. subst.
@@ -2384,12 +2383,12 @@ Proof.
       erewrite Genv.init_mem_astack; eauto.
       rewrite Pregmap.gss. reflexivity.
   - intro. intros. destruct (eq_block b stkblock). subst.
-    rewrite C in H2. inv H2. split. generalize (stack_size_pos (Mem.astack(Mem.support m1))). intro.
+    rewrite C in H3. inv H3. split. generalize (stack_size_pos (Mem.astack(Mem.support m1))). intro.
     exploit Mem.perm_alloc_3. 2: eauto. eauto. intro.
     assert (ofs = 0).  lia. subst. lia.
-    exploit Mem.perm_alloc_3. 2: apply H3. eauto. intro. lia.
-    rewrite D in H2.
-    unfold Mem.flat_inj in H2. destr_in H2. auto.
+    exploit Mem.perm_alloc_3. 2: apply H4. eauto. intro. lia.
+    rewrite D in H3.
+    unfold Mem.flat_inj in H3. destr_in H3. auto.
 Qed.
 
 Lemma transf_final_states:

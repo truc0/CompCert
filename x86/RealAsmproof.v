@@ -94,7 +94,7 @@ Require Import Linking.
                        (PCeq: rs_state s1 PC = rs_state s2 PC)
                        (RAXeq: rs_state s1 RAX = rs_state s2 RAX)
     : match_states s1 s2.
-(*loadbytesv for what ???*)
+
   Lemma max_stacksize_range':
     size_chunk Mptr <= max_stacksize <= Ptrofs.max_unsigned.
   Proof.
@@ -103,7 +103,7 @@ Require Import Linking.
     vm_compute. congruence.
   Qed.
 
- (* Hypothesis WF: wf_asm_prog ge. *)
+  Hypothesis WF: wf_asm_prog ge.
   (* Hypothesis main_internal: *)
   (*   exists bmain fmain, *)
   (*     Genv.find_symbol ge (prog_main prog) = Some bmain /\ *)
@@ -114,12 +114,12 @@ Require Import Linking.
       initial_state prog s2 ->
       exists s1', SSAsm.initial_state prog s1' /\ match_states s1' s2.
   Proof.
-    Admitted.
-(*
     simpl; intros s1 s2 IS1 IS2.
     exists s1; split; auto. inv IS1; inv IS2.
     inv H0; inv H2.
     unfold ge, ge0, ge1, rs0, rs1 in *. rewrite_hyps.
+    constructor; eauto. constructor. reflexivity. simpl. simpl_regs.
+    reflexivity.
     destruct (Genv.find_funct_ptr ge bmain0) eqn:Fmain.
     - destruct f.
       + eapply match_states_call_alloc.

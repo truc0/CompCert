@@ -338,7 +338,6 @@ Fixpoint no_rsp_pair (b: rpair preg) :=
   | One r => r <> RSP
   | Twolong hi lo => hi <> RSP /\ lo <> RSP
   end.
-
 (** Assigning the result of a builtin *)
 
 Fixpoint set_res (res: builtin_res preg) (v: val) (rs: regset) : regset :=
@@ -1347,13 +1346,14 @@ End RELSEM.
 (** Execution of whole programs. *)
 
 Inductive initial_state (p: program): state -> Prop :=
-  | initial_state_intro: forall m0 m1 b0,
+  | initial_state_intro: forall m0 m1 b0 bmain,
       Genv.init_mem p = Some m0 ->
       Mem.alloc m0 0 0 = (m1,b0) ->
       let ge := Genv.globalenv p in
+      Genv.find_symbol ge p.(prog_main) = Some bmain ->
       let rs0 :=
         (Pregmap.init Vundef)
-        # PC <- (Genv.symbol_address ge p.(prog_main) Ptrofs.zero)
+        # PC <- (Vptr bmain Ptrofs.zero)
         # RA <- Vnullptr
         # RSP <- (Vptr (Stack None nil 1) Ptrofs.zero) in
       initial_state p (State rs0 m1).
@@ -1417,7 +1417,8 @@ Ltac Equalities :=
   eapply external_call_trace_length; eauto.
   eapply external_call_trace_length; eauto.
 - (* initial states *)
-  inv H; inv H0. f_equal. congruence.
+  inv H; inv H0. f_equal. subst ge. subst ge0. rewrite H3 in H5. inv H5. reflexivity.
+  congruence.
 - (* final no step *)
   assert (NOTNULL: forall b ofs, Vnullptr <> Vptr b ofs).
   { intros; unfold Vnullptr; destruct Archi.ptr64; congruence. }
@@ -1438,3 +1439,49 @@ Definition data_preg (r: preg) : bool :=
   | RA => false
   end.
 
+
+Definition instr_invalid (i: instruction) :=
+  match i with
+  | Pjmp_l _
+  | Pjcc _ _
+  | Pjcc2 _ _ _
+  | Pjmptbl _ _
+  | Pallocframe _ _ _
+  | Pfreeframe _ _ _ => True
+  | _ => False
+  end.
+
+Definition instr_valid i := ~instr_invalid i.
+
+Lemma instr_invalid_dec: forall i, {instr_invalid i} + {~instr_invalid i}.
+Proof.
+  destruct i; cbn; auto.
+Qed.
+
+Lemma instr_valid_dec: forall i, {instr_valid i} + {~instr_valid i}.
+Proof.
+  unfold instr_valid.
+  destruct i; cbn; auto.
+Qed.
+
+Definition def_instrs_valid (def: option (globdef fundef unit)) :=
+  match def with
+  | None => True
+  | Some (Gvar v) => True
+  | Some (Gfun f) =>
+    match f with
+    | External _ => True
+    | Internal f =>  Forall instr_valid (fn_code f)
+    end
+  end.
+
+Lemma def_instrs_valid_dec:
+  forall def, {def_instrs_valid def} + {~def_instrs_valid def}.
+Proof.
+  destruct def. destruct g.
+  - destruct f.
+    + simpl. apply Forall_dec. apply instr_valid_dec.
+    + simpl. auto.
+  - simpl. auto.
+  - simpl. auto.
+Qed.

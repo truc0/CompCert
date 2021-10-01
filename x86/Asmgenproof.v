@@ -1038,8 +1038,7 @@ Proof.
   econstructor; split.
   econstructor.
   eapply (Genv.init_mem_transf_partial TRANSF); eauto. eauto.
-  replace (Genv.symbol_address (Genv.globalenv tprog) (prog_main tprog) Ptrofs.zero)
-     with (Vptr fb Ptrofs.zero).
+  rewrite symbols_preserved. rewrite (match_program_main TRANSF). eauto.
   econstructor; eauto.
   constructor.
   apply Mem.extends_refl.
@@ -1050,10 +1049,6 @@ Proof.
   apply Mem.stack_alloc in H2 as H4.
   apply Genv.init_mem_stack in H0. rewrite H0 in H4. simpl in H4. rewrite H4. simpl. constructor.
   apply Genv.genv_vars_eq in H1 as H1'. auto.
-  unfold Genv.symbol_address.
-  rewrite (match_program_main TRANSF).
-  rewrite symbols_preserved.
-  unfold ge; rewrite H1. auto.
 Qed.
 
 Lemma transf_final_states:
