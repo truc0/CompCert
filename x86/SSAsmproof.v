@@ -1776,9 +1776,9 @@ Proof.
       unfold Val.offset_ptr in Heqv0. destr_in Heqv0. inv Heqv0.
       destr_in Heqv1. inv Heqv1.
       eexists j',_,_; split; eauto.
-      unfold Val.offset_ptr. simpl. rewrite Z.max_r.  rewrite STORERA.
+      unfold Val.offset_ptr. simpl. rewrite STORERA.
       unfold Val.offset_ptr in STORELINK. simpl in STORELINK.
-      rewrite STORELINK. auto. lia.
+      rewrite STORELINK. auto.
     (* Pfreeframe *)
     + repeat destr_in EI.
       rename Heqv1 into RSRSP.
@@ -1840,13 +1840,13 @@ Proof.
         -- exploit sp_of_stack_pspnull; eauto. intro. rewrite H1.
            rewrite Y. simpl.
            rewrite Ptrofs.add_unsigned.
-           rewrite X. rewrite Z.max_r. 2: lia. rewrite <- H6.
+           rewrite X. rewrite <- H6.
            rewrite Ptrofs.unsigned_repr.
            assert (max_stacksize' - (stack_size ((f0::nil)::nil)) + frame_size_a f0 = max_stacksize').
            unfold stack_size. unfold size_of_all_frames. lia.
            setoid_rewrite H4. econstructor; eauto. unfold frame_size_a in FSZ. lia.
         -- exploit sp_of_stack_pspsome; eauto. intro. rewrite H1.
-           rewrite Y. econstructor. eauto. rewrite Z.max_r. 2:lia.
+           rewrite Y. econstructor. eauto.
            rewrite Ptrofs.add_unsigned. rewrite X. rewrite <- H4.
            rewrite Ptrofs.unsigned_repr. rewrite Ptrofs.add_zero_l.
            apply f_equal.
@@ -1903,7 +1903,7 @@ Proof.
         unfold Mem.loadv in LOADRA'. destr_in LOADRA'.
         unfold Val.offset_ptr in Heqv. destr_in Heqv. inv Heqv.
         simpl.
-        unfold Ptrofs.add. rewrite Z.max_r. 2:lia.
+        unfold Ptrofs.add.
         rewrite (Ptrofs.unsigned_repr (align (frame_size f0) 8)). reflexivity.
         split. apply frame_size_a_pos.
         generalize (Ptrofs.unsigned_range_2 offset). intro.

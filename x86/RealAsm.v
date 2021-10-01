@@ -27,12 +27,12 @@ Section WFASM.
     end.
 
   Inductive is_alloc : instruction -> Prop :=
-    is_alloc_intro sz pub ora:
-      is_alloc (Pallocframe sz pub ora).
+    is_alloc_intro sz ora olink:
+      is_alloc (Pallocframe sz ora olink).
 
   Definition make_palloc f  : instruction :=
     let sz := fn_stacksize f in
-    (Pallocframe sz (fn_ofs_link f) (Ptrofs.sub (Ptrofs.repr (align sz 8)) (Ptrofs.repr (size_chunk Mptr)))).
+    (Pallocframe sz (Ptrofs.sub (Ptrofs.repr (align sz 8)) (Ptrofs.repr (size_chunk Mptr))) (fn_ofs_link f)).
 
   Lemma make_palloc_is_alloc:
     forall f,
@@ -750,11 +750,13 @@ Section WITHGE.
       forall b ef args res rs m t rs' m',
       rs PC = Vptr b Ptrofs.zero ->
       Genv.find_funct_ptr ge b = Some (External ef) ->
-      extcall_arguments rs m (ef_sig ef) args ->
+      extcall_arguments
+        (rs # RSP <- (Val.offset_ptr (rs RSP) (Ptrofs.repr (size_chunk Mptr)))) m (ef_sig ef) args ->
+      forall ra, Mem.loadv Mptr m (rs RSP) = Some ra ->
       external_call ef ge args m t res m' ->
       rs' = (set_pair (loc_external_result (ef_sig ef))
                       res (undef_caller_save_regs rs))
-              #PC <- (rs RA)
+              #PC <- ra
               #RA <- Vundef
               #RSP <- (Val.offset_ptr (rs RSP) (Ptrofs.repr (size_chunk Mptr)))
       ->
@@ -1043,15 +1045,15 @@ Definition m_state s :=
           destruct RSPPTR as (o & EQ & AL); simpl in *. rewrite EQ.
           simpl. eexists; split; eauto. apply align_Mptr_add; auto.
         + red in BSTACKPERM; red. simpl in *. intros o k p.
-          repeat erewrite (external_perm_stack _ _ _ _ _ _ _ _ _ _ _ H2); eauto.
+          repeat erewrite (external_perm_stack _ _ _ _ _ _ _ _ _ _ _ H3); eauto.
            simpl. auto. red in STOP; simpl in STOP. unfold bstack. unfold stkblock.
            simpl. destruct STOP as (tl & st & STOP). rewrite STOP. split. auto. left. auto.
            simpl. auto. red in STOP; simpl in STOP. unfold bstack. unfold stkblock.
            simpl. destruct STOP as (tl & st & STOP). rewrite STOP. split. auto. left. auto.
         + red in STOP; red; simpl in *. destruct STOP as (tl & st & STOP).
           exploit external_call_stack; eauto. destr. intros.
-          rewrite STOP in H3. simpl in H3. destruct st. eauto. eauto.
-          intros. rewrite H3. eauto.
+          rewrite STOP in H4. simpl in H4. destruct st. eauto. eauto.
+          intros. rewrite H4. eauto.
     Qed.
 
 End INVARIANT.
@@ -1206,8 +1208,8 @@ Section RECEPTIVEDET.
         exploit external_call_determ. apply H3. apply H10. intros (A & B); split; auto. intro C.
         destruct B; auto. congruence.
       + inv STEP2; rewrite_hyps.
-        exploit extcall_arguments_determ. apply H1. apply H7. intro; subst.
-        exploit external_call_determ. apply H2. apply H8. intros (A & B); split; auto. intro C.
+        exploit extcall_arguments_determ. apply H1. apply H8. intro; subst.
+        exploit external_call_determ. apply H3. apply H10. intros (A & B); split; auto. intro C.
         destruct B; auto. congruence.
     - apply real_asm_single_events.
     - simpl. intros s1 s2 IS1 IS2; inv IS1; inv IS2. rewrite_hyps.

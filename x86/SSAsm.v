@@ -12,7 +12,7 @@ Variable ge: genv.
 Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : outcome :=
   match i with
   | Pallocframe sz ofs_ra ofs_link =>
-    let aligned_sz := align (Z.max 0 sz) 8 in
+    let aligned_sz := align sz 8 in
     let sp := Val.offset_ptr (rs#RSP) (Ptrofs.neg (Ptrofs.repr aligned_sz)) in
     match Mem.storev Mptr m (Val.offset_ptr sp ofs_link) (rs#RSP) with
     | None => Stuck
@@ -23,7 +23,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
       end
     end
   | Pfreeframe sz ofs_ra ofs_link =>
-    let aligned_sz := align (Z.max 0 sz) 8 in
+    let aligned_sz := align sz 8 in
     let sp := Val.offset_ptr rs#RSP (Ptrofs.repr aligned_sz) in
     match Mem.loadv Mptr m (Val.offset_ptr rs#RSP ofs_ra) with
     | None => Stuck

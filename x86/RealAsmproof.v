@@ -325,12 +325,9 @@ Require Import Linking.
     intro; subst. now simpl in NIN.
     simpl in NIN. apply IHeval_builtin_arg1. intuition.
     simpl in NIN. apply IHeval_builtin_arg2. intuition.
-    simpl in NIN
     simpl in NIN. apply IHeval_builtin_arg1. intuition.
     simpl in NIN. apply IHeval_builtin_arg2. intuition.
-    
-    admit. admit. (*?*)
-  Admitted.
+  Qed.
 
   Lemma eval_builtin_args_eq_rs:
     forall (rs1 rs2: regset) (REQ: forall r, r <> RA -> rs1 r = rs2 r) sp m args vargs
@@ -340,7 +337,7 @@ Require Import Linking.
   Proof.
     induction 3; constructor; eauto.
     eapply eval_builtin_arg_eq_rs. 3: apply H. auto. inv NIN; auto.
-    inv NIN. apply IHlist_forall2. auto.    
+    inv NIN. apply IHlist_forall2. auto.
   Qed.
 
   Lemma preg_of_not_RA:
@@ -350,7 +347,7 @@ Require Import Linking.
     unfold preg_of. intros.
     destr.
   Qed.
-  
+
   Lemma extcall_arg_eq_rs:
     forall (rs1 rs2: regset)
       (REQ : forall r : preg, r <> RA -> rs1 r = rs2 r)
@@ -403,20 +400,18 @@ Require Import Linking.
       (EXTCALL : external_call ef ge args m2 t res m'),
     exists s2', step ge (State rs2 m2) t s2'.
   Proof.
-    Admitted.
-(*
     intros.
     eexists.
     eapply exec_step_external. rewrite <- REQ by congruence. eauto. eauto.
-    eapply extcall_arguments_eq_rs. 2: eauto. intros. apply REQ. simpl_regs.
+    eapply extcall_arguments_eq_rs. 2: eauto. intros. simpl_regs.
     setoid_rewrite Pregmap.gsspec. rewrite <- RRSP.
-    destr. apply REQ. auto. auto.
-    rewrite RRSP in SP_NOT_VUNDEF. unfold Val.offset_ptr in SP_NOT_VUNDEF. destr_in SP_NOT_VUNDEF. apply Val.Vptr_has_type.
+    destr. apply REQ. eauto. eauto. eauto. eauto. eauto.
+(*    rewrite RRSP in SP_NOT_VUNDEF. unfold Val.offset_ptr in SP_NOT_VUNDEF. destr_in SP_NOT_VUNDEF. apply Val.Vptr_has_type.
     eauto.
     rewrite RRSP in SP_NOT_VUNDEF. unfold Val.offset_ptr in SP_NOT_VUNDEF. destr_in SP_NOT_VUNDEF.
-    auto. eauto. eauto.
+    auto. eauto. eauto. *)
   Qed.
-*)
+
 (*  Lemma eval_ros_eq:
     forall rs1 rs2 (REQ: forall r : preg, r <> RSP -> r <> RA -> rs1 r = rs2 r) ros (NRSP: ros <> inl RSP),
       eval_ros ge ros rs1 = eval_ros ge ros rs2.
@@ -448,12 +443,10 @@ Require Import Linking.
       simpl in *. subst.
       inv ALLOC; simpl in EI. repeat destr_in EI.
       repeat destr_in PC1.
-      Admitted.
-(*
       exploit wf_asm_wf_allocframe; eauto. intro A; inv A.
-      rewrite offset_ptr_neg_sub in Heqo.
-      rewrite RRSP in Heqo.
-      rewrite offset_ptr_cancel in Heqo.
+      setoid_rewrite offset_ptr_neg_sub in Heqo0.
+      rewrite RRSP in Heqo0.
+      rewrite offset_ptr_cancel in Heqo0.
       assert (m_state s2' = m2) by congruence. subst.
       right; do 2 eexists.
       eapply exec_step_internal.
