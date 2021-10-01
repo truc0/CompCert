@@ -22,6 +22,7 @@ Section WFASM.
     match b with
     | BA x => if preg_eq r x then True else False
     | BA_splitlong ba1 ba2 => in_builtin_arg ba1 r \/ in_builtin_arg ba2 r
+    | BA_addptr ba1 ba2 => in_builtin_arg ba1 r \/ in_builtin_arg ba2 r
     | _ => False
     end.
 
@@ -229,6 +230,7 @@ Section WFASM.
     {~ in_builtin_arg arg r} + {~ ~ in_builtin_arg arg r}.
   Proof.
     induction arg; simpl; try (try destr; left; now inversion 1).
+    destruct IHarg1, IHarg2; try (right; now intuition). left. intuition congruence.
     destruct IHarg1, IHarg2; try (right; now intuition). left. intuition congruence.
   Qed.
 

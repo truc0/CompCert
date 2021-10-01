@@ -117,41 +117,44 @@ Require Import Linking.
     simpl; intros s1 s2 IS1 IS2.
     exists s1; split; auto. inv IS1; inv IS2.
     unfold ge, ge0, ge1, rs0, rs1 in *. rewrite_hyps.
+    apply Genv.init_mem_stack in H as STK.
+    apply Mem.alloc_result in H0 as X. unfold Mem.nextblock in X. unfold fresh_block in X. rewrite STK in X.
+    simpl in X. subst.
     destruct (Genv.find_funct_ptr ge bmain0) eqn:Fmain.
     - destruct f.
       + eapply match_states_call_alloc.
         * intros. simpl_regs. rewrite (Pregmap.gso _ _ H2). rewrite (Pregmap.gso _ _ H3). reflexivity.
-        * simpl_regs.  simpl. f_equal.
+        * simpl_regs. Opaque max_stacksize.  simpl. f_equal.
 (*          rewrite Ptrofs.add_assoc. rewrite (Ptrofs.add_commut (Ptrofs.neg _)), Ptrofs.add_neg_zero. rewrite Ptrofs.add_zero. auto. *)
         * simpl_regs.
           simpl. rewrite <- Ptrofs.sub_add_opp.
           unfold Ptrofs.sub.
           rewrite (Ptrofs.unsigned_repr (size_chunk Mptr)).
-          rewrite (Ptrofs.unsigned_repr (Mem.stack_limit + align (size_chunk Mptr) 8)).
-          3: vm_compute; intuition congruence.
-          simpl in STORE_RETADDR. congruence.
-          generalize Mem.stack_limit_range, Mem.stack_limit_range', align_Mptr_pos. omega.
+          rewrite (Ptrofs.unsigned_repr (max_stacksize + align (size_chunk Mptr) 8)).
+          3: vm_compute; intuition congruence. unfold stkblock.
+          simpl in H4. congruence.
+          (* generalize Mem.stack_limit_range, Mem.stack_limit_range', align_Mptr_pos. omega. *) admit.
         * simpl. simpl_regs. rewrite Fmain.
           erewrite wf_asm_alloc_at_beginning; eauto.
         * apply make_palloc_is_alloc.
       + eapply match_states_call_external.
-        * intros. simpl_regs. rewrite (Pregmap.gso _ _ H0). rewrite (Pregmap.gso _ _ H1). auto.
+        * intros. simpl_regs. rewrite (Pregmap.gso _ _ H2). rewrite (Pregmap.gso _ _ H3). auto.
         * simpl_regs. simpl. f_equal.
-          rewrite Ptrofs.add_assoc. rewrite (Ptrofs.add_commut (Ptrofs.neg _)), Ptrofs.add_neg_zero. rewrite Ptrofs.add_zero. auto.
+(*          rewrite Ptrofs.add_assoc. rewrite (Ptrofs.add_commut (Ptrofs.neg _)), Ptrofs.add_neg_zero. rewrite Ptrofs.add_zero. auto. *)
         * simpl_regs.
           simpl. rewrite <- Ptrofs.sub_add_opp.
           unfold Ptrofs.sub.
           rewrite (Ptrofs.unsigned_repr (size_chunk Mptr)).
-          rewrite (Ptrofs.unsigned_repr (Mem.stack_limit + align (size_chunk Mptr) 8)).
-          3: vm_compute; intuition congruence.
-          simpl in STORE_RETADDR. congruence.
-          generalize Mem.stack_limit_range, Mem.stack_limit_range', align_Mptr_pos. omega.
+          rewrite (Ptrofs.unsigned_repr (max_stacksize + align (size_chunk Mptr) 8)).
+          3: vm_compute; intuition congruence. unfold stkblock.
+          simpl in H4. congruence.
+          admit. (*generalize Mem.stack_limit_range, Mem.stack_limit_range', align_Mptr_pos. omega.*)
         * simpl. simpl_regs. rewrite Fmain. eauto.
     - eapply match_states_stuck. simpl. rewrite Fmain. auto.
       simpl. simpl_regs. auto.
       simpl. simpl_regs. auto.
-  Qed.
-*)
+  Admitted. (*Qed. *)
+
   Lemma match_states_PC:
     forall s1 s2,
       match_states s1 s2 ->
@@ -194,8 +197,7 @@ Require Import Linking.
   Proof.
     unfold pc_at; intros s t s'  STEP; inv STEP; rewrite H, H0; try now destr.
     inversion 1; simpl; eauto.
-    admit.
-  Admitted.
+  Qed.
 
   Lemma internal_step:
     forall rs1 rs2 m1 m2 f i
@@ -206,7 +208,7 @@ Require Import Linking.
     intros.
     simpl in PCAT. repeat destr_in PCAT.
     eapply SSAsm.exec_step_internal; eauto.
-  Qed.  
+  Qed.
 
   Lemma offset_ptr_neg_sub a b ptr:
     (Val.offset_ptr (Val.offset_ptr ptr (Ptrofs.neg a)) (Ptrofs.sub a b)) = Val.offset_ptr ptr (Ptrofs.neg b).
@@ -247,7 +249,7 @@ Require Import Linking.
     destr. f_equal. destr. apply REQ. congruence.
     f_equal. destr. destr. rewrite REQ by congruence. auto.
   Qed.
-  
+
   Lemma eval_addrmode_seq:
     forall (rs rs' : regset) (REQ: forall r, r <> RA -> rs r = rs' r) a,
       eval_addrmode ge a rs = eval_addrmode ge a rs'.
@@ -263,7 +265,7 @@ Require Import Linking.
     unfold eval_testcond. intros.
     repeat rewrite REQ by congruence. repeat destr.
   Qed.
-  
+
   Lemma exec_load_seq:
     forall chunk m a r r' rd r0 m0,
       seq (State r m) (State r' m) ->
@@ -323,6 +325,10 @@ Require Import Linking.
     intro; subst. now simpl in NIN.
     simpl in NIN. apply IHeval_builtin_arg1. intuition.
     simpl in NIN. apply IHeval_builtin_arg2. intuition.
+    simpl in NIN
+    simpl in NIN. apply IHeval_builtin_arg1. intuition.
+    simpl in NIN. apply IHeval_builtin_arg2. intuition.
+    
     admit. admit. (*?*)
   Admitted.
 
