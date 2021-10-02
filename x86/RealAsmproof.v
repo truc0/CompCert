@@ -108,6 +108,17 @@ Require Import Linking.
   (*   exists bmain fmain, *)
   (*     Genv.find_symbol ge (prog_main prog) = Some bmain /\ *)
   (*     Genv.find_funct_ptr ge bmain = Some (Internal fmain). *)
+
+Lemma max_stacksize_aligned : (8 | max_stacksize).
+Proof. unfold max_stacksize. exists 512. lia. Qed.
+
+Lemma max_stacksize_range : 0 <= max_stacksize <= Ptrofs.max_unsigned.
+Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
+
+Lemma max_stacksize'_range : 0 <= max_stacksize + align (size_chunk Mptr) 8 <= Ptrofs.max_unsigned.
+Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
+
+
   Lemma initial_states_match :
     forall s1 s2,
       SSAsm.initial_state prog s1 ->
@@ -133,7 +144,7 @@ Require Import Linking.
           rewrite (Ptrofs.unsigned_repr (max_stacksize + align (size_chunk Mptr) 8)).
           3: vm_compute; intuition congruence. unfold stkblock.
           simpl in H4. congruence.
-          (* generalize Mem.stack_limit_range, Mem.stack_limit_range', align_Mptr_pos. omega. *) admit.
+          generalize max_stacksize'_range. lia.
         * simpl. simpl_regs. rewrite Fmain.
           erewrite wf_asm_alloc_at_beginning; eauto.
         * apply make_palloc_is_alloc.
@@ -148,12 +159,12 @@ Require Import Linking.
           rewrite (Ptrofs.unsigned_repr (max_stacksize + align (size_chunk Mptr) 8)).
           3: vm_compute; intuition congruence. unfold stkblock.
           simpl in H4. congruence.
-          admit. (*generalize Mem.stack_limit_range, Mem.stack_limit_range', align_Mptr_pos. omega.*)
+          generalize max_stacksize'_range. lia.
         * simpl. simpl_regs. rewrite Fmain. eauto.
     - eapply match_states_stuck. simpl. rewrite Fmain. auto.
       simpl. simpl_regs. auto.
       simpl. simpl_regs. auto.
-  Admitted. (*Qed. *)
+  Qed.
 
   Lemma match_states_PC:
     forall s1 s2,
@@ -405,11 +416,11 @@ Require Import Linking.
     eapply exec_step_external. rewrite <- REQ by congruence. eauto. eauto.
     eapply extcall_arguments_eq_rs. 2: eauto. intros. simpl_regs.
     setoid_rewrite Pregmap.gsspec. rewrite <- RRSP.
-    destr. apply REQ. eauto. eauto. eauto. eauto. eauto.
-(*    rewrite RRSP in SP_NOT_VUNDEF. unfold Val.offset_ptr in SP_NOT_VUNDEF. destr_in SP_NOT_VUNDEF. apply Val.Vptr_has_type.
+    destr. apply REQ. eauto. eauto.
+    rewrite RRSP in SP_NOT_VUNDEF. unfold Val.offset_ptr in SP_NOT_VUNDEF. destr_in SP_NOT_VUNDEF. apply Val.Vptr_has_type.
     eauto.
     rewrite RRSP in SP_NOT_VUNDEF. unfold Val.offset_ptr in SP_NOT_VUNDEF. destr_in SP_NOT_VUNDEF.
-    auto. eauto. eauto. *)
+    auto. eauto. eauto.
   Qed.
 
 (*  Lemma eval_ros_eq:
@@ -452,49 +463,62 @@ Require Import Linking.
       eapply exec_step_internal.
       rewrite <- REQ by congruence. eauto. eauto. eauto.
       simpl. eauto.
-      unfold Mem.storev in MEQ. destr_in MEQ. eauto.
+      unfold Mem.storev in MEQ. destr_in MEQ. eauto. *)
     - simpl in PC1. repeat destr_in PC1.
       inv STEP; rewrite_hyps.
       right. exists t.
       assert (m2 = m0).
       {
-        rewrite RRSP in SZRA.
-        rewrite offset_ptr_cancel in SZRA. congruence.
+        rewrite RRSP in H3.
+        rewrite offset_ptr_cancel in H3. congruence.
         unfold Mem.storev in MEQ. destr_in MEQ. eauto.
       } subst.
       eapply extcall_progress; eauto.
       assert (exists b o, rs2 RSP = Vptr b o).
       {
-        unfold Mem.storev, Mem.loadv in MEQ. destruct (rs2 RSP); simpl in *; try congruence. eauto.
+        unfold Mem.storev, Mem.loadv in MEQ.
+        destruct (rs2 RSP); simpl in *; try congruence. eauto.
       }
-      unfold Mem.storev in SZRA.
-      rewrite RRSP in SZRA. rewrite offset_ptr_cancel in SZRA; eauto.
-      destr_in SZRA.
+      unfold Mem.storev in H3.
+      rewrite RRSP in H3. rewrite offset_ptr_cancel in H3; eauto.
+      destr_in H3.
       simpl. erewrite Mem.load_store_same; eauto.
       change Mptr with (chunk_of_type Tptr).
       erewrite Val.load_result_same. auto. auto.
     - exploit step_internal. apply STEP. eauto. intro IB; inv IB. intros (EI & T0).
       simpl in EI. repeat destr_in EI.
       simpl in *.
-      repeat destr_in PC1.
-      unfold Mem.loadbytesv in LOADRA. repeat destr_in LOADRA.
-      exploit Mem.loadbytes_load. apply Heqo1.
+      repeat destr_in PC1. unfold Mem.loadv in LOADRA. destr_in LOADRA.
+(*    unfold Mem.loadbytesv in LOADRA. repeat destr_in LOADRA.
+      exploit Mem.loadbytes_load. apply Heqo1. *)
       inv SPAL. red in RSPPTR. simpl in RSPPTR. rewrite Heqv0 in RSPPTR.
       destruct RSPPTR as (o & EQRSP & AL);inv EQRSP; eauto.
-      intro LOAD.
+(*      intro LOAD. *)
       right; do 2 eexists.
       eapply exec_step_internal.
       rewrite <- REQ by congruence. eauto. eauto. eauto.
-      simpl. rewrite Heqv0. simpl; rewrite LOAD. eauto.
+      simpl. rewrite Heqv0. simpl; rewrite LOADRA. eauto.
     - exploit step_internal. apply STEP. eauto. intro IB; inv IB; inv JMP. intros (EI & T0).
       simpl in *.
       repeat destr_in PC1.
       inv JMP.
+      +
+      right.
+      simpl in EI; simpl; repeat destr_in EI.
+      exploit goto_label_seq. apply H0. rewrite REQ by congruence. reflexivity.
+      intros (A&B&C). do 2 eexists.
+      eapply exec_step_internal.
+      rewrite <- REQ by congruence. eauto. eauto. eauto. eauto.
+      +
       right; do 2 eexists.
       eapply exec_step_internal.
       rewrite <- REQ by congruence. eauto. eauto. eauto.
-      simpl. erewrite <- eval_ros_eq; eauto. simpl in EI; simpl; repeat destr_in EI.
-      intro; subst. eapply wf_asm_jmp_no_rsp; eauto.
+      simpl. simpl in EI; simpl; repeat destr_in EI. eauto.
+      +
+      right; do 2 eexists.
+      eapply exec_step_internal.
+      rewrite <- REQ by congruence. eauto. eauto. eauto.
+      simpl. simpl in EI; simpl; repeat destr_in EI. eauto.
     - inversion SEQ; subst.
       simpl in *. rewrite <- REQ in PC1 by congruence.
       repeat destr_in PC1; subst.
@@ -504,21 +528,28 @@ Require Import Linking.
         {
           destruct (SAFE _ (star_one _ _ _ _ _ STEP)) as [(r & FS)|(t & s2' & STEP2)].
           - inv FS.
-            inv i; simpl in H6. repeat destr_in H6.
-            simpl_regs_in H1. revert H1. unfold Genv.find_funct in Heqo. destr_in Heqo. inversion 1. 
+            inv i; simpl in H6; repeat destr_in H6.
+            +
+            simpl_regs_in H1. unfold Genv.symbol_address in H1. destr_in H1.
+            inversion H1. inversion H1.
+            +
+            simpl_regs_in H1. unfold Genv.symbol_address in H1. destr_in H1.
+            unfold Genv.find_funct in Heqo. destr_in Heqo. inversion H0.
           - assert (exists b f', Genv.find_funct_ptr ge b = Some f' /\
                             rs' PC = Vptr b Ptrofs.zero).
             {
               rename H6 into EI.
               inv i; simpl in EI; repeat destr_in EI.
               simpl_regs. unfold Genv.find_funct in Heqo; repeat destr_in Heqo. eauto.
+              simpl_regs. unfold Genv.find_funct in Heqo; repeat destr_in Heqo. eauto.
             }
             destruct H as (b & f' & FFP & PC').
             destruct f'.
             + inv i.
+              *
               exploit step_internal. apply STEP2. simpl. rewrite PC'. rewrite FFP.
               erewrite wf_asm_alloc_at_beginning; eauto. inversion 1. intros (EI & T0). subst.
-              simpl in EI. destr_in EI. inv EI.
+              simpl in EI. repeat destr_in EI. inv EI.
               right; do 2 eexists. eapply exec_step_internal. rewrite <- REQ; eauto. congruence. eauto. eauto.
               simpl in H6. destr_in H6. inv H6. simpl. force_rewrite_match Heqo. eauto.
               simpl_regs. rewrite <- ! REQ.
@@ -565,7 +596,6 @@ Require Import Linking.
         erewrite <- eval_testcond_seq by eauto. destr_in H6.
         erewrite <- eval_testcond_seq by eauto. repeat destr_in H6; eauto. eapply goto_ofs_seq; eauto. apply REQ; congruence.
         rewrite <- REQ by congruence. destr. destr. eapply goto_ofs_seq. eauto. simpl_regs. apply REQ; congruence.
-        
         eapply eval_builtin_args_eq_rs in H4. rewrite REQ in H4.
         right; do 2 eexists. eapply exec_step_builtin. rewrite <- REQ; eauto. congruence. all: eauto. congruence.
         eapply wf_asm_builtin_not_PC; eauto.

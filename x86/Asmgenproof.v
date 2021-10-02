@@ -532,7 +532,44 @@ Definition measure (s: Mach.state) : nat :=
   | Mach.Callstate _ _ _ _ _ => 0%nat
   | Mach.Returnstate _ _ _ => 1%nat
   end.
-
+(*
+Lemma has_code_parent_ra_after_call:
+  forall s
+    (HC: callstack_function_defined return_address_offset ge s),
+    ra_after_call tge (parent_ra init_ra s).
+Proof.
+  intros init_ra_after_call s HC.
+  destruct s; simpl. auto.
+  destruct s; simpl.
+  inv HC.
+  split. congruence.
+  intros b o EQ; inv EQ.
+  edestruct functions_translated as (tf & FFP' & TF); eauto.
+  rewrite FFP'. intros f EQ; inv EQ.
+  red. simpl in TF. monadInv TF.
+  red in RAU.
+  specialize (fun tc => RAU _ tc EQ).
+  monadInv EQ. repeat destr_in EQ1.
+  monadInv EQ0. repeat destr_in EQ1. simpl in *. rewrite pred_dec_false. 2: inversion 1.
+  destruct TAIL as (l & sg & ros & CODE). rewrite CODE in EQ.
+  rewrite transl_code'_transl_code in EQ.
+  edestruct transl_code_app as (ep2 & y & TC1 & TC2); eauto.
+  monadInv TC2.
+  simpl in EQ0. monadInv EQ0.
+  specialize (RAU _ EQ1).
+  assert (exists icall, x = icall :: x0 /\ is_call icall).
+  {
+    destr_in EQ2; monadInv EQ2; eexists; split; eauto; constructor.
+  }
+  destruct H as (icall & ICALL & ISCALL). subst.
+  generalize (code_tail_code_size (Pallocframe (Mach.fn_stacksize trf) (fn_frame_pubrange trf) (fn_retaddr_ofs trf) :: y ++ icall :: nil) x0).
+  simpl. rewrite app_ass. simpl. intro EQSZ; specialize (EQSZ _ RAU).
+  rewrite offsets_after_call_app.
+  apply in_app. right. simpl. rewrite pred_dec_true.
+  left. rewrite EQSZ.
+  rewrite code_size_app. simpl. omega. auto.
+Qed.
+*)
 (** This is the simulation diagram.  We prove it by case analysis on the Mach transition. *)
 
 Theorem step_simulation:
@@ -649,41 +686,47 @@ Opaque loadind.
   inv AT.
   assert (NOOV: list_length_z tf.(fn_code) <= Ptrofs.max_unsigned).
     eapply transf_function_no_overflow; eauto.
-  destruct ros as [rf|fid]; simpl in H0; monadInv H5.
+  destruct H1 as (fd' & FFPcalled).
+  destruct ros as [rf|fid]; simpl in H0; monadInv H6.
 + (* Indirect call *)
   assert (rs rf = Vptr (Global id) Ptrofs.zero).
     destruct (rs rf); try discriminate.
     revert H0; predSpec Ptrofs.eq Ptrofs.eq_spec i Ptrofs.zero; intros; congruence.
   assert (rs0 x0 = Vptr (Global id) Ptrofs.zero).
-    exploit ireg_val; eauto. rewrite H5; intros LD; inv LD; auto.
-  generalize (code_tail_next_int _ _ _ _ NOOV H6). intro CT1.
+    exploit ireg_val; eauto. rewrite H1; intros LD; inv LD; auto.
+  generalize (code_tail_next_int _ _ _ _ NOOV H7). intro CT1.
   assert (TCA: transl_code_at_pc ge (Vptr fb (Ptrofs.add ofs Ptrofs.one)) fb f c false tf x).
     econstructor; eauto.
   exploit return_address_offset_correct; eauto. intros; subst ra.
   left; econstructor; split.
   apply plus_one. eapply exec_step_internal. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
-  simpl. eauto.
+  simpl. rewrite H6. simpl. rewrite pred_dec_true.
+  exploit functions_translated. apply FFPcalled. intros (tf0 & FPPcalled'&TF).
+  rewrite FPPcalled'. eauto. auto.
   econstructor; eauto.
   econstructor; eauto.
   eapply agree_sp_def; eauto.
   simpl. eapply agree_exten; eauto. intros. Simplifs.
-  simpl. rewrite H1. auto.
+  simpl. rewrite H2. auto.
   Simplifs. rewrite <- H. auto.
 + (* Direct call *)
-  generalize (code_tail_next_int _ _ _ _ NOOV H6). intro CT1.
+  generalize (code_tail_next_int _ _ _ _ NOOV H7). intro CT1.
   assert (TCA: transl_code_at_pc ge (Vptr fb (Ptrofs.add ofs Ptrofs.one)) fb f c false tf x).
     econstructor; eauto.
   exploit return_address_offset_correct; eauto. intros; subst ra.
   left; econstructor; split.
   apply plus_one. eapply exec_step_internal. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
-  simpl. unfold Genv.symbol_address. rewrite symbols_preserved. rewrite H0. eauto.
+  simpl. unfold Genv.symbol_address. rewrite symbols_preserved. rewrite H0.
+  simpl. rewrite pred_dec_true.
+  exploit functions_translated. apply FFPcalled. intros (tf0 & FPPcalled'&TF).
+  rewrite FPPcalled'. eauto. auto.
   econstructor; eauto.
   econstructor; eauto.
   eapply agree_sp_def; eauto.
   simpl. eapply agree_exten; eauto. intros. Simplifs.
-  simpl. rewrite H1. auto.
+  simpl. rewrite H2. auto.
   Simplifs. rewrite <- H. auto.
 
 - (* Mtailcall *)
@@ -945,9 +988,13 @@ Transparent destroyed_by_jumptable.
   apply star_one. eapply exec_step_internal.
   transitivity (Val.offset_ptr rs0#PC Ptrofs.one). auto. rewrite <- H5. simpl. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
-  simpl. eauto. traceEq.
+  simpl. rewrite pred_dec_true. eauto. rewrite nextinstr_inv by congruence.
+  setoid_rewrite Pregmap.gss. admit.
+(*  eapply has_code_parent_ra_after_call. *)
+  traceEq.
   constructor; auto.
-  apply agree_set_other; auto. apply agree_nextinstr. apply agree_set_other; auto.
+  apply agree_set_other; auto. apply agree_set_other; auto.
+  apply agree_nextinstr. apply agree_set_other; auto.
   eapply agree_change_sp; eauto. eapply parent_sp_def; eauto.
   inv SC. erewrite <- Mem.support_free in H12; eauto.
   erewrite Mem.astack_return_frame in H12; eauto.
@@ -1016,6 +1063,24 @@ Transparent destroyed_at_function_entry.
   intros [res' [m2' [P [Q [R S]]]]].
   left; econstructor; split.
   apply plus_one. eapply exec_step_external; eauto.
+  { (* rs SP Tint *)
+    erewrite agree_sp by eauto.
+    destruct s. simpl. unfold Tptr. destr; destr_in Heqt0.
+    inv SPC. simpl. destruct s. subst. simpl. unfold Tptr. destruct Archi.ptr64; auto.
+  }
+  { (* rs RA Tint *)
+    rewrite ATLR.
+    eapply parent_ra_type; eauto.
+  }
+  { (* rs SP not Vundef *)
+    erewrite agree_sp by eauto.
+    destruct s. simpl. unfold Tptr. congruence.
+    inv SPC. simpl. destruct s. subst. congruence.
+  }
+  { (* rs RA not Vundef *)
+    rewrite ATLR.
+    eapply parent_ra_def; eauto.
+  }
   eapply external_call_symbols_preserved; eauto. apply senv_preserved.
   econstructor; eauto.
   unfold loc_external_result. apply agree_set_other; auto. apply agree_set_pair; auto.
@@ -1028,7 +1093,7 @@ Transparent destroyed_at_function_entry.
   right. split. lia. split. auto.
   econstructor; eauto. rewrite ATPC; eauto. rewrite H3 in SC.
   auto. congruence.
-Qed.
+Admitted.
 
 Lemma transf_initial_states:
   forall st1, Mach.initial_state prog st1 ->

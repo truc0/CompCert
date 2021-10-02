@@ -793,6 +793,86 @@ Definition exec_store (chunk: memory_chunk) (m: mem)
     but we do not need to model this precisely.
 *)
 
+Inductive is_call: instruction -> Prop :=
+| is_calls_intro:
+    forall i sg,
+      is_call (Pcall_s i sg)
+| is_callr_intro:
+    forall r sg,
+      is_call (Pcall_r r sg).
+
+Lemma is_call_dec:
+  forall i,
+    {is_call i} + {~ is_call i}.
+Proof.
+  destruct i; try now (right; intro A; inv A).
+  left; econstructor; eauto.
+  left; econstructor; eauto.
+Qed.
+
+  Definition instr_size (i:instruction) := 1%Z.
+
+  Lemma instr_size_repr : forall i, 0<= instr_size i <= Ptrofs.max_unsigned.
+  Proof.
+    intro. unfold instr_size. vm_compute. split; congruence.
+  Qed.
+
+  Lemma instr_size_positive :forall i, 0 < instr_size i.
+  Proof.
+    intro. unfold instr_size. lia.
+  Qed.
+  Fixpoint code_size (c:code) : Z :=
+    match c with
+      |nil => 0
+      |i::c' => code_size c' + instr_size i
+    end.
+
+  Lemma code_size_non_neg: forall c, 0 <= code_size c.
+    Proof.
+      intros. induction c; simpl. lia. unfold instr_size. lia.
+    Qed.
+
+Fixpoint offsets_after_call (c: code) (p: Z) : list Z :=
+  match c with
+    nil => nil
+  | i::c => let r := offsets_after_call c (p + instr_size i) in
+           if is_call_dec i then (p+instr_size i)::r
+           else r
+  end.
+
+Definition is_after_call (f: fundef) (o: Z) : Prop :=
+  match f with
+    Internal f => In o (offsets_after_call (fn_code f) 0)
+  | External ef => False
+  end.
+
+Definition check_is_after_call f o : {is_after_call f o} + {~ is_after_call f o}.
+Proof.
+  unfold is_after_call.
+  destruct f; auto.
+  apply In_dec. apply zeq.
+Qed.
+
+Definition ra_after_call (ge: Genv.t fundef unit) v:=
+  v <> Vundef /\ forall b o,
+    v = Vptr b o ->
+    forall f,
+      Genv.find_funct_ptr ge b = Some f ->
+      is_after_call f (Ptrofs.unsigned o).
+
+Definition check_ra_after_call (ge': Genv.t fundef unit) v:
+  {ra_after_call ge' v} + { ~ ra_after_call ge' v}.
+Proof.
+  unfold ra_after_call.
+  destruct v; try now (left; split; intros; congruence).
+  right; intuition congruence.
+  destruct (Genv.find_funct_ptr ge' b) eqn:FFP.
+  2: left; split; [congruence|]; intros b0 o A; inv A; rewrite FFP; congruence.
+  destruct (check_is_after_call f (Ptrofs.unsigned i)).
+  left. split. congruence. intros b0 o A; inv A; rewrite FFP; congruence.
+  right; intros (B & A); specialize (A _ _ eq_refl _ FFP). congruence.
+Defined.
+
 Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : outcome :=
   match i with
   (** Moves *)
@@ -1110,11 +1190,29 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
       | _ => Stuck
       end
   | Pcall_s id sg =>
+    let addr := Genv.symbol_address ge id Ptrofs.zero in
+    match Genv.find_funct ge addr with
+    | Some _ =>
+      Next (rs#RA <- (Val.offset_ptr rs#PC Ptrofs.one) #PC <- addr) m
+    | _ => Stuck
+    end
+  | Pcall_r r sg =>
+    let addr := (rs r) in
+    match Genv.find_funct ge addr with
+    | Some _ =>
+      Next (rs#RA <- (Val.offset_ptr rs#PC Ptrofs.one) #PC <- addr) m
+    | _ => Stuck
+    end
+  | Pret =>
+    if check_ra_after_call ge (rs#RA) then Next (rs#PC <- (rs#RA) #RA <- Vundef) m else Stuck
+(*
+  | Pcall_s id sg =>
       Next (rs#RA <- (Val.offset_ptr rs#PC Ptrofs.one) #PC <- (Genv.symbol_address ge id Ptrofs.zero)) m
   | Pcall_r r sg =>
       Next (rs#RA <- (Val.offset_ptr rs#PC Ptrofs.one) #PC <- (rs r)) m
   | Pret =>
       Next (rs#PC <- (rs#RA)) m
+*)
   (** Saving and restoring registers *)
   | Pmov_rm_a rd a =>
       exec_load (if Archi.ptr64 then Many64 else Many32) m a rs rd
@@ -1337,6 +1435,10 @@ Inductive step: state -> trace -> state -> Prop :=
       rs PC = Vptr b Ptrofs.zero ->
       Genv.find_funct_ptr ge b = Some (External ef) ->
       extcall_arguments rs m (ef_sig ef) args ->
+      forall (SP_TYPE: Val.has_type (rs RSP) Tptr)
+        (RA_TYPE: Val.has_type (rs RA) Tptr)
+        (SP_NOT_VUNDEF: rs RSP <> Vundef)
+        (RA_NOT_VUNDEF: rs RA <> Vundef),
       external_call ef ge args m t res m' ->
       rs' = (set_pair (loc_external_result (ef_sig ef)) res (undef_caller_save_regs rs)) #PC <- (rs RA) ->
       step (State rs m) t (State rs' m').

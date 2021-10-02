@@ -345,6 +345,7 @@ Inductive step: state -> trace -> state -> Prop :=
       forall s fb sp sig ros c rs m f f' ra id,
       f' = Global id ->
       find_function_ptr ge ros rs = Some f' ->
+      (exists fd, Genv.find_funct_ptr ge f' = Some fd) ->
       Genv.find_funct_ptr ge fb = Some (Internal f) ->
       return_address_offset f c ra ->
       step (State s fb sp (Mcall sig ros :: c) rs m)
@@ -432,6 +433,16 @@ Inductive step: state -> trace -> state -> Prop :=
       forall s f sp ra c rs m,
       step (Returnstate (Stackframe f sp ra c :: s) rs m)
         E0 (State s f sp c rs m).
+(* maybe use it maybe to other place *)
+Inductive callstack_function_defined : list stackframe -> Prop :=
+| cfd_empty:
+    callstack_function_defined nil
+| cfd_cons:
+    forall fb sp' ra c' cs' trf
+      (FINDF: Genv.find_funct_ptr ge fb = Some (Internal trf))
+      (CFD: callstack_function_defined cs')
+      (TAIL: exists l sg ros, fn_code trf = l ++ (Mcall sg ros :: c')),
+      callstack_function_defined (Stackframe fb sp' (Vptr fb ra) c' :: cs').
 
 End RELSEM.
 

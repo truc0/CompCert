@@ -58,6 +58,10 @@ Inductive step  : state -> trace -> state -> Prop :=
       Mem.storev Mptr m (Val.offset_ptr (rs RSP) (Ptrofs.neg (Ptrofs.repr (size_chunk Mptr))))
                  (rs RA) = Some m1 ->
       extcall_arguments rs m1 (ef_sig ef) args ->
+      forall (SP_TYPE: Val.has_type (rs RSP) Tptr)
+        (RA_TYPE: Val.has_type (rs RA) Tptr)
+        (SP_NOT_VUNDEF: rs RSP <> Vundef)
+        (RA_NOT_VUNDEF: rs RA <> Vundef),
       external_call ef ge args m1 t res m' ->
       rs' = (set_pair (loc_external_result (ef_sig ef)) res (undef_caller_save_regs rs)) #PC <- (rs RA) ->
       step (State rs m) t (State rs' m').

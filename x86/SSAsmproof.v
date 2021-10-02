@@ -1736,9 +1736,9 @@ Proof.
     Opaque Mem.alloc_frame.
   - destruct i; simpl in *; try congruence.
     (* Pcall_s *)
-    + destr_in EI. inv MS.
-      do 4 eexists. split. eauto. split. econstructor; eauto.
-      * intros. apply val_inject_set. auto.
+    + destr_in EI. inv EI. inv MS.
+      do 3 eexists. split. eauto. split. econstructor; eauto.
+      * intros. apply val_inject_set.
         intros. apply val_inject_set. auto.
         apply Val.offset_ptr_inject. auto.
         destruct Genv.symbol_address eqn: SYMBBLOCK; eauto.
@@ -1748,19 +1748,24 @@ Proof.
         apply (Val.inject_ptr j b Ptrofs.zero b Ptrofs.zero 0); eauto.
       * red. auto.
     (* Pcall_r *)
-    + destr_in EI. inv MS.
-      do 4 eexists. split. eauto. split. econstructor; eauto.
+    + destr_in EI. inv EI. inv MS. generalize (RINJ r). unfold Genv.find_funct in Heqo.
+      destr_in Heqo. inversion 1. subst. simpl. destr_in Heqo. inv e.
+      inversion GLOBINJ. apply Genv.find_funct_ptr_iff in Heqo as H4.
+      apply defs_inject0 in H4. rewrite H4 in H3. inv H3.
+      rewrite pred_dec_true. rewrite Heqo. 2: reflexivity.
+      do 3 eexists. split. eauto. split. econstructor; eauto.
       * intros. apply val_inject_set. auto.
         intros. apply val_inject_set. auto.
         apply Val.offset_ptr_inject. auto.
         eauto.
       * red. auto.
     (* Pret *)
-    + destr_in EI. inv MS.
-      do 4 eexists. split. eauto. split. econstructor; eauto.
-      * intros. apply val_inject_set. auto.
+    + destr_in EI. inv EI. inv MS. rewrite pred_dec_true.
+      do 3 eexists. split. eauto. split. econstructor; eauto.
+      * intros. apply val_inject_set. apply val_inject_set; auto.
         intros. auto.
       * red. auto.
+      * admit. (*ra_after_call_iinj*)
     (* Pallocframe *)
     + repeat destr_in EI.
       inversion MS. subst.
@@ -2089,11 +2094,14 @@ Proof.
   eexists; split; econstructor; eauto.
 Qed.
 
-Lemma max_stacksize_aligned : (8 | max_stacksize). Admitted.
+Lemma max_stacksize_aligned : (8 | max_stacksize).
+Proof. unfold max_stacksize. exists 512. lia. Qed.
 
-Lemma max_stacksize_range : 0 <= max_stacksize <= Ptrofs.max_unsigned. Admitted.
+Lemma max_stacksize_range : 0 <= max_stacksize <= Ptrofs.max_unsigned.
+Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
 
-Lemma max_stacksize'_range : 0 <= max_stacksize' <= Ptrofs.max_unsigned. Admitted.
+Lemma max_stacksize'_range : 0 <= max_stacksize' <= Ptrofs.max_unsigned.
+Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
 
 Lemma stack_size_below : forall m , stack_size(Mem.astack (Mem.support m)) <= max_stacksize. Admitted.
 
@@ -2301,6 +2309,10 @@ Proof.
     rewrite JB in JB2; inv JB2.
     do 2 eexists; split.
     eapply exec_step_external; eauto. rewrite Y. simpl. eauto.
+    rewrite Y. apply Val.Vptr_has_type.
+    generalize (RINJ RA). destruct (rs RA); simpl in *; inversion 1; subst; try congruence; easy.
+    congruence.
+    generalize (RINJ RA). destruct (rs RA); simpl in *; inversion 1; subst; try congruence; easy.
     generalize (Mem.unchanged_on_support (loc_unmapped j) m m' Unch1).
     intro SUPINCMEM.
     generalize (Mem.unchanged_on_support (loc_out_of_reach j m) m'2 m2' Unch2).
