@@ -1,6 +1,7 @@
 Require Import Coqlib Coqlib Maps.
 Require Import AST Integers Floats Values Memory Events Globalenvs Smallstep.
 Require Import Asm Asmgen Asmgenproof0 Asmgenproof.
+Require Import Errors.
 
 (** instructions which have no relationship with stack *)
 Definition stk_unrelated_instr (i: instruction) :=
@@ -133,7 +134,439 @@ Qed.
 
 
 Lemma asmgen_prog_unchange_rsp: forall p tp, match_prog p tp -> AsmFacts.asm_prog_unchange_rsp (Globalenvs.Genv.globalenv tp).
+Proof.
+  intros.
+  unfold match_prog in H.
+  unfold Linking.match_program in H.
+  unfold Linking.match_program_gen in H.
 Admitted.
+
+Definition written_regs i : list preg :=
+    match i with 
+    (** Moves *)
+    | Pmov_rr rd _
+    | Pmovl_ri rd _ 
+    | Pmovq_ri rd _ 
+    | Pmov_rs rd _
+    | Pmovl_rm rd _ 
+    | Pmovq_rm rd _ => IR rd :: nil
+    | Pmovl_mr a rs 
+    | Pmovq_mr a rs => nil
+    | Pmovsd_ff rd _ 
+    | Pmovsd_fi rd _ 
+    | Pmovsd_fm rd _ => FR rd :: nil
+    | Pmovsd_mf a r1 => nil
+    | Pmovss_fi rd _ 
+    | Pmovss_fm rd _ => FR rd :: nil
+    | Pmovss_mf a r1 => nil
+    | Pfldl_m a  => ST0 :: nil
+    | Pfstpl_m a => ST0 :: nil
+    | Pflds_m a => ST0 :: nil
+    | Pfstps_m a => ST0 :: nil
+    (** Moves with conversion *)
+    | Pmovb_mr a rs 
+    | Pmovw_mr a rs => nil
+    | Pmovzb_rr rd _ 
+    | Pmovzb_rm rd _  
+    | Pmovsb_rr rd _ 
+    | Pmovsb_rm rd _  
+    | Pmovzw_rr rd _ 
+    | Pmovzw_rm rd _  
+    | Pmovsw_rr rd _ 
+    | Pmovsw_rm rd _  
+    | Pmovzl_rr rd _ 
+    | Pmovsl_rr rd _ 
+    | Pmovls_rr rd => IR rd :: nil
+    | Pcvtsd2ss_ff rd _ => FR rd :: nil
+    | Pcvtss2sd_ff rd _ => FR rd :: nil
+    | Pcvttsd2si_rf rd _=> IR rd :: nil
+    | Pcvtsi2sd_fr rd _ => FR rd :: nil
+    | Pcvttss2si_rf rd _=> IR rd :: nil
+    | Pcvtsi2ss_fr rd _ => FR rd :: nil
+    | Pcvttsd2sl_rf rd _=> IR rd :: nil
+    | Pcvtsl2sd_fr rd _ => FR rd :: nil
+    | Pcvttss2sl_rf rd _ => IR rd :: nil
+    | Pcvtsl2ss_fr rd _  => FR rd :: nil
+    (* (** Integer arithmetic *) *)
+    | Pleal rd _ 
+    | Pleaq rd _
+    | Pnegl rd
+    | Pnegq rd
+    | Paddl_ri rd _ 
+    | Paddq_ri rd _
+    | Psubl_ri rd _ 
+    | Psubq_ri rd _ 
+    | Psubl_rr rd _
+    | Psubq_rr rd _
+    | Pimull_rr rd _
+    | Pimulq_rr rd _
+    | Pimull_ri rd _ 
+    | Pimulq_ri rd _ => IR rd :: nil
+    | Pimull_r r1 
+    | Pimulq_r r1 
+    | Pmull_r r1  
+    | Pmulq_r r1  => IR RAX :: IR RDX :: nil
+    | Pcltd 
+    | Pcqto => IR RDX :: nil
+    | Pdivl r1  
+    | Pdivq r1  
+    | Pidivl r1 
+    | Pidivq r1 => IR RAX :: IR RDX :: nil
+    | Pandl_rr rd _ 
+    | Pandq_rr rd _ 
+    | Pandl_ri rd _ 
+    | Pandq_ri rd _ 
+    | Porl_rr rd _ 
+    | Porq_rr rd _ 
+    | Porl_ri rd _  
+    | Porq_ri rd _  
+    | Pxorl_r rd
+    | Pxorq_r rd
+    | Pxorl_rr rd _ 
+    | Pxorq_rr rd _ 
+    | Pxorl_ri rd _  
+    | Pxorq_ri rd _  
+    | Pnotl rd 
+    | Pnotq rd 
+    | Psall_rcl rd
+    | Psalq_rcl rd
+    | Psall_ri  rd _     
+    | Psalq_ri  rd _     
+    | Pshrl_rcl rd
+    | Pshrq_rcl rd
+    | Pshrl_ri  rd _     
+    | Pshrq_ri  rd _     
+    | Psarl_rcl rd
+    | Psarq_rcl rd
+    | Psarl_ri  rd _     
+    | Psarq_ri  rd _     
+    | Pshld_ri  rd _ _
+    | Prorl_ri  rd _     
+    | Prorq_ri  rd _     => IR rd :: nil
+    | Pcmpl_rr  _ _    
+    | Pcmpq_rr  _ _    
+    | Pcmpl_ri  _ _    
+    | Pcmpq_ri  _ _    
+    | Ptestl_rr _ _    
+    | Ptestq_rr _ _    
+    | Ptestl_ri _ _    
+    | Ptestq_ri _ _    => nil
+    | Pcmov     c rd _  
+    | Psetcc    c rd    => IR rd :: nil
+    (* (** Floating-point arithmetic *) *)
+    | Paddd_ff   rd _  
+    | Psubd_ff   rd _  
+    | Pmuld_ff   rd _  
+    | Pdivd_ff   rd _  
+    | Pnegd rd 
+    | Pabsd rd => FR rd :: nil
+    | Pcomisd_ff r1 r2  => nil
+    | Pxorpd_f   rd           (**r [xor] with self = set to zero *)
+    | Padds_ff   rd _  
+    | Psubs_ff   rd _  
+    | Pmuls_ff   rd _  
+    | Pdivs_ff   rd _  
+    | Pnegs rd          
+    | Pabss rd          => FR rd :: nil
+    | Pcomiss_ff r1 r2  => nil
+    | Pxorps_f   rd     => FR rd :: nil
+    (* (** Branches and calls *) *)
+    | Pjmp_l _
+    | Pjcc _ _
+    | Pjcc2 _ _ _ => nil
+    | Pjmptbl r tbl => IR RAX :: IR RDX :: nil
+
+    | Pret => nil
+    (* (** Saving and restoring registers *) *)
+    | Pmov_mr_a _ _   
+    | Pmovsd_mf_a _ _ => nil
+    | Pmov_rm_a rd _   => IR rd :: nil
+    | Pmovsd_fm_a rd _ => FR rd :: nil
+
+    (* (** Pseudo-instructions *) *)
+    | Plabel l => nil
+    | Pallocframe _ _ _ => IR RAX :: IR RSP :: nil
+    | Pfreeframe sz ofs_ra  ofs_link  => IR RSP :: nil
+
+    | Pbuiltin ef args res => nil
+    | _ => nil
+    end.
+
+  Require Import AsmRegs.
+
+  Ltac simpl_not_in NIN :=
+    let H1 := fresh in
+    let H2 := fresh in
+    first [ apply Decidable.not_or in NIN; destruct NIN as [H1 H2]; simpl_not_in H2
+          | idtac ].
+
+  Lemma exec_load_rsp:
+    forall(ge: genv) K m1 am rs1 f0 rs2 m2,
+      exec_load ge K m1 am rs1 f0 = Next rs2 m2 ->
+      forall r,
+        ~ In  r (PC :: RA :: CR ZF :: CR CF :: CR PF :: CR SF :: CR OF :: f0 :: nil) ->
+      rs2 r = rs1 r.
+  Proof.
+    intros ge' K m1 am rs1 f0 rs2 m2 LOAD.
+    unfold exec_load in LOAD. destr_in LOAD. inv LOAD.
+    simpl.
+    unfold nextinstr_nf.
+    intros.
+    simpl_not_in H.
+    simpl. simpl_regs. auto.
+  Qed.
+
+  Lemma exec_store_rsp:
+    forall  (ge:genv)  K m1 am rs1 f0 rs2 m2 (l: list preg),
+      exec_store ge K m1 am rs1 f0 l = Next rs2 m2 ->
+      forall r,
+        ~ In  r (PC :: RA :: CR ZF :: CR CF :: CR PF :: CR SF :: CR OF :: l) ->
+      rs2 r = rs1 r.
+  Proof.
+    intros ge' K m1 am rs1 f0 rs2 m2 l  STORE.
+    unfold exec_store in STORE. repeat destr_in STORE.
+    simpl.
+    unfold nextinstr_nf.
+    intros.
+    simpl_not_in H.
+    simpl. simpl_regs. 
+    rewrite Asmgenproof0.undef_regs_other. auto. intros; intro; subst. congruence.
+  Qed.
+  
+  Lemma exec_instr_only_written_regs:
+    forall (ge: Genv.t Asm.fundef unit) rs1 m1 rs2 m2 f i r,
+      Asm.exec_instr ge f i rs1 m1 = Next rs2 m2 ->
+      ~ In  r (PC :: RA :: CR ZF :: CR CF :: CR PF :: CR SF :: CR OF :: written_regs i) ->
+      rs2 # r = rs1 # r.
+  Proof.
+    intros ge rs1 m1 rs2 m2 f i  r EI NIN.
+    simpl in NIN.
+    simpl_not_in NIN. rename H7 into NIN.
+    destruct i; simpl in *; repeat destr_in EI;
+      unfold nextinstr_nf, compare_ints, compare_longs, compare_floats, compare_floats32; simpl; simpl_not_in NIN;
+        simpl_regs; eauto;
+          match goal with
+            H: exec_load _ _ _ _ _ _  = _ |- _ =>
+            eapply exec_load_rsp; simpl; eauto; intuition
+          | H: exec_store _ _ _ _ _ _ _  = _ |- _ =>
+            try now (eapply exec_store_rsp; simpl; eauto; simpl; intuition)
+          | _ => idtac
+          end.
+    repeat destr; simpl_regs; auto.
+    repeat destr; simpl_regs; auto.
+    Ltac solvegl H := unfold goto_label in H; repeat destr_in H; simpl_regs; auto.
+    solvegl H7.
+    solvegl H7.
+    solvegl H7.
+    solvegl H7.
+  Qed.
+  
+  
+  Definition check_asm_instr_no_rsp i :=
+    negb (in_dec preg_eq RSP (written_regs i)).
+
+  Definition check_asm_code_no_rsp c : bool :=
+    forallb (fun i => negb (stk_unrelated_instr i) || check_asm_instr_no_rsp i) c.
+
+  Lemma check_asm_instr_no_rsp_correct i:
+    check_asm_instr_no_rsp i = true ->
+    asm_instr_unchange_rsp i.
+  Proof.
+    red; intros. symmetry.
+    eapply exec_instr_only_written_regs. eauto.
+    simpl. intro A. decompose [or] A; try congruence.
+    unfold check_asm_instr_no_rsp in H. unfold proj_sumbool in H. destr_in H. simpl in H. congruence.
+  Qed.
+  
+  Definition asm_code_no_rsp (c : Asm.code) : Prop :=
+    forall i,
+      In i c ->
+      asm_instr_unchange_rsp i.
+
+  Lemma check_asm_code_no_rsp_correct c:
+    check_asm_code_no_rsp c = true ->
+    asm_code_no_rsp c.
+  Proof.
+    red; intros.
+    unfold check_asm_code_no_rsp in H. rewrite forallb_forall in H.
+    eapply H in H0. destruct (stk_unrelated_instr i) eqn:STK. simpl in H0. eapply check_asm_instr_no_rsp_correct; eauto.
+    red; congruence.
+  Qed.
+
+
+  Lemma preg_of_not_rsp:
+    forall m x,
+      preg_of m = x ->
+      x <> RSP.
+  Proof.
+    unfold preg_of. intros; subst.
+    destruct m; congruence.
+  Qed.
+  
+  Lemma ireg_of_not_rsp:
+    forall m x,
+      Asmgen.ireg_of m = Errors.OK x ->
+      IR x <> RSP.
+  Proof.
+    unfold Asmgen.ireg_of.
+    intros m x A.
+    destr_in A. inv A.
+    eapply preg_of_not_rsp in Heqp.
+    intro; subst. congruence.
+  Qed.
+
+  Lemma freg_of_not_rsp:
+    forall m x,
+      Asmgen.freg_of m = Errors.OK x ->
+      FR x <> RSP.
+  Proof.
+    unfold Asmgen.freg_of.
+    intros m x A. destr_in A. 
+  Qed.
+
+
+  
+  Ltac solve_rs:=
+    match goal with
+    | |- not (@eq preg _ (IR RSP)) => solve [ eapply preg_of_not_rsp; eauto
+                                     | eapply ireg_of_not_rsp; eauto
+                                     | eapply freg_of_not_rsp; eauto
+                                     | congruence ]
+    | |- _ => idtac
+    end.
+
+
+  Lemma loadind_no_rsp:
+    forall ir o t m ti i
+      (IN : In i ti)
+      (TI : loadind ir o t m nil = OK ti),
+      ~ In (IR RSP) (written_regs i).
+  Proof.
+    unfold loadind. intros. destruct t;destruct m;destruct Archi.ptr64;try congruence;
+    simpl in TI;try monadInv TI;try destruct IN;try simpl in H;try congruence;
+    subst;simpl;intro EQ;repeat destr_in EQ;try congruence.
+  Qed.
+
+  Lemma storeind_no_rsp:
+    forall ir o t m ti i
+      (IN : In i ti)
+      (TI : storeind m ir o t nil = OK ti),
+      ~ In (IR RSP) (written_regs i).
+  Proof.
+    unfold storeind. intros. destruct t;destruct m;destruct Archi.ptr64;try congruence;
+    simpl in TI;try monadInv TI;try destruct IN;try simpl in H;try congruence;
+    subst;simpl;intro EQ;repeat destr_in EQ;try congruence.
+Qed.
+   
+
+  Ltac solve_in_regs :=
+    repeat match goal with
+           | H: mk_mov _ _ _ = _ |- _ => unfold mk_mov in H; repeat destr_in H
+           | H: OK _ = OK _ |- _ => inv H
+           | H: mk_intconv _ _ _ _ = _ |- _ => unfold mk_intconv in H
+           | H: bind _ _ = _ |- _ => monadInv H
+           | IN: In _ (_ :: _) |- _ => destruct IN as [IN | IN]; inv IN; simpl in *
+           | IN: In _ (_ ++ _) |- _ => rewrite in_app in IN; destruct IN as [IN|IN]
+           | OR: _ \/ _ |- _ => destruct OR as [OR|OR]; inv OR; simpl
+           | |- ~ (_ \/ _) => apply Classical_Prop.and_not_or
+           | |- ~ _ /\ ~ _ => split; auto
+           | H: False |- _ => destruct H
+           | H: In _ nil |- _ => destruct H
+           | IN: In _ _ |- _ => repeat destr_in IN; simpl in *
+           | _ => simpl in *; solve_rs; auto
+           end.
+
+  Lemma transl_cond_no_rsp:
+    forall cond l c c' i
+      (INV: stk_unrelated_instr i = true)
+      (TC : transl_cond cond l c = OK c')
+      (IN: In i c'),
+      ~ In (IR RSP) (written_regs i) \/ In i c.
+  Proof.
+    intros.
+    destruct cond; simpl in TC; repeat destr_in TC; simpl;
+      unfold mk_setcc, mk_setcc_base in *; simpl in *;
+        solve_in_regs; simpl; auto.
+    unfold floatcomp; destr; solve_in_regs.
+    unfold floatcomp; destr; solve_in_regs.
+    unfold floatcomp32; destr; solve_in_regs.
+    unfold floatcomp32; destr; solve_in_regs.
+  Qed.
+
+  Lemma transl_op_no_rsp:
+    forall op l r c' i
+      (INV: stk_unrelated_instr i = true)
+      (TC : transl_op op l r nil = OK c')
+      (IN: In i c'),
+      ~ In (IR RSP) (written_regs i).
+  Proof.
+
+    intros.
+    destruct op; simpl in TC; repeat destr_in TC; simpl; solve_in_regs.
+    admit.
+    admit.
+    eapply transl_cond_no_rsp in EQ0; eauto.
+    destruct EQ0; auto.
+    unfold mk_setcc, mk_setcc_base in *; simpl in *.
+    solve_in_regs; solve_rs.
+    admit.
+  Admitted.
+
+  Lemma transl_code_no_rsp:
+    forall f c b c' i
+      (INV: stk_unrelated_instr i = true)
+      (TC : transl_code f c b = OK c')
+      (IN: In i c'),
+      ~ In (IR RSP) (written_regs i).
+  Proof.
+    Admitted.
+  (*   induction c; simpl; intros; eauto. inv TC. easy. *)
+  (*   monadInv TC. *)
+  (*   edestruct transl_instr_eq as (ti & TI & EQti). eauto. subst. *)
+  (*   rewrite in_app in IN. *)
+  (*   destruct IN as [IN|IN]; eauto. *)
+  (*   clear EQ EQ0. *)
+  (*   destruct a; simpl in TI; repeat destr_in TI; eauto using loadind_no_rsp, storeind_no_rsp. *)
+  (*   - monadInv H0. simpl in IN. destruct IN as [IN|IN]. inv IN. simpl. intuition congruence. *)
+  (*     eapply loadind_no_rsp; eauto. *)
+  (*   - eapply transl_op_no_rsp; eauto. *)
+  (*   - unfold transl_load in H0. solve_in_regs. *)
+  (*     repeat destr_in EQ1; solve_in_regs. *)
+  (*   - unfold transl_store in H0. solve_in_regs. *)
+  (*     repeat destr_in EQ0; solve_in_regs; auto. *)
+  (*     inv EQ1; solve_in_regs; auto. *)
+  (*     inv EQ1; solve_in_regs; auto. *)
+  (*   - solve_in_regs. *)
+  (*   - solve_in_regs. *)
+  (*   - solve_in_regs. *)
+  (*   - solve_in_regs. *)
+  (*   - solve_in_regs. *)
+  (*   - solve_in_regs. *)
+  (*   - solve_in_regs. *)
+  (*   - eapply transl_cond_no_rsp in H0 ; eauto. destruct H0; auto. *)
+  (*     unfold mk_jcc in *; simpl in *. *)
+  (*     solve_in_regs; solve_rs; auto. *)
+  (*   - solve_in_regs. *)
+  (*   - solve_in_regs. *)
+  (* Qed. *)
+
+Lemma asmgen_no_change_rsp:
+    forall f tf,
+      transf_function f = OK tf ->
+      check_asm_code_no_rsp (fn_code tf) = true.
+  Proof.
+    unfold check_asm_code_no_rsp.
+    intros. rewrite forallb_forall.
+    unfold check_asm_instr_no_rsp.
+    unfold proj_sumbool.
+    intros. destruct (stk_unrelated_instr x) eqn:INV. simpl.
+    destr. exfalso.
+    monadInv H. repeat destr_in EQ0.
+    monadInv EQ. repeat destr_in EQ1. simpl in *.
+    destruct H0. subst. simpl in *. congruence.
+    rewrite Asmgenproof0.transl_code'_transl_code in EQ0.
+    eapply transl_code_no_rsp in EQ0; eauto. simpl. auto.
+  Qed.
 
 (** modify abstract stack *)
 Definition asm_instr_unchange_sup (i : instruction) : Prop :=
