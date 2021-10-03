@@ -355,6 +355,7 @@ Inductive step: state -> trace -> state -> Prop :=
       forall s fb stk soff sig ros c rs m f f' m' m'' id m''',
       f' = Global id ->
       find_function_ptr ge ros rs = Some f' ->
+      (exists fd, Genv.find_funct_ptr ge f' = Some fd) ->
       Genv.find_funct_ptr ge fb = Some (Internal f) ->
       load_stack m (Vptr stk soff) Tptr f.(fn_link_ofs) = Some (parent_sp s) ->
       load_stack m (Vptr stk soff) Tptr f.(fn_retaddr_ofs) = Some (parent_ra s) ->

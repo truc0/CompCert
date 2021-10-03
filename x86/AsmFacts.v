@@ -1,6 +1,6 @@
 Require Import Coqlib Coqlib Maps.
 Require Import AST Integers Floats Values Memory Events Globalenvs Smallstep.
-Require Import Asm Asmgen Asmgenproof0 Asmgenproof.
+Require Import Asm Asmgen Asmgenproof0.
 Require Import Errors.
 
 (** instructions which have no relationship with stack *)
@@ -128,24 +128,23 @@ Proof.
 Qed.
 
 
-Lemma asmgen_prog_unchange_rsp: forall p tp, match_prog p tp -> AsmFacts.asm_prog_unchange_rsp (Globalenvs.Genv.globalenv tp).
+Lemma asmgen_prog_unchange_rsp: forall p tp, Asmgen.transf_program p  = OK tp -> AsmFacts.asm_prog_unchange_rsp (Globalenvs.Genv.globalenv tp).
 Proof.
   intros.
-  unfold match_prog in H.
   unfold Linking.match_program in H.
   unfold Linking.match_program_gen in H.
 Admitted.
 
 Definition written_regs i : list preg :=
-    match i with 
+    match i with
     (** Moves *)
     | Pmov_rr rd _
-    | Pmovl_ri rd _ 
-    | Pmovq_ri rd _ 
+    | Pmovl_ri rd _
+    | Pmovq_ri rd _
     | Pmov_rs rd _
-    | Pmovl_rm rd _ 
+    | Pmovl_rm rd _
     | Pmovq_rm rd _ => IR rd :: nil
-    | Pmovl_mr a rs 
+    | Pmovl_mr a rs
     | Pmovq_mr a rs => nil
     | Pmovsd_ff rd _ 
     | Pmovsd_fi rd _ 

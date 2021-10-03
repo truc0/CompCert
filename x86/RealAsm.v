@@ -1109,7 +1109,18 @@ Section WITHGETGE.
       - congruence.
       - erewrite eval_addrmode32_same; eauto.
       - erewrite eval_addrmode64_same; eauto.
-      - erewrite SADDR_EQ. auto.
+      - erewrite SADDR_EQ. unfold Genv.find_funct.
+        destruct (Genv.symbol_address ge symb Ptrofs.zero); auto.
+        destruct (Ptrofs.eq_dec i0 Ptrofs.zero); auto.
+        destr; destr.
+        apply FPTR_EQ in Heqo0. congruence.
+        apply FPTR_EQ in Heqo. congruence.
+      - unfold Genv.find_funct.
+        destruct (rs r); auto.
+        destruct (Ptrofs.eq_dec i0 Ptrofs.zero); auto.
+        destr; destr.
+        apply FPTR_EQ in Heqo0. congruence.
+        apply FPTR_EQ in Heqo. congruence.
       - erewrite SADDR_EQ. auto.
     Qed.
 

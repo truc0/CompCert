@@ -284,6 +284,7 @@ Inductive match_states: meminj -> state -> state -> Prop :=
       (RSPzero: forall b i, rs # RSP = Vptr b i -> i = Ptrofs.zero )
       (RINJ: forall r, Val.inject j (rs # r) (rs' # r))
    (** Stack Properties **)
+      (STKLIMIT: stack_size (Mem.astack (Mem.support m)) <= max_stacksize)
       (STKCIN: forall b, current_in_stack b m -> is_stack b /\ sup_In b (Mem.support m))
       (STKVB: Mem.valid_block m stkblock)
       (STKPERMOFS: forall ofs k p, ~ Mem.perm m stkblock ofs k p)
@@ -1263,6 +1264,14 @@ Proof.
   + eapply compare_floats32_inject; auto.
   + eapply goto_label_inject; eauto.
     eapply globinj_to_funinj. auto.
+  + generalize (RINJ r). intro. unfold Genv.find_funct in *.
+    destruct (rs1 r); simpl in Heqo; inv Heqo. inv H.
+    destr_in H1. subst.
+    exploit globinj_to_funinj; eauto.
+    intro. rewrite H4 in H. inv H.
+    do 2 eexists; split; eauto. rewrite pred_dec_true by auto.
+    rewrite H1. eauto. split; eauto. repeat simpl_inject.
+    econstructor; eauto.
   + erewrite eval_testcond_inject; eauto. simpl.
     eapply goto_label_inject; eauto. eapply globinj_to_funinj. auto.
   + erewrite eval_testcond_inject; eauto. simpl.
@@ -1534,6 +1543,8 @@ Proof.
     rewrite <- Ptrofs.sub_add_opp. unfold Ptrofs.sub.
     rewrite Ptrofs.unsigned_repr; auto.
   (* Stack Injection *)
+  - erewrite Mem.support_store. 2: eauto. erewrite Mem.support_store. 2: eauto.
+    apply Mem.record_frame_size in RECORDFR. lia.
   - intros. caseEq (sp_of_stack (Mem.stack (Mem.support m0))). intros.
     exploit sp_of_stack_alloc; eauto. intros (idx & A &B ).
     unfold current_in_stack in H. erewrite Mem.support_store in H; eauto.
@@ -1713,8 +1724,7 @@ Proof.
   intros.
   destruct (stk_unrelated_instr i) eqn:NOTSTKINSTR.
   (* Normal Instructions *)
-  -admit.
-(*
+  -
     inversion MS.
     edestruct exec_instr_inject_normal as (rs1' & m1' & EI' & MINJ' & RINJ'); eauto.
     exists j, m1', rs1'; split; [|split]; eauto.
@@ -1729,6 +1739,7 @@ Proof.
      + apply AIUS in EI'.
        eapply Mem.sup_include_trans. apply ENVSUP'. auto.
      + rewrite (AINR _ _ _ _ _ _ NOTSTKINSTR EI) in RSPzero. auto.
+     + rewrite <- SUPEQ. auto.
      + unfold current_in_stack in *. rewrite <- SUPEQ. auto.
      + apply AIUS in EI.
        unfold Mem.valid_block. apply EI. auto.
@@ -1749,7 +1760,7 @@ Proof.
      + rewrite <- SUPEQ.
       red. intros. apply STKPERMEQ in H0.
       exploit STKINJLWBD; eauto. intros (X & Y).
-      split. lia. unfold current_in_stack in *. rewrite <- SUPEQ. auto. *)
+      split. lia. unfold current_in_stack in *. rewrite <- SUPEQ. auto.
   (* Specail Cases *)
     Opaque Mem.alloc_frame.
   - destruct i; simpl in *; try congruence.
@@ -1878,6 +1889,10 @@ Proof.
            assert (stack_size ((f0::nil)::(fr::nil)::astk) =frame_size_a f0 + frame_size_a fr + stack_size astk).
            simpl. lia. setoid_rewrite H2. unfold frame_size_a. lia.
            auto.
+      * assert ((stack_size ((f0::nil):: Mem.astack(Mem.support m1))) =
+            (frame_size_a f0 + stack_size (Mem.astack(Mem.support m1)))). simpl. lia.
+        setoid_rewrite H0 in STKLIMIT.
+        generalize (frame_size_a_pos f0). lia.
       * inv RSPINJ.
         intros. exploit sp_of_stack_return; eauto. symmetry. rewrite SF. eauto.
         intro. unfold current_in_stack in *. exploit STKCIN. unfold current_in_stack' in *.
@@ -1993,7 +2008,7 @@ Proof.
           erewrite Mem.perm_return_frame; eauto.
           erewrite Mem.perm_pop_stage; eauto. reflexivity.
         }
-Admitted.
+Qed.
 
 (* injection in builtin *)
 Lemma eval_builtin_arg_inject:
@@ -2123,13 +2138,6 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
 Lemma max_stacksize'_range : 0 <= max_stacksize' <= Ptrofs.max_unsigned.
 Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
 
-Lemma stack_size_below : forall m , stack_size(Mem.astack (Mem.support m)) <= max_stacksize. Admitted.
-
-Lemma store_perm: forall m1 chunk b b' ofs v m2,
-    Mem.store chunk m1 b ofs v = Some m2 ->
-    b <> b' ->
-    (forall o k p, Mem.perm m1 b' o k p <-> Mem.perm m2 b' o k p). Admitted.
-
 (** Step Simulation *)
 Theorem step_simulation:
   forall S1 t S2,
@@ -2203,6 +2211,7 @@ Proof.
       apply val_inject_undef_regs; auto.
       intros; eapply val_inject_incr; eauto.
     (* Stack Injection *)
+    + erewrite <- external_call_astack; eauto.
     + unfold current_in_stack in *. erewrite sp_of_stack_external; eauto.
       intros. exploit STKCIN; eauto. intros [A B]. split. auto.
       eapply external_call_support ; eauto.
@@ -2259,7 +2268,7 @@ Proof.
       generalize (stack_size_pos (Mem.astack (Mem.support m))).
       generalize (size_chunk_pos Mptr).
       generalize (max_stacksize_range).
-      generalize (stack_size_below m).
+      generalize (Ptrofs.unsigned_range offset). rewrite X.
       intros. split. 2: generalize max_stacksize'_range; lia.
       generalize (align_le (size_chunk Mptr) 8). unfold max_stacksize' in *.
       lia.
@@ -2310,7 +2319,6 @@ Proof.
         generalize (stack_size_pos (Mem.astack(Mem.support m))).
         generalize (size_chunk_pos Mptr).
         generalize (max_stacksize_range).
-        generalize (stack_size_below m).
         intros. split. 2: generalize (max_stacksize'_range); lia.
         generalize (align_le (size_chunk Mptr) 8). unfold max_stacksize' in *. lia.
       }
@@ -2368,6 +2376,7 @@ Proof.
       intros; eapply val_inject_incr; eauto.
       intros; eapply val_inject_incr; eauto.
     (* Stack Injection *)
+    + erewrite <- external_call_astack; eauto.
     + unfold current_in_stack in *. erewrite sp_of_stack_external; eauto.
       intros. exploit STKCIN; eauto. intros [A B]. split. auto.
       eapply external_call_support ; eauto.
@@ -2498,6 +2507,8 @@ Proof.
        auto. auto.
     ++ constructor.
     ++ econstructor; eauto.
+  - apply Genv.init_mem_astack in INITMEM. erewrite Mem.astack_alloc; eauto.
+    rewrite INITMEM. simpl. vm_compute. congruence.
   - intros. unfold current_in_stack in H3. rewrite STK2 in H3.
     simpl in H3. destr_in H3.
   - apply Mem.valid_new_block in H1. auto.
