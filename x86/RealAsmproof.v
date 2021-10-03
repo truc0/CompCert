@@ -229,6 +229,21 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
     rewrite (Ptrofs.add_commut (Ptrofs.neg _)). rewrite Ptrofs.add_neg_zero. apply Ptrofs.add_zero_l.
   Qed.
 
+  Lemma offset_ptr_neg_sub' : forall sp sz,
+      Val.offset_ptr (Val.offset_ptr sp (Ptrofs.repr (size_chunk Mptr))) (Ptrofs.neg sz) =
+      Val.offset_ptr sp (Ptrofs.neg (Ptrofs.sub sz (Ptrofs.repr (size_chunk Mptr)))).
+  Proof.
+    intros. destruct sp; simpl; auto.
+    f_equal.
+    rewrite <- Ptrofs.sub_add_opp.
+    rewrite <- Ptrofs.sub_add_opp.
+    rewrite (Ptrofs.sub_add_opp sz _).
+    rewrite Ptrofs.sub_add_r.
+    rewrite Ptrofs.sub_add_opp.
+    rewrite (Ptrofs.sub_add_opp i _).
+    reflexivity.
+  Qed.
+
   Lemma offset_ptr_cancel:
     forall ptr a,
       (exists b o, ptr = Vptr b o) ->
@@ -455,15 +470,17 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
       inv ALLOC; simpl in EI. repeat destr_in EI.
       repeat destr_in PC1.
       exploit wf_asm_wf_allocframe; eauto. intro A; inv A.
-      setoid_rewrite offset_ptr_neg_sub in Heqo0.
+      rewrite offset_ptr_neg_sub in Heqo.
+      rewrite RRSP in Heqo.
+      rewrite offset_ptr_cancel in Heqo.
+      assert (m = m2) by congruence. subst.
       rewrite RRSP in Heqo0.
-      rewrite offset_ptr_cancel in Heqo0.
-      assert (m_state s2' = m2) by congruence. subst.
+      rewrite offset_ptr_neg_sub' in Heqo0.
       right; do 2 eexists.
       eapply exec_step_internal.
       rewrite <- REQ by congruence. eauto. eauto. eauto.
-      simpl. eauto.
-      unfold Mem.storev in MEQ. destr_in MEQ. eauto. *)
+      simpl. rewrite Heqo0. eauto.
+      unfold Mem.storev in MEQ. destr_in MEQ. eauto.
     - simpl in PC1. repeat destr_in PC1.
       inv STEP; rewrite_hyps.
       right. exists t.
@@ -502,13 +519,13 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
       simpl in *.
       repeat destr_in PC1.
       inv JMP.
-      +
+(*      +
       right.
       simpl in EI; simpl; repeat destr_in EI.
       exploit goto_label_seq. apply H0. rewrite REQ by congruence. reflexivity.
       intros (A&B&C). do 2 eexists.
       eapply exec_step_internal.
-      rewrite <- REQ by congruence. eauto. eauto. eauto. eauto.
+      rewrite <- REQ by congruence. eauto. eauto. eauto. eauto. *)
       +
       right; do 2 eexists.
       eapply exec_step_internal.
@@ -535,7 +552,8 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
             +
             simpl_regs_in H1. unfold Genv.symbol_address in H1. destr_in H1.
             unfold Genv.find_funct in Heqo. destr_in Heqo. inversion H0.
-          - assert (exists b f', Genv.find_funct_ptr ge b = Some f' /\
+          - (* match_state *)
+            assert (exists b f', Genv.find_funct_ptr ge b = Some f' /\
                             rs' PC = Vptr b Ptrofs.zero).
             {
               rename H6 into EI.
@@ -549,7 +567,17 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
               *
               exploit step_internal. apply STEP2. simpl. rewrite PC'. rewrite FFP.
               erewrite wf_asm_alloc_at_beginning; eauto. inversion 1. intros (EI & T0). subst.
-              simpl in EI. repeat destr_in EI. inv EI.
+              simpl in EI. repeat destr_in EI.
+              right; do 2 eexists. eapply exec_step_internal. rewrite <- REQ; eauto. congruence. eauto. eauto.
+              simpl in H6. destr_in H6. inv H6. simpl. force_rewrite_match Heqo. eauto.
+              simpl_regs. rewrite <- ! REQ.
+              f_equal.
+              apply offset_ptr_neg_sub. congruence. congruence.
+
+              *
+              exploit step_internal. apply STEP2. simpl. rewrite PC'. rewrite FFP.
+              erewrite wf_asm_alloc_at_beginning; eauto. inversion 1. intros (EI & T0). subst.
+              simpl in EI. repeat destr_in EI.
               right; do 2 eexists. eapply exec_step_internal. rewrite <- REQ; eauto. congruence. eauto. eauto.
               simpl in H6. destr_in H6. inv H6. simpl. force_rewrite_match Heqo. eauto.
               simpl_regs. rewrite <- ! REQ.
@@ -558,9 +586,14 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
             + generalize (step_external_store _ _ _ STEP2 e). simpl; rewrite PC' , FFP.
               intro STORE; trim STORE. auto. destruct STORE as (m2' & STORE).
               inv i.
+              *
               simpl in H6. destr_in H6. inv H6. revert STORE. simpl_regs. intros.
               right; do 2 eexists. eapply exec_step_internal. rewrite <- REQ; eauto. congruence. eauto. eauto.
               simpl. rewrite <- ! REQ. rewrite STORE. eauto. congruence. congruence.
+              *
+              simpl in H6. destr_in H6. inv H6. revert STORE. simpl_regs. intros.
+              right; do 2 eexists. eapply exec_step_internal. rewrite <- REQ; eauto. congruence. eauto. eauto.
+              simpl. rewrite <- ! REQ. rewrite STORE. eauto. congruence. congruence. congruence.
         }
 
         cut (exists rs2' m2', exec_instr ge f0 i1 rs2 m = Next rs2' m2').
@@ -581,29 +614,33 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
         repeat rewrite <- REQ by congruence. repeat destr_in H6. eauto.
         repeat destr; eauto.
         eapply goto_label_seq; eauto. apply REQ; congruence.
-        erewrite <- eval_ros_eq. 2: inv SEQ; intros; apply REQ; auto. destr_in H6. eauto. intro; subst.
-        eapply wf_asm_jmp_no_rsp; eauto.
+(*        erewrite <- eval_ros_eq. 2: inv SEQ; intros; apply REQ; auto.
+        destr_in H6. eauto.
+        intro; subst.
+        eapply wf_asm_jmp_no_rsp; eauto. *)
         erewrite <- eval_testcond_seq by eauto. repeat destr_in H6; eauto. eapply goto_label_seq; eauto. apply REQ; congruence.
         erewrite <- eval_testcond_seq by eauto. destr_in H6.
         erewrite <- eval_testcond_seq by eauto. repeat destr_in H6; eauto. eapply goto_label_seq; eauto. apply REQ; congruence.
         rewrite <- REQ by congruence. destr. destr. eapply goto_label_seq. eauto. simpl_regs. apply REQ; congruence.
         exfalso; apply n; econstructor.
+        exfalso; apply n; econstructor.
         exfalso; apply PC1. constructor 2. auto.
         eapply exec_store_seq; eauto. congruence.
         eapply exec_store_seq; eauto. congruence.
+        exfalso; apply PC1. constructor 1. constructor.
+(*
         eapply goto_ofs_seq; eauto. apply REQ; congruence.
         erewrite <- eval_testcond_seq by eauto. repeat destr_in H6; eauto. eapply goto_ofs_seq; eauto. apply REQ; congruence.
         erewrite <- eval_testcond_seq by eauto. destr_in H6.
         erewrite <- eval_testcond_seq by eauto. repeat destr_in H6; eauto. eapply goto_ofs_seq; eauto. apply REQ; congruence.
-        rewrite <- REQ by congruence. destr. destr. eapply goto_ofs_seq. eauto. simpl_regs. apply REQ; congruence.
+        rewrite <- REQ by congruence. destr. destr. eapply goto_ofs_seq. eauto. simpl_regs. apply REQ; congruence. *)
         eapply eval_builtin_args_eq_rs in H4. rewrite REQ in H4.
         right; do 2 eexists. eapply exec_step_builtin. rewrite <- REQ; eauto. congruence. all: eauto. congruence.
         eapply wf_asm_builtin_not_PC; eauto.
-
       + inv STEP; repeat destr_in Heqo.
-    - inv STEP; simpl in *; repeat destr_in PCnone. 
+    - inv STEP; simpl in *; repeat destr_in PCnone.
   Qed.
-*)
+
   Lemma ptrofs_cancel i f s:
     i =
     Ptrofs.add
@@ -621,7 +658,6 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
     rewrite Ptrofs.add_commut.    rewrite Ptrofs.add_neg_zero. auto.
   Qed.
 
-  
   Lemma offset_ptr_has_type:
     forall ptr o,
       Val.has_type (Val.offset_ptr ptr o) Tptr.
@@ -676,49 +712,34 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
     unfold goto_label in GL.
     rewrite PCbef, FFP in GL. destr_in GL. inv GL. simpl_regs. rewrite FFP.
     destr. split. 2: inversion 1. intros f0 i2 EQ; inv EQ.
-    Admitted.
-(*
     assert (EQz: Ptrofs.unsigned (Ptrofs.repr z) = z).
     {
-      replace z with (z-0) by omega.
-      admit.
-(*      eapply label_pos_repr. rewrite Z.add_0_r. eapply wf_asm_code_bounded. eauto. omega. eauto. *)
+      replace z with (z-0) by lia.
+      eapply label_pos_repr. rewrite Z.add_0_r. eapply wf_asm_code_bounded. eauto. lia. eauto.
     } rewrite EQz in *.
     generalize (label_pos_spec l (fn_code f0) 0 z). intro LPS; trim LPS.
-    rewrite Z.add_0_r. eapply wf_asm_code_bounded; eauto. trim LPS. omega. trim LPS; auto.
+    rewrite Z.add_0_r. eapply wf_asm_code_bounded; eauto. trim LPS. lia. trim LPS; auto.
     generalize (find_instr_ofs_pos _ _ _ LPS).
     intros POS II; inv II.
     {
       inv H. exploit wf_asm_alloc_only_at_beginning. eauto. apply Heqo0.
-      generalize (instr_size_positive (Plabel l)); omega.
+      generalize (instr_size_positive (Plabel l)); lia.
     }
     {
       exploit wf_asm_ret_jmp_comes_after_freeframe. eauto. 2: apply H.
       rewrite EQz. eauto.
       intros (o' & ifree & FI & IFREE & RNG).
+      unfold instr_size in *. rewrite EQz in RNG.
+      assert (Ptrofs.unsigned o' = z -1 ) by lia.
+      rewrite H0 in FI. replace (z-0-1) with (z-1) in LPS by lia.
+      rewrite LPS in FI. inv IFREE. inv FI.
+(*
       generalize (find_instr_no_overlap' _ _ _ _ _ FI LPS).
       intros [EQ|NOOV]. subst; inv IFREE.
       rewrite EQz in *.
-      generalize (instr_size_positive ifree) (instr_size_positive (Plabel l)). omega.
+      generalize (instr_size_positive ifree) (instr_size_positive (Plabel l)). lia. *)
     }
   Qed.
-*)
-Inductive is_call: instruction -> Prop :=
-| is_call_intro_r:
-    forall r sg,
-      is_call (Pcall_r r sg)
-| is_call_intro_s:
-    forall i sg,
-      is_call (Pcall_s i sg).
-Lemma is_call_dec:
-  forall i,
-    {is_call i} + {~ is_call i}.
-Proof.
-  destruct i; try now (right; intro A; inv A).
-  left; econstructor; eauto.
-  left; econstructor; eauto.
-Qed.
-
 
   Lemma exec_instr_normal:
     forall rs1 rs2 m1 m2 b ofs f i rs2' m2',
@@ -752,9 +773,6 @@ Qed.
       contradict NII. constructor. constructor.
       contradict NIF. constructor.
     } clear EI; rename H into EI.
-    admit.
-Admitted.
-(*
     split.
     {
         destruct i; simpl in *; unfold exec_load, exec_store in *;
@@ -763,26 +781,26 @@ Admitted.
           erewrite ? REQ by congruence;
           repeat destr_in EI;
           try (do 2 eexists; split; [eauto|constructor; intros; simpl; regs_eq;
-                                           try eapply eval_addrmode64_seq ; now eauto
+                                           try eapply eval_addrmode64_seq ;
+                                           try eapply eval_addrmode32_seq; now eauto
                                     ]; fail).
         do 2 eexists; split; [eauto|constructor; intros; simpl; regs_eq; repeat destr; simpl; regs_eq].
-        
         do 2 eexists; split; [eauto|constructor; intros; simpl; regs_eq; repeat destr; simpl; regs_eq].
         eapply goto_label_match; eauto.
-        erewrite eval_ros_eq. 2: now (intros; apply REQ; auto). setoid_rewrite Heqo.
+        eapply goto_label_match; eauto.
+(*        erewrite eval_ros_eq. 2: now (intros; apply REQ; auto). setoid_rewrite Heqo.
         do 2 eexists; split; [eauto|constructor; intros; simpl; regs_eq; repeat destr; simpl; regs_eq].
         intro; subst; eapply wf_asm_jmp_no_rsp; eauto.
-        eapply goto_label_match; eauto.
+        eapply goto_label_match; eauto. *)
         erewrite eval_testcond_seq by eauto. rewrite Heqo0. eapply goto_label_match; eauto.
         erewrite eval_testcond_seq by eauto. rewrite Heqo0.
         do 2 eexists; split; [eauto|constructor; intros; simpl; regs_eq; repeat destr; simpl; regs_eq].
         erewrite eval_testcond_seq by eauto. rewrite Heqo0.
         do 2 eexists; split; [eauto|constructor; intros; simpl; regs_eq; repeat destr; simpl; regs_eq].
         eapply goto_label_match. 2: eauto. intros; regs_eq.
-        contradict NIC. constructor.
         contradict NII. constructor 2; auto.
         contradict NII. constructor. constructor.
-
+(*
         eapply goto_ofs_match; eauto.
         eapply goto_ofs_match; eauto.
         erewrite eval_testcond_seq by eauto. rewrite Heqo0. eapply goto_ofs_match; eauto.
@@ -790,7 +808,7 @@ Admitted.
         do 2 eexists; split; [eauto|constructor; intros; simpl; regs_eq; repeat destr; simpl; regs_eq].
         erewrite eval_testcond_seq by eauto. rewrite Heqo0.
         do 2 eexists; split; [eauto|constructor; intros; simpl; regs_eq; repeat destr; simpl; regs_eq].
-        eapply goto_ofs_match. 2: eauto. intros; regs_eq.
+        eapply goto_ofs_match. 2: eauto. intros; regs_eq. *)
     }
     destruct (Val.eq (rs2' PC) (Val.offset_ptr (rs2 PC) (Ptrofs.repr (instr_size i)))).
     {
@@ -801,38 +819,43 @@ Admitted.
       {
         inv H. exploit wf_asm_alloc_only_at_beginning. eauto. apply FI'.
         erewrite wf_asm_pc_repr; eauto.
-        generalize (Ptrofs.unsigned_range ofs) (instr_size_positive i); omega.
+        generalize (Ptrofs.unsigned_range ofs) (instr_size_positive i); lia.
       }
       {
         exploit wf_asm_ret_jmp_comes_after_freeframe; eauto.
         intros (o' & ifree & FI2 & IFREE & RNG).
-        generalize (find_instr_no_overlap' _ _ _ _ _ FI FI2).
+(*        generalize (find_instr_no_overlap' _ _ _ _ _ FI FI2). *)
         erewrite wf_asm_pc_repr in RNG; eauto.
+        unfold instr_size in *.
+        replace (Ptrofs.unsigned o') with (Ptrofs.unsigned  ofs) in FI2 by lia.
+        rewrite FI in FI2. inv FI2. inv IFREE. contradiction NIF. constructor.
+(*
         rewrite RNG.
         intros [EQ|NOOV]. subst. congruence.
-        generalize (instr_size_positive i) (instr_size_positive ifree). omega.
+        generalize (instr_size_positive i) (instr_size_positive ifree). lia. *)
       }
     }
-    
     destruct i; simpl in *; unfold exec_load, exec_store in EI; repeat destr_in EI;
       unfold compare_ints, compare_longs, compare_floats, compare_floats32 in n;
       repeat destr_in n;
-      simpl_regs_in n; try congruence.
+      simpl_regs_in n; unfold instr_size in n; unfold Ptrofs.one in n; try congruence.
     generalize (goto_label_PC _ _ _ _ _ _ H0 _ _ PC2 FFP). simpl. intros (A & B); repeat destr; eauto.
+    contradict NII. econstructor 2. right. econstructor.
     contradict NII. econstructor 2. right. econstructor.
     generalize (goto_label_PC _ _ _ _ _ _ H0 _ _ PC2 FFP). simpl. intros (A & B); repeat destr; eauto.
     generalize (goto_label_PC _ _ _ _ _ _ H0 _ _ PC2 FFP). simpl. intros (A & B); repeat destr; eauto.
     generalize (goto_label_PC _ _ _ _ _ _ H0 _ _ PC2 FFP). simpl. intros (A & B); repeat destr; eauto.
     contradict NIC. constructor.
+    contradict NIC. constructor.
     contradict NII. constructor 2. auto.
-    exploit find_jmp_rel_absurd; eauto. intros. contradiction.
+(*    exploit find_jmp_rel_absurd; eauto. intros. contradiction.
     exploit find_jmp_rel_absurd; eauto. intros. contradiction.
     exploit find_jmp_rel_absurd; eauto. intros. contradiction.
     exploit find_jmp_rel_absurd; eauto. intros. contradiction.
 
-    rewrite PC2, FFP, FI. intro A. inv A. inv H. destruct H as [H|H]; inv H.
+    rewrite PC2, FFP, FI. intro A. inv A. inv H. destruct H as [H|H]; inv H. *)
   Qed.
-*)
+
   (*Lemma loadbytesv_storev:
     forall m' (rs2 rs1 : regset),
       Mem.loadbytesv Mptr m' (rs2 RSP) = Some (rs1 RA) ->
@@ -876,7 +899,6 @@ Admitted.
     exploit Mem.store_same_ptr; eauto. intro; subst. auto.
   Qed.
 *)
-(*
   Lemma offsets_after_call_correct:
     forall c pos o,
       0 <= pos ->
@@ -888,23 +910,25 @@ Admitted.
     destr_in H0.
     - destruct H0.
       + subst.
-        exists 0, a. rewrite zeq_true. split; auto. split; auto. omega.
+        exists 0, a. rewrite zeq_true. split; auto. split; auto. lia.
       + destruct (fun pos => IHc _ _ pos H0) as (oc & icall & INSTR & ICALL & EQ).
-        generalize (instr_size_positive a). omega.
+        generalize (instr_size_positive a). lia.
         exists (oc + instr_size a).
         rewrite pred_dec_false.
-        replace (oc + instr_size a - instr_size a) with oc by omega. rewrite INSTR.
-        eexists; split; eauto. split; auto. omega.
-        generalize (instr_size_positive a) (find_instr_ofs_pos _ _ _ INSTR). omega.
+        unfold instr_size in *.
+        replace (oc + 1 - 1) with oc by lia. rewrite INSTR.
+        eexists; split; eauto. split; auto. lia.
+        generalize (instr_size_positive a) (find_instr_ofs_pos _ _ _ INSTR). lia.
     - destruct (fun pos => IHc _ _ pos H0) as (oc & icall & INSTR & ICALL & EQ).
-      generalize (instr_size_positive a). omega.
+      generalize (instr_size_positive a). lia.
       exists (oc + instr_size a).
       rewrite pred_dec_false.
-      replace (oc + instr_size a - instr_size a) with oc by omega. rewrite INSTR.
-      eexists; split; eauto. split; auto. omega.
-      generalize (instr_size_positive a) (find_instr_ofs_pos _ _ _ INSTR). omega.
+      unfold instr_size in *.
+      replace (oc + 1 - 1) with oc by lia. rewrite INSTR.
+      eexists; split; eauto. split; auto. lia.
+      generalize (instr_size_positive a) (find_instr_ofs_pos _ _ _ INSTR). lia.
   Qed.
-*)
+
   Lemma real_asm_step:
     forall s2 t s2',
       step (Genv.globalenv prog) s2 t s2' ->
@@ -917,18 +941,21 @@ Admitted.
     intros s2 t s2' STEP s1 MS INV SAFE. inv INV.
     fold ge in STEP.
     inv MS.
-    - simpl in PC1. repeat destr_in PC1.
+    - (*Pallocframe*)
+      simpl in PC1. repeat destr_in PC1.
       rewrite REQ in Heqv by congruence.
       inv STEP; rewrite_hyps. 2: inv ALLOC.
-      inv ALLOC. simpl in H6. inv H6.
+      inv ALLOC. simpl in H6. destr_in H6. inv H6.
       eexists; split. eapply SSAsm.exec_step_internal. rewrite REQ by congruence; eauto.
       eauto. eauto.
-      simpl. force_rewrite_match MEQ. eauto. f_equal.
+      simpl. (* force_rewrite_match MEQ.*)
+      cut (Mem.storev Mptr m1 (rs2 RSP) (rs1 RA) = Mem.storev Mptr m1 (Val.offset_ptr (Val.offset_ptr (rs1 RSP) (Ptrofs.neg (Ptrofs.repr (align sz 8)))) ora) (rs1 RA)); [let A := fresh in intro A; rewrite <- A,H|]. rewrite <- H. rewrite MEQ.
+      rewrite <- offset_ptr_neg_sub' in Heqo1. rewrite <- RRSP in Heqo1. rewrite Heqo1.
+      eauto. f_equal.
       rewrite RRSP.
-      Admitted.
-(*
       eapply wf_asm_wf_allocframe in Heqo0; eauto. inv Heqo0.
-      unfold Mem.storev, Mem.loadv in MEQ. destruct (rs2 RSP); simpl in *; try congruence.
+      unfold Mem.storev, Mem.loadv in MEQ.
+      destruct (rs2 RSP); simpl in *; try congruence.
       f_equal. apply ptrofs_cancel.
       eapply match_states_normal.
       constructor. intros. apply nextinstr_eq.
@@ -938,33 +965,43 @@ Admitted.
       rewrite Ptrofs.sub_add_opp. rewrite Ptrofs.neg_add_distr. rewrite Ptrofs.add_commut.
       rewrite Ptrofs.neg_involutive. auto.
       simpl. simpl_regs. rewrite Heqv. simpl. rewrite Heqo.
-      destr. destr_in Heqo1. inv Heqo1.
+      destr. destr_in Heqo2. inv Heqo2.
       intro A.
       inv A.
       {
         inv H. exploit wf_asm_alloc_only_at_beginning. eauto. apply Heqo0. intro I0.
-        exploit wf_asm_alloc_only_at_beginning. eauto. apply Heqo2.
+        exploit wf_asm_alloc_only_at_beginning. eauto. apply Heqo3.
         rewrite Ptrofs.add_unsigned. rewrite I0.
+        rewrite Ptrofs.unsigned_repr. simpl. unfold Ptrofs.one. rewrite Ptrofs.unsigned_repr. lia. vm_compute. split; congruence.
+        unfold Ptrofs.one. rewrite Ptrofs.unsigned_repr.
+        vm_compute. split; congruence.
+        vm_compute. split; congruence.
+(*
         rewrite (Ptrofs.unsigned_repr (instr_size _)) by apply instr_size_repr.
         simpl.
         rewrite (Ptrofs.unsigned_repr (instr_size _)) by apply instr_size_repr.
-        apply not_eq_sym. apply Z.lt_neq. apply instr_size_positive.
+        apply not_eq_sym. apply Z.lt_neq. apply instr_size_positive. *)
       }
       {
         exploit wf_asm_ret_jmp_comes_after_freeframe; eauto.
         intros (o' & ifree & FI & IFREE & RNG).
         exploit wf_asm_alloc_only_at_beginning; eauto.
-        intro FALLOC.
-        generalize (find_instr_no_overlap' _ _ _ _ _ FI Heqo0).
+        unfold Ptrofs.one in RNG.
+        replace 1 with (instr_size (Pallocframe sz ora olink)) in RNG by reflexivity.
+
+(*      generalize (find_instr_no_overlap' _ _ _ _ _ FI Heqo0). *)
         erewrite wf_asm_pc_repr in RNG; eauto.
-        rewrite RNG.
+        assert (Ptrofs.unsigned o' = Ptrofs.unsigned ofs). lia.
+        rewrite H0 in FI. rewrite FI in Heqo0. inv IFREE. inv Heqo0.
+(*        rewrite RNG.
         intros [EQ|NOOV]. subst; inv IFREE.
-        generalize (instr_size_positive (Pallocframe sz pub ora)) (instr_size_positive ifree). omega.
+        generalize (instr_size_positive (Pallocframe sz pub ora)) (instr_size_positive ifree). lia. *)
       }
-    - simpl in PC1. repeat destr_in PC1.
+    - (* external call *)
+      simpl in PC1. repeat destr_in PC1.
       rewrite REQ in Heqv by congruence.
       inv STEP; rewrite_hyps.
-      assert (  RAC : ra_after_call ge (rs1 RA)).
+      assert (RAC : ra_after_call ge (rs1 RA)).
       {
         destruct (SAFE _ (star_refl _ _ _)) as [(rr & FS)|(tt & s' & STEP)].
         simpl in FS. inv FS. contradict H1. rewrite REQ by congruence. rewrite Heqv. inversion 1.
@@ -981,60 +1018,70 @@ Admitted.
         change Mptr with (chunk_of_type Tptr).
         symmetry.  apply Val.load_result_same.
         revert RA_NOT_VUNDEF. unfold Val.load_result, Mptr, Tptr.
-        destruct x86_32.Archi.ptr64 eqn:PTR, (rs1 RA); simpl; try congruence. auto.
-        eapply Mem.load_type in LOADRA. 
+        destruct ptr64 eqn:PTR.
+        destruct (rs1 RA); simpl; try congruence. auto.
+        destruct (rs1 RA); simpl; try congruence.
+        eapply Mem.load_type in LOADRA.
         change Tptr with (type_of_chunk Mptr). auto.
       } destruct H as (RA1 & RA1U & RATYP); subst.
       eexists; split. eapply SSAsm.exec_step_external. rewrite REQ by congruence; eauto.
-      eauto. 
-      rewrite RRSP. apply offset_ptr_has_type.
-      auto.
-      rewrite RRSP. simpl; congruence.
-      auto.
+      eauto.
       rewrite <- MEQ.
       rewrite RRSP. rewrite offset_ptr_cancel. reflexivity. eauto.
       eapply extcall_arguments_eq_rs. 2: apply H3.
       intros. setoid_rewrite Pregmap.gsspec. rewrite <- RRSP.
       destr. symmetry; apply REQ. auto. auto.
+      rewrite RRSP. apply offset_ptr_has_type.
+      auto.
+      rewrite RRSP. simpl; congruence.
+      auto.
       eauto. eauto. reflexivity.
       eapply match_states_normal.
       constructor. intros.
       destruct (preg_eq r RSP). subst. simpl_regs.
       rewrite set_pair_no_rsp.
+      unfold undef_caller_save_regs. simpl.
+(*      Search undef_caller_save_regs.
       rewrite Asmgenproof0.undef_regs_other.
-      rewrite Asmgenproof0.undef_regs_other_2.
+      rewrite Asmgenproof0.undef_regs_other_2. *)
       auto.
-      apply rsp_not_destroyed_at_call.
-      simpl. intuition subst; congruence.
+(*      apply rsp_not_destroyed_at_call.
+      simpl. intuition subst; congruence. *)
       apply no_rsp_loc_external_result.
       rewrite (Pregmap.gso _ _ n).
       intros; apply set_reg_eq.
       intros. apply set_reg_eq.
       intros. apply set_pair_eq.
-      intros. apply undef_regs_eq.
-      intros. apply undef_regs_eq.  intros; apply REQ. congruence.
-      auto. auto. auto.
+      intros.
+(*      unfold undef_caller_save_regs.
+      destruct r; simpl.
+*)
+      admit.
+      auto. auto.
       simpl. simpl_regs.
       destr. destr_in Heqo0. destr_in Heqo0.
       destruct RAC as (RAU & RAC).
       specialize (RAC _ _ eq_refl _ Heqo1). red in RAC. destr_in RAC. destr_in Heqo0. inv Heqo0.
-      destruct (offsets_after_call_correct _ _ _ (Zle_refl _) RAC) as (oc & icall & ICALL & ISCALL & EQofs).
+      destruct (offsets_after_call_correct _ _ _ (Z.le_refl _) RAC) as (oc & icall & ICALL & ISCALL & EQofs).
       intro II; inv II.
       {
         inv H. exploit wf_asm_alloc_only_at_beginning. eauto. apply Heqo2.
-        generalize (find_instr_ofs_pos _ _ _ ICALL) (instr_size_positive icall). omega.
+        generalize (find_instr_ofs_pos _ _ _ ICALL) (instr_size_positive icall). lia.
       }
       {
         exploit wf_asm_ret_jmp_comes_after_freeframe; eauto.
         intros (o' & ifree & FI & IFREE & RNG).
+        admit.
+(*
         generalize (find_instr_no_overlap' _ _ _ _ _ FI ICALL).
         rewrite Z.sub_0_r in EQofs. rewrite <- EQofs in RNG.
         rewrite RNG.
         rewrite <- RNG at 2.
         intros [EQ|NOOV]. subst; inv IFREE; inv ISCALL.
-        generalize (instr_size_positive icall) (instr_size_positive ifree). omega.
+        generalize (instr_size_positive icall) (instr_size_positive ifree). lia. *)
       }
-    - simpl in PC1. repeat destr_in PC1.
+    - (*Pret*)
+      simpl in PC1. repeat destr_in PC1.
       rewrite REQ in Heqv by congruence. inv STEP; rewrite_hyps.
       assert (  RAC : ra_after_call ge (rs1 RA)).
       {
@@ -1049,8 +1096,8 @@ Admitted.
       simpl in H6. destr_in H6. inv H6.
       assert (RAV: rs1 RA = v).
       {
-        unfold Mem.loadbytesv in LOADRA. repeat destr_in LOADRA.
-        simpl in Heqo1.
+        unfold Mem.loadv in LOADRA. repeat destr_in LOADRA. auto.
+(*        simpl in Heqo1.
         edestruct Mem.load_loadbytes as (bytes & LB & DEC); eauto. rewrite Heqo2 in LB.  inv LB.
         revert H0.
         unfold Mem.encoded_ra, decode_val. destr. unfold Mptr, Vptrofs.
@@ -1060,89 +1107,76 @@ Admitted.
         unfold Ptrofs.to_int. f_equal.
         apply Int.eqm_samerepr.  apply Ptrofs.eqm32; auto. apply Ptrofs.eqm_sym, Ptrofs.eqm_unsigned_repr.
         unfold Mptr. destr. simpl. unfold Mem.is_ptr. destr.
-        simpl. unfold Mem.is_ptr. destr.
+        simpl. unfold Mem.is_ptr. destr. *)
       }
       eexists; split. eapply SSAsm.exec_step_internal. rewrite REQ by congruence; eauto. eauto. eauto.
-      simpl. rewrite pred_dec_true. eauto. eauto.      
+      simpl. rewrite pred_dec_true. eauto. eauto.
       apply match_states_normal.
       + constructor. intros. rewrite ! (Pregmap.gso _ _ H). apply set_reg_eq; auto.
-        intros. 
+        intros.
         setoid_rewrite Pregmap.gsspec. destr. apply REQ. auto. auto.
       + simpl. simpl_regs.
         destr. destr_in Heqo2. destr_in Heqo2.
         destruct RAC as (RAU & RAC).
         specialize (RAC _ _ RAV _ Heqo3). red in RAC. destr_in RAC. destr_in Heqo2. inv Heqo2.
-        destruct (offsets_after_call_correct _ _ _ (Zle_refl _) RAC) as (oc & icall & ICALL & ISCALL & EQofs).
+        destruct (offsets_after_call_correct _ _ _ (Z.le_refl _) RAC) as (oc & icall & ICALL & ISCALL & EQofs).
         intro II; inv II.
         {
           inv H. exploit wf_asm_alloc_only_at_beginning. eauto. apply Heqo4.
-          generalize (find_instr_ofs_pos _ _ _ ICALL) (instr_size_positive icall). omega.
+          generalize (find_instr_ofs_pos _ _ _ ICALL) (instr_size_positive icall). lia.
         }
         {
           exploit wf_asm_ret_jmp_comes_after_freeframe; eauto.
           intros (o' & ifree & FI & IFREE & RNG).
+          admit.
+(*
           generalize (find_instr_no_overlap' _ _ _ _ _ FI ICALL).
           rewrite Z.sub_0_r in EQofs. rewrite <- EQofs in RNG.
           rewrite RNG.
           rewrite <- RNG at 2.
           intros [EQ|NOOV]. subst; inv IFREE; inv ISCALL.
-          generalize (instr_size_positive icall) (instr_size_positive ifree). omega.
+          generalize (instr_size_positive icall) (instr_size_positive ifree). lia.
+*)
         }
-    - simpl in PC1. repeat destr_in PC1.
+    -  (* Pjmp *)
+      simpl in PC1. repeat destr_in PC1.
       rewrite REQ in Heqv by congruence. inv STEP; rewrite_hyps. 2: now (inv JMP).
       inv JMP.
-      + simpl in H6. inv H6.
+      + (* Pjmp_s *)
+        simpl in H6. unfold Genv.symbol_address in H6.
+        destr_in H6.
+        * inv H6.
         eexists; split. eapply SSAsm.exec_step_internal. rewrite REQ by congruence; eauto. eauto. eauto.
-        simpl.
-        erewrite eval_ros_eq. 2: now (intros; apply REQ; auto). fold ge. destr_in H0.
+        simpl. eauto.
+(*        intros. rewrite REQ. auto.
         intro; subst; eapply wf_asm_jmp_no_rsp; eauto.
-        destr_in H0. inv H0.
-        unfold Genv.find_funct in Heqo1. repeat destr_in Heqo1.
-        destruct f.
-        * eapply match_states_call_alloc.
-          intros. apply set_reg_eq; auto.
-          simpl_regs. auto.
-          simpl_regs.
-          eapply loadbytesv_storev;eauto.
-          simpl. simpl_regs. rewrite H0.
-          erewrite wf_asm_alloc_at_beginning; eauto. constructor.
+        destr_in H0. inv H0. *)
+(*        unfold Genv.find_funct in Heqo0. repeat destr_in Heqo0. *)
+        fold ge.
+        eapply match_states_call_alloc.
+        intros. apply set_reg_eq; auto. unfold Genv.symbol_address. rewrite Heqo1. auto.
+        simpl_regs. auto.
+        simpl_regs.
+        admit. simpl.
+        unfold Genv.symbol_address. rewrite Heqo1. simpl.
+        (*        eapply loadbytesv_storev;eauto. *)
+        admit. admit.
+(*        simpl. simpl_regs. rewrite H0.
+          erewrite wf_asm_alloc_at_beginning; eauto. constructor. *)
+        * (*nonsense*) admit.
+      + (*Pjmp_r*)
+        admit.
+(*
         * eapply match_states_call_external.
           intros. apply set_reg_eq; auto.
           simpl_regs. auto.
           simpl_regs.           eapply loadbytesv_storev;eauto.
-          simpl. rewrite H0. eauto.
+          simpl. rewrite H0. eauto. *)
     - inv STEP; simpl in *; rewrite H, H0, ? H1 in PC1.
       + destruct (is_call_dec i).
         {
           inv i0.
-          (* simpl in H2. destr_in H2. inv H2. *)
-          (* inv SEQ. *)
-          (* eexists; split. *)
-          (* eapply SSAsm.exec_step_internal. *)
-          (* rewrite REQ; eauto. congruence. eauto. eauto. *)
-          (* simpl. eauto. *)
-          (* edestruct wf_asm_call_target_exists as (bf & fd & SA & FFP); eauto. *)
-          (* fold ge. rewrite SA. *)
-          (* destruct fd. *)
-          (* eapply match_states_call_alloc. *)
-          (* intros. rewrite (Pregmap.gso _ _ H2). apply set_reg_eq; auto. intros; apply set_reg_eq. auto. *)
-          (* rewrite REQ; auto. congruence. *)
-          (* simpl_regs. rewrite REQ by congruence. *)
-          (* etransitivity. symmetry; apply offset_ptr_cancel. *)
-          (* unfold Mem.storev, Mem.loadv in Heqo. destruct (rs0 RSP); simpl in *; try congruence; eauto. *)
-          (* f_equal. apply Ptrofs.neg_involutive. *)
-          (* simpl_regs.  rewrite REQ by congruence. auto. *)
-          (* simpl. rewrite FFP. *)
-          (* erewrite wf_asm_alloc_at_beginning; eauto. constructor. *)
-          (* eapply match_states_call_external. *)
-          (* intros. rewrite (Pregmap.gso _ _ H2). apply set_reg_eq; auto. intros; apply set_reg_eq. auto. *)
-          (* rewrite REQ; auto. congruence. *)
-          (* simpl_regs. rewrite REQ by congruence. *)
-          (* etransitivity. symmetry; apply offset_ptr_cancel. *)
-          (* unfold Mem.storev, Mem.loadv in Heqo. destruct (rs0 RSP); simpl in *; try congruence; eauto. *)
-          (* f_equal. apply Ptrofs.neg_involutive. *)
-          (* simpl_regs.  rewrite REQ by congruence; auto. *)
-          (* simpl. rewrite FFP. eauto. *)
+          +(* Pcall_s *)
           simpl in H2.
           destruct (SAFE _ (star_refl _ _ _)) as [(rr & FS)|(t & s' & STEP)].
           simpl in FS. inv FS. contradict H3. inv SEQ. rewrite REQ by congruence. rewrite H. inversion 1.
@@ -1161,11 +1195,12 @@ Admitted.
           destruct f0.
           eapply match_states_call_alloc.
           intros. rewrite (Pregmap.gso _ _ H2). apply set_reg_eq; auto. intros; apply set_reg_eq. auto.
-          rewrite REQ by congruence; auto. erewrite <- eval_ros_eq. 2: intros; apply REQ; auto. eauto.
-          intro; subst; eapply wf_asm_call_no_rsp. 2: apply H1. eauto. auto.
+          rewrite REQ by congruence; auto.
+          (*erewrite <- eval_ros_eq. 2: intros; apply REQ; auto. eauto.
+          intro; subst; eapply wf_asm_call_no_rsp. 2: apply H1. eauto. auto. *)
           simpl_regs. rewrite REQ by congruence.
           symmetry; apply offset_ptr_cancel.
-          unfold Mem.storev, Mem.loadv in Heqo. destruct (rs0 RSP); simpl in *; try congruence; eauto.
+          unfold Mem.storev, Mem.loadv in Heqo. destruct (rs RSP); simpl in *; try congruence; eauto.
           rewrite <- Heqo.
           f_equal. simpl_regs.
           rewrite REQ by congruence; auto.
@@ -1173,11 +1208,51 @@ Admitted.
           erewrite wf_asm_alloc_at_beginning; eauto. constructor.
           eapply match_states_call_external.
           intros. rewrite (Pregmap.gso _ _ H2). apply set_reg_eq; auto. intros; apply set_reg_eq. auto.
-          rewrite REQ by congruence; auto. erewrite <- eval_ros_eq. 2: intros; apply REQ; auto. eauto.
-          intro; subst; eapply wf_asm_call_no_rsp. 2: apply H1. eauto. auto.
+          rewrite REQ by congruence; auto.
+          (* erewrite <- eval_ros_eq. 2: intros; apply REQ; auto. eauto.
+          intro; subst; eapply wf_asm_call_no_rsp. 2: apply H1. eauto. auto. *)
           simpl_regs. rewrite REQ by congruence.
           symmetry; apply offset_ptr_cancel.
-          unfold Mem.storev, Mem.loadv in Heqo. destruct (rs0 RSP); simpl in *; try congruence; eauto.
+          unfold Mem.storev, Mem.loadv in Heqo. destruct (rs RSP); simpl in *; try congruence; eauto.
+          rewrite <- Heqo.
+          rewrite REQ by congruence; auto.
+          simpl. rewrite H5. eauto.
+          + (*Pcall_r*)
+          simpl in H2.
+          destruct (SAFE _ (star_refl _ _ _)) as [(rr & FS)|(t & s' & STEP)].
+          simpl in FS. inv FS. contradict H3. inv SEQ. rewrite REQ by congruence. rewrite H. inversion 1.
+          simpl in STEP. fold ge in STEP.
+          assert (t = E0).
+          {
+            inv SEQ. rewrite <- REQ in H by congruence.
+            inv STEP; rewrite_hyps; auto.
+          } subst.
+          eexists; split. eauto.
+          edestruct step_internal; eauto. inv SEQ. simpl. rewrite REQ, H, H0, H1. eauto. congruence. inversion 1.
+          simpl in H3. destr_in H3. inv H3.
+          unfold Genv.find_funct in Heqo. repeat destr_in Heqo.
+          inv SEQ. simpl in *. subst. destruct s'. simpl in *. subst.
+          destr_in H2. inv H2.
+          destruct f0.
+          eapply match_states_call_alloc.
+          intros. rewrite (Pregmap.gso _ _ H2). apply set_reg_eq; auto. intros; apply set_reg_eq. auto.
+          rewrite REQ by congruence; auto. rewrite <- REQ. auto. congruence.
+          simpl_regs. rewrite REQ by congruence.
+          symmetry; apply offset_ptr_cancel.
+          unfold Mem.storev, Mem.loadv in Heqo. destruct (rs RSP); simpl in *; try congruence; eauto.
+          rewrite <- Heqo.
+          f_equal. simpl_regs.
+          rewrite REQ by congruence; auto.
+          simpl. rewrite H5.
+          erewrite wf_asm_alloc_at_beginning; eauto. constructor.
+          eapply match_states_call_external.
+          intros. rewrite (Pregmap.gso _ _ H2). apply set_reg_eq; auto. intros; apply set_reg_eq. auto.
+          rewrite REQ by congruence; auto. rewrite <- REQ. auto. congruence.
+          (* erewrite <- eval_ros_eq. 2: intros; apply REQ; auto. eauto.
+          intro; subst; eapply wf_asm_call_no_rsp. 2: apply H1. eauto. auto. *)
+          simpl_regs. rewrite REQ by congruence.
+          symmetry; apply offset_ptr_cancel.
+          unfold Mem.storev, Mem.loadv in Heqo. destruct (rs RSP); simpl in *; try congruence; eauto.
           rewrite <- Heqo.
           rewrite REQ by congruence; auto.
           simpl. rewrite H5. eauto.
@@ -1185,6 +1260,7 @@ Admitted.
         destruct (is_free_dec i).
         {
           inv i0.
+          (*Pfreeframe*)
           simpl in H2.
           destruct (SAFE _ (star_refl _ _ _)) as [(rr & FS)|(t & s' & STEP)].
           simpl in FS. inv FS. contradict H3. inv SEQ. rewrite REQ by congruence. rewrite H. inversion 1.
@@ -1201,14 +1277,15 @@ Admitted.
           inv H2.
           edestruct wf_asm_after_freeframe as (i' & FI & RJ); eauto. constructor.
           destruct RJ as [RET|JMP].
-          - eapply match_states_free_ret.
+          - (*Pfree -> Pret*)
+            eapply match_states_free_ret.
             intros.
             apply nextinstr_eq.
-            rewrite (Pregmap.gso _ _ H3). simpl_regs. auto. 
-            rewrite REQ by congruence; auto. 
+            rewrite (Pregmap.gso _ _ H3). simpl_regs. auto.
+            rewrite REQ by congruence; auto.
             simpl_regs.
             rewrite Val.offset_ptr_assoc. f_equal.
-            generalize (Ptrofs.repr (align (Z.max 0 sz) 8)).
+            generalize (Ptrofs.repr (align sz 8)).
             generalize (Ptrofs.repr (size_chunk Mptr)).
             intros. rewrite <- Ptrofs.sub_add_l.
             rewrite Ptrofs.sub_add_opp.
@@ -1218,14 +1295,15 @@ Admitted.
             rewrite <- REQ by congruence; auto.
             eapply wf_asm_free_spec in H1; eauto. f_equal. destruct H1 as (SZ & ORA); subst. auto.
             simpl. simpl_regs. rewrite REQ, H by congruence. simpl. rewrite H0. rewrite FI. subst; eauto.
-          - eapply match_states_free_jmp.
+          - (*Pfree -> jmp *)
+            eapply match_states_free_jmp.
             intros.
             apply nextinstr_eq.
-            rewrite (Pregmap.gso _ _ H3). simpl_regs. auto. 
-            rewrite REQ by congruence; auto. 
+            rewrite (Pregmap.gso _ _ H3). simpl_regs. auto.
+            rewrite REQ by congruence; auto.
             simpl_regs.
             rewrite Val.offset_ptr_assoc. f_equal.
-            generalize (Ptrofs.repr (align (Z.max 0 sz) 8)).
+            generalize (Ptrofs.repr (align sz 8)).
             generalize (Ptrofs.repr (size_chunk Mptr)).
             intros. rewrite <- Ptrofs.sub_add_l.
             rewrite Ptrofs.sub_add_opp.
@@ -1234,15 +1312,15 @@ Admitted.
             rewrite <- Heqo. f_equal.
             rewrite <- REQ by congruence; auto.
             eapply wf_asm_free_spec in H1; eauto. f_equal. destruct H1 as (SZ & ORA); subst. auto.
-            simpl_regs.
-            unfold Mem.loadbytesv, Mem.encoded_ra, Mem.is_ptr in Heqo. repeat destr_in Heqo. inversion 1.
+            simpl_regs. admit. (*loadbytesv, maybe a hack?*)
+(*            unfold Mem.loadv(*, Mem.encoded_ra, Mem.is_ptr *)in Heqo. repeat destr_in Heqo. inversion 1. *)
             simpl. simpl_regs. rewrite REQ, H by congruence. simpl. rewrite H0. rewrite FI. subst; eauto.
             auto.
         }
         destruct s1. simpl in *. fold ge.
         edestruct exec_instr_normal as ((rs1' & m1' & EI & SEQ') & NEXT); eauto.
         eexists; split.
-        inv SEQ. 
+        inv SEQ.
         eapply SSAsm.exec_step_internal; eauto.
         rewrite REQ by congruence; eauto.
         apply match_states_normal. auto. auto.
@@ -1261,56 +1339,62 @@ Admitted.
         intro II; inv II.
         {
           inv H4. exploit wf_asm_alloc_only_at_beginning. eauto. apply Heqo0.
+          unfold Ptrofs.one. replace 1 with (instr_size (Pbuiltin ef args res)) by reflexivity.
           erewrite wf_asm_pc_repr; eauto.
           apply not_eq_sym. apply Z.lt_neq.
-          generalize (Ptrofs.unsigned_range ofs) (instr_size_positive (Pbuiltin ef args res)). omega.
+          generalize (Ptrofs.unsigned_range ofs) (instr_size_positive (Pbuiltin ef args res)). lia.
         }
         {
           exploit wf_asm_ret_jmp_comes_after_freeframe; eauto.
           intros (o' & ifree & FI & IFREE & RNG).
+          admit. (*instr comflict*)
+(*          unfold Ptrofs.one in *. replace 1 with (instr_size ifree) in * by reflexivity.
           erewrite wf_asm_pc_repr in RNG; eauto.
           erewrite wf_asm_pc_repr in Heqo0; eauto.
+          admit. 
           generalize (find_instr_no_overlap' _ _ _ _ _ FI H1).
           rewrite RNG.
           intros [EQ|NOOV]. subst; inv IFREE.
-          generalize (instr_size_positive (Pbuiltin ef args res)) (instr_size_positive ifree). omega.
+          generalize (instr_size_positive (Pbuiltin ef args res)) (instr_size_positive ifree). lia.*)
         }
       + easy.
     - destruct s1. simpl in *. rewrite PCeq in PCnone.
       inv STEP; simpl in *; repeat destr_in PCnone.
-  Qed.
-*)
-  Hypothesis prog_no_rsp: asm_prog_unchange_rsp ge.
-  
+  Admitted.
+
+  Hypothesis prog_no_rsp: asm_prog_no_rsp ge.
+
   Theorem real_asm_correct:
     backward_simulation (SSAsm.semantics prog) (RealAsm.semantics prog).
   Proof.
     eapply backward_simulation_plus
       with (match_states := fun s1 s2 => match_states s1 s2 /\ real_asm_inv s2).
     - reflexivity.
-    - simpl; intros s1 IS1. inv IS1. inv H0. admit.
-(*
-      edestruct (Mem.valid_access_store m3 Mptr bstack0 (Mem.stack_limit + align (size_chunk Mptr) 8 - size_chunk Mptr) Vnullptr).
-      split;[|split].
-      red; intros. repeat rewrite_perms. rewrite peq_true. split.
-      cut (size_chunk Mptr <=  Mem.stack_limit). generalize align_Mptr_pos. omega. apply stack_limit_range'.
-      constructor.
+    - simpl; intros s1 IS1. inv IS1.
+      apply Genv.init_mem_stack in H as STK. apply Mem.alloc_result in H0 as STK'.
+      unfold Mem.nextblock in STK'. unfold fresh_block in STK'. rewrite STK in STK'.
+      simpl in STK'. subst.
+      edestruct (Mem.valid_access_store m1 Mptr stkblock (max_stacksize + align (size_chunk Mptr) 8 - size_chunk Mptr) Vnullptr).
+      split.
+      red; intros. exploit Mem.perm_alloc_2; eauto. instantiate (1:= ofs).
+      split.
+      cut (size_chunk Mptr <=  max_stacksize). admit. admit.
+(*      generalize align_Mptr_pos. lia. apply stack_limit_range'. *)
+      lia. intro. eapply Mem.perm_implies; eauto. apply perm_F_any.
       apply Z.divide_sub_r.
       apply Z.divide_add_r.
       apply align_Mptr_stack_limit.
       apply align_Mptr_align8.
       apply align_size_chunk_divides.
-      intros.
-      red. rewrite_stack_blocks. intro. left. unfold is_stack_top. simpl. auto.
-      eexists; econstructor. eauto. econstructor; eauto.
+      eexists; econstructor. eauto. eauto.
       simpl.
-      rewrite Ptrofs.unsigned_repr. eauto. 
-      generalize stack_limit_range'. generalize Mem.stack_limit_range'. generalize (size_chunk_pos Mptr).
+      rewrite Ptrofs.unsigned_repr. eauto.
+      generalize max_stacksize_range. generalize max_stacksize'_range. generalize (size_chunk_pos Mptr).
       generalize (align_le (size_chunk Mptr) 8).
-      omega. *)
+      lia. eauto.
     - simpl; intros s1 s2 IS1 IS2.
       edestruct initial_states_match as (s1' & IS1' & MS); eauto.
-      eexists; split; eauto. split; auto. admit. (*eapply real_initial_inv; eauto.*)
+      eexists; split; eauto. split; auto. eapply real_initial_inv; eauto.
     - simpl; intros s1 s2 r (MS & INV) FS; inv FS.
       assert (pc_at s1 = None).
       {
@@ -1326,8 +1410,7 @@ Admitted.
     - simpl. intros s2 t s2' STEP s1 (MS & INV) SAFE.
       edestruct real_asm_step as (s1' & STEP' & MS'); eauto.
       exists s1'; split; eauto. apply plus_one; auto. split; auto.
-      admit. (*
-      eapply real_asm_inv_inv; eauto. *)
+      eapply real_asm_inv_inv; eauto.
   Admitted.
 
   End PRESERVATION.
@@ -1355,8 +1438,8 @@ Qed.
   Hypothesis TRANSF: match_prog prog tprog.
   Let ge := Genv.globalenv prog.
 
-(*  Hypothesis WF: wf_asm_prog ge. *)
-  Hypothesis prog_no_rsp: asm_prog_unchange_rsp ge.
+  Hypothesis WF: wf_asm_prog ge.
+  Hypothesis prog_no_rsp: asm_prog_no_rsp ge.
 
   Theorem real_asm_correct':
     backward_simulation (SSAsm.semantics prog) (RealAsm.semantics tprog).

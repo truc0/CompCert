@@ -1283,21 +1283,21 @@ Proof.
 Qed.
 
 Lemma allocframe_inject:
-  forall j stkb m0 m m1 m2 m3 m4 m' id path rs rs' sz ofs_link ofs_ra
+  forall j stkb m0 m m1 m2 m3 m4 m' id path rs rs' sz ofs_ra ofs_link
     (MS: match_states j (State rs m0) (State rs' m'))
     (ALLOCF: Mem.alloc_frame m0 id = (m,path))
     (SZPOS: sz>=0)
     (ALLOC: Mem.alloc m 0 sz = (m1, stkb))
     (RECORDFR: Mem.record_frame (Mem.push_stage m1) (Memory.mk_frame sz) = Some m2)
-    (LINKPOS: 0 <= ofs_link <= Ptrofs.max_unsigned)
-    (STORELINK: Mem.store Mptr m2 stkb ofs_link (rs RSP) = Some m3 )
     (RAPOS: 0 <= ofs_ra <= Ptrofs.max_unsigned)
-    (STORERA: Mem.store Mptr m3 stkb ofs_ra (rs RA) = Some m4),
+    (STORERA: Mem.store Mptr m2 stkb ofs_ra (rs RA) = Some m3)
+    (LINKPOS: 0 <= ofs_link <= Ptrofs.max_unsigned)
+    (STORELINK: Mem.store Mptr m3 stkb ofs_link (rs RSP) = Some m4),
     let rs1 := (nextinstr (rs # RAX <- (rs RSP)) # RSP <- (Vptr stkb Ptrofs.zero)) in
     let rs1' := (nextinstr (rs' # RAX <- (rs' RSP)) # RSP <- (Val.offset_ptr (rs' RSP) (Ptrofs.neg (Ptrofs.repr (align sz 8))))) in
     exists j', inject_incr j j' /\
-    exists m1', Mem.storev Mptr m' (Val.offset_ptr (Val.offset_ptr (rs' RSP) (Ptrofs.neg (Ptrofs.repr (align sz 8)))) (Ptrofs.repr ofs_link)) (rs' RSP) = Some m1' /\
-    exists m2', Mem.storev Mptr m1' (Val.offset_ptr (Val.offset_ptr (rs' RSP) (Ptrofs.neg (Ptrofs.repr (align sz 8)))) (Ptrofs.repr ofs_ra)) (rs' RA)= Some m2' /\
+    exists m1', Mem.storev Mptr m' (Val.offset_ptr (Val.offset_ptr (rs' RSP) (Ptrofs.neg (Ptrofs.repr (align sz 8)))) (Ptrofs.repr ofs_ra)) (rs' RA)= Some m1' /\
+    exists m2', Mem.storev Mptr m1' (Val.offset_ptr (Val.offset_ptr (rs' RSP) (Ptrofs.neg (Ptrofs.repr (align sz 8)))) (Ptrofs.repr ofs_link)) (rs' RSP) = Some m2' /\
     match_states j' (State rs1 m4) (State rs1' m2').
 Proof.
   intros.
@@ -1382,39 +1382,13 @@ Proof.
   exists f1. split. auto.
   generalize (Mem.push_stage_left_inject _ _ _ MINJ1). intros MINJ2.
   generalize (Mem.record_frame_left_inject _ _ _ _ _ MINJ2 RECORDFR). intros MINJ3.
-  (* store link *)
+  (* store ra *)
   assert (ALIGNED_SZ: 0 <= aligned_sz <= Ptrofs.max_unsigned). lia.
   exploit Mem.store_mapped_inject.
-  apply MINJ3. apply STORELINK. apply EQ1.
+  apply MINJ3. apply STORERA. apply EQ1.
   eapply val_inject_incr; eauto.
-  intros (m3' & STORELINK' & MINJ1').
+  intros (m3' & STORERA' & MINJ1').
   exists m3'. split. subst.
-  rewrite RSPINJ'. simpl.
-  assert ((Ptrofs.add stkofs (Ptrofs.neg (Ptrofs.repr (align sz 8)))) = Ptrofs.repr (Ptrofs.unsigned stkofs - align sz 8)).
-  {
-    rewrite <- Ptrofs.sub_add_opp. unfold Ptrofs.sub.
-    rewrite (Ptrofs.unsigned_repr _ ALIGNED_SZ). reflexivity.
-  }
-  rewrite H. remember (Ptrofs.repr ofs_link) as OFS.
-  remember (Ptrofs.unsigned stkofs - align sz 8) as STKSIZE.
-  rewrite Ptrofs.add_commut.
-  assert (Ptrofs.unsigned (Ptrofs.add OFS (Ptrofs.repr STKSIZE)) =
-          Ptrofs.unsigned OFS + STKSIZE) as EQ'.
-  {
-    eapply Mem.address_inject; eauto.
-    exploit Mem.store_valid_access_3. exact STORELINK.
-    intro VA; eapply Mem.store_valid_access_1 in VA; eauto.
-    destruct VA. eapply H0.
-    rewrite HeqOFS. rewrite Ptrofs.unsigned_repr; generalize (size_chunk_pos Mptr); lia.
-  }
-  rewrite EQ'. rewrite HeqOFS.
-  rewrite (Ptrofs.unsigned_repr _ LINKPOS). rewrite <- RSPINJ'. auto.
-  (* store ra *)
-  exploit Mem.store_mapped_inject.
-  apply MINJ1'. apply STORERA. apply EQ1.
-  eapply val_inject_incr; eauto.
-  intros (m4' & STORERA' & MINJ2').
-  exists m4'. split. subst.
   rewrite RSPINJ'. simpl.
   assert ((Ptrofs.add stkofs (Ptrofs.neg (Ptrofs.repr (align sz 8)))) = Ptrofs.repr (Ptrofs.unsigned stkofs - align sz 8)).
   {
@@ -1435,14 +1409,40 @@ Proof.
   }
   rewrite EQ'. rewrite HeqOFS.
   rewrite (Ptrofs.unsigned_repr _ RAPOS). auto.
+  (* store link *)
+  exploit Mem.store_mapped_inject.
+  apply MINJ1'. apply STORELINK. apply EQ1.
+  eapply val_inject_incr; eauto.
+  intros (m4' & STORELINK' & MINJ4).
+  exists m4'. split. subst.
+  rewrite RSPINJ'. simpl.
+  assert ((Ptrofs.add stkofs (Ptrofs.neg (Ptrofs.repr (align sz 8)))) = Ptrofs.repr (Ptrofs.unsigned stkofs - align sz 8)).
+  {
+    rewrite <- Ptrofs.sub_add_opp. unfold Ptrofs.sub.
+    rewrite (Ptrofs.unsigned_repr _ ALIGNED_SZ). reflexivity.
+  }
+  rewrite H. remember (Ptrofs.repr ofs_link) as OFS.
+  remember (Ptrofs.unsigned stkofs - align sz 8) as STKSIZE.
+  rewrite Ptrofs.add_commut.
+  assert (Ptrofs.unsigned (Ptrofs.add OFS (Ptrofs.repr STKSIZE)) =
+          Ptrofs.unsigned OFS + STKSIZE) as EQ'.
+  {
+    eapply Mem.address_inject; eauto.
+    exploit Mem.store_valid_access_3. exact STORELINK.
+    intro VA; eapply Mem.store_valid_access_1 in VA; eauto.
+    destruct VA. eapply H0.
+    rewrite HeqOFS. rewrite Ptrofs.unsigned_repr; generalize (size_chunk_pos Mptr); lia.
+  }
+  rewrite EQ'. rewrite HeqOFS.
+  rewrite (Ptrofs.unsigned_repr _ LINKPOS). rewrite <- RSPINJ'. auto.
   (* match state *)
   assert (SUPINCALL: Mem.sup_include (Mem.support m0) (Mem.support m4)).
   {
     generalize (Mem.sup_include_alloc _ _ _ _ _ ALLOC).
     remember (Mem.push_stage m1) as m1x. symmetry in Heqm1x.
     generalize (Mem.sup_include_record_frame _ _ _ RECORDFR).
-    generalize (Mem.support_store _ _ _ _ _ _ STORELINK).
     generalize (Mem.support_store _ _ _ _ _ _ STORERA).
+    generalize (Mem.support_store _ _ _ _ _ _ STORELINK).
     intros.
     eapply Mem.sup_include_trans.
     intro. eapply Mem.support_alloc_frame_1 in ALLOCF. apply ALLOCF.
@@ -1455,8 +1455,8 @@ Proof.
 
   assert (SUPINCALL': Mem.sup_include (Mem.support m') (Mem.support m4')).
   {
-    generalize (Mem.support_store _ _ _ _ _ _ STORELINK').
     generalize (Mem.support_store _ _ _ _ _ _ STORERA').
+    generalize (Mem.support_store _ _ _ _ _ _ STORELINK').
     intros. rewrite H,H0. apply Mem.sup_include_refl.
   }
   assert (PERMNEQ: forall b k ofs p, b <> stkb -> Mem.perm m0 b ofs k p <-> Mem.perm m4 b ofs k p).
@@ -1475,11 +1475,11 @@ Proof.
   remember (Ptrofs.repr stksize') as stkofs'.
   assert(STKOFS': Ptrofs.unsigned stkofs' = max_stacksize' - Memory.stack_size (Mem.astack (Mem.support m4))).
   {
-    generalize (Mem.support_store _ _ _ _ _ _ STORELINK).
-    intro SUPSTLINK.
     generalize (Mem.support_store _ _ _ _ _ _ STORERA).
     intro SUPSTRA.
-    rewrite SUPSTRA,SUPSTLINK.
+    generalize (Mem.support_store _ _ _ _ _ _ STORELINK).
+    intro SUPSTLINK.
+    rewrite SUPSTLINK,SUPSTRA.
     remember (Mem.push_stage m1) as m1x.
     generalize (Mem.astack_record_frame _ _ _ RECORDFR).
     intro SUPRDFR. destruct SUPRDFR as (hd & tl & (H1 & H2)).
@@ -1557,12 +1557,12 @@ Proof.
   - unfold Mem.valid_block. apply SUPINCALL'. auto.
   - constructor.
     intros ofs k p PERM.
-    apply (Mem.perm_store_2 _ _ _ _ _ _ STORERA') in PERM.
     apply (Mem.perm_store_2 _ _ _ _ _ _ STORELINK') in PERM.
+    apply (Mem.perm_store_2 _ _ _ _ _ _ STORERA') in PERM.
     apply STKPERMOFS' in PERM. auto.
     intros ofs k p PERM.
-    eapply (Mem.perm_store_1 _ _ _ _ _ _ STORERA').
     apply (Mem.perm_store_1 _ _ _ _ _ _ STORELINK').
+    eapply (Mem.perm_store_1 _ _ _ _ _ _ STORERA').
     apply STKPERMOFS'. auto.
   - erewrite Mem.support_store; eauto. erewrite Mem.support_store; eauto.
     apply Mem.astack_record_frame in RECORDFR as X.
@@ -1605,8 +1605,8 @@ Proof.
     }
     rewrite H. auto.
   - red. intros b0 delta o k p JB PERM.
-    apply (Mem.perm_store_2 _ _ _ _ _ _ STORERA) in PERM.
     apply (Mem.perm_store_2 _ _ _ _ _ _ STORELINK) in PERM.
+    apply (Mem.perm_store_2 _ _ _ _ _ _ STORERA) in PERM.
     remember (Mem.push_stage m1) as m1x.
     apply (Mem.perm_record_frame _ _ _ RECORDFR) in PERM.
     symmetry in Heqm1x.
@@ -1679,6 +1679,24 @@ Proof.
        destruct H7. inv H1. congruence. unfold current_in_stack'. rewrite <- Heql in H1.
        split. auto. rewrite removelast_app in H1. simpl in H1. rewrite app_nil_r in H1. auto.
        congruence. intros [X Y]. split. rewrite ASTK. generalize (frame_size_a_pos fr). intro. lia. lia.
+Qed.
+
+Lemma ra_after_call_inj:
+  forall j rs1 m1 rs2 m2,
+    match_states j (State rs1 m1) (State rs2 m2) ->
+    ra_after_call ge (rs1 RA) ->
+    ra_after_call ge (rs2 RA).
+Proof.
+  red. intros j rs1 m1 rs2 m2 MS (RAU & IAC). inv MS.
+  generalize (RINJ RA). intro RAINJ.
+  split. inv RAINJ; try congruence.
+  intros b o RA2 f0 FFP.
+  rewrite RA2 in RAINJ. inv RAINJ; try congruence.
+  inversion GLOBINJ.
+  apply Genv.find_funct_ptr_iff in FFP as FFP'. eapply defs_rev_inject0 in H2; eauto.
+  inv H2.
+  specialize (IAC _ _ (eq_sym H) _ FFP).
+  rewrite Ptrofs.add_zero. auto.
 Qed.
 
 Lemma exec_instr_inject:
@@ -1760,12 +1778,14 @@ Proof.
         eauto.
       * red. auto.
     (* Pret *)
-    + destr_in EI. inv EI. inv MS. rewrite pred_dec_true.
+    + destr_in EI. inv EI.
+      exploit ra_after_call_inj; eauto. intro.
+      inv MS. rewrite pred_dec_true.
       do 3 eexists. split. eauto. split. econstructor; eauto.
       * intros. apply val_inject_set. apply val_inject_set; auto.
         intros. auto.
       * red. auto.
-      * admit. (*ra_after_call_iinj*)
+      * auto.
     (* Pallocframe *)
     + repeat destr_in EI.
       inversion MS. subst.
@@ -2230,7 +2250,7 @@ Proof.
     {
       red. repeat apply conj.
       red; intros. apply STKPERMOFS'.
-      split. generalize (Ptrofs.unsigned_range (Ptrofs.add offset (Ptrofs.neg (Ptrofs.repr (size_chunk Mptr))))). lia. eapply Z.lt_le_trans. apply H3.
+      split. generalize (Ptrofs.unsigned_range (Ptrofs.add offset (Ptrofs.neg (Ptrofs.repr (size_chunk Mptr))))); lia. eapply Z.lt_le_trans. apply H5.
       rewrite <- Ptrofs.sub_add_opp. unfold Ptrofs.sub.
       rewrite (Ptrofs.unsigned_repr (size_chunk Mptr)).
       2: vm_compute; intuition congruence.
@@ -2300,7 +2320,7 @@ Proof.
     exploit (external_call_astack ef). apply H2. intros STKEQ.
     exploit (external_call_astack ef). apply EC. intros STKEQ0.
     generalize (RINJ PC); rewrite H.
-    intro VINJ; inv VINJ. rename H6 into JB2. rename H5 into EQofs.
+    intro VINJ; inv VINJ. rename H8 into JB2. rename H7 into EQofs.
     generalize (globinj_to_funinj j GLOBINJ). intros GLOBFUN_INJ.
     assert (j b = Some (b,0)) as JB.
     {
@@ -2313,6 +2333,7 @@ Proof.
     generalize (RINJ RA). destruct (rs RA); simpl in *; inversion 1; subst; try congruence; easy.
     congruence.
     generalize (RINJ RA). destruct (rs RA); simpl in *; inversion 1; subst; try congruence; easy.
+    eapply ra_after_call_inj; eauto.
     generalize (Mem.unchanged_on_support (loc_unmapped j) m m' Unch1).
     intro SUPINCMEM.
     generalize (Mem.unchanged_on_support (loc_out_of_reach j m) m'2 m2' Unch2).
@@ -2330,16 +2351,18 @@ Proof.
          unfold Mem.valid_block.
          intros (NV1 & NV2).
          exploit Genv.genv_defs_range. apply FD. intros.
-         apply ENVSUP' in H3. congruence.
+         apply ENVSUP' in H5.
+         congruence.
       ++ intros. exploit symbol_inject; eauto.
     + eapply Mem.sup_include_trans. apply ENVSUP. auto.
     + eapply Mem.sup_include_trans. apply ENVSUP'. rewrite <- SUP. auto.
     (* Regset Injection *)
-    + remember ((set_pair (loc_external_result (ef_sig ef)) res (undef_caller_save_regs rs)) # PC <- (rs RA)) as rs'.
+    + remember (((set_pair (loc_external_result (ef_sig ef)) res (undef_caller_save_regs rs)) # PC <- (rs RA)) # RA <- Vundef) as rs'.
       destruct prog_unchange_rsp as (INT & BUILTIN & EXTCALL).
       red in EXTCALL.
       destruct (EXTCALL b2 ef args res rs m t rs' m'); eauto.
-    + intros; apply val_inject_set.
+    + intros; apply val_inject_set; auto.
+      intros; apply val_inject_set; auto.
       intros; apply val_inject_set_pair; auto.
       apply val_inject_undef_caller_save_regs; auto.
       intros; eapply val_inject_incr; eauto.
@@ -2350,7 +2373,7 @@ Proof.
       eapply external_call_support ; eauto.
     + unfold Mem.valid_block. apply SUPINCMEM. auto.
     + intros. exploit external_perm_stack. apply H2. instantiate (1:= stkblock).
-      simpl. auto. auto. intro. intro. eapply STKPERMOFS. apply H3,H4.
+      simpl. auto. auto. intro. intro. eapply STKPERMOFS. apply H5,H6.
     + unfold Mem.valid_block. apply SUPINCMEM1. rewrite SUP. auto.
     + inv STKPERMOFS'. constructor.
       ++ intros ofs0 k p PERM.
@@ -2358,20 +2381,20 @@ Proof.
       unfold Mem.valid_block in STKVB'. rewrite <- SUP in STKVB'.
          exploit external_perm_stack; eauto.
          unfold stkblock. simpl. auto.
-         intro. eapply H3. eauto.
+         intro. eapply H5. eauto.
       ++ intros. exploit stack_offset_perm0; eauto.
-         intro. eapply Mem.perm_store_1 in H4.  2: eauto.
+         intro. eapply Mem.perm_store_1 in H6.  2: eauto.
          unfold Mem.valid_block in STKVB'. rewrite <- SUP in STKVB'.
          exploit external_perm_stack; eauto.
          unfold stkblock. simpl. auto.
-         intro. apply H5,H4.
+         intro. apply H7,H6.
     + eapply inject_stack_incr; eauto.
       erewrite sp_of_stack_external; eauto. erewrite <- external_call_astack; eauto.
       eapply inject_stack_inv; eauto. intros. symmetry.
       exploit STKCIN; eauto. intros [A B].
       eapply external_perm_stack; eauto.
-    + remember ((set_pair (loc_external_result (ef_sig ef)) vres'
-     (undef_caller_save_regs rs'0)) # PC <- (rs'0 RA)) as rs'.
+    + remember (((set_pair (loc_external_result (ef_sig ef)) vres'
+     (undef_caller_save_regs rs'0)) # PC <- (rs'0 RA))# RA <- Vundef) as rs'.
       destruct prog_unchange_rsp as (INT & BUILTIN & EXTCALL).
       red in EXTCALL.
       destruct (EXTCALL b2 ef vargs' vres' rs'0 m'2 t rs' m2'); eauto.
