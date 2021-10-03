@@ -438,14 +438,6 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
     auto. eauto. eauto.
   Qed.
 
-(*  Lemma eval_ros_eq:
-    forall rs1 rs2 (REQ: forall r : preg, r <> RSP -> r <> RA -> rs1 r = rs2 r) ros (NRSP: ros <> inl RSP),
-      eval_ros ge ros rs1 = eval_ros ge ros rs2.
-  Proof.
-    unfold eval_ros. intros. destr.
-    apply REQ. congruence. congruence. 
-  Qed.
-  *)
   Lemma real_asm_progress:
     forall s1 s2,
       match_states s1 s2 ->
@@ -846,12 +838,6 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
     contradict NIC. constructor.
     contradict NIC. constructor.
     contradict NII. constructor 2. auto.
-(*    exploit find_jmp_rel_absurd; eauto. intros. contradiction.
-    exploit find_jmp_rel_absurd; eauto. intros. contradiction.
-    exploit find_jmp_rel_absurd; eauto. intros. contradiction.
-    exploit find_jmp_rel_absurd; eauto. intros. contradiction.
-
-    rewrite PC2, FFP, FI. intro A. inv A. inv H. destruct H as [H|H]; inv H. *)
   Qed.
 
   (*Lemma loadbytesv_storev:
@@ -1151,6 +1137,7 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
         intros. apply set_reg_eq; auto.
         simpl_regs. auto.
         simpl_regs.
+        unfold Mem.loadv in MEQ.
         admit. (*loadv_storev*)
         simpl. simpl_regs.
         unfold Genv.find_funct in Heqo1. destr.
@@ -1164,7 +1151,8 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
         admit. (*loadv_storev*)
         simpl. simpl_regs. unfold Genv.find_funct in Heqo1. destr. destr_in Heqo1.
         subst. rewrite Heqo1. eauto.
-    - inv STEP; simpl in *; rewrite H, H0, ? H1 in PC1.
+    - (*common case*)
+      inv STEP; simpl in *; rewrite H, H0, ? H1 in PC1.
       + destruct (is_call_dec i).
         {
           inv i0.
@@ -1298,7 +1286,8 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
             rewrite <- Heqo. f_equal.
             rewrite <- REQ by congruence; auto.
             eapply wf_asm_free_spec in H1; eauto. f_equal. destruct H1 as (SZ & ORA); subst. auto.
-            simpl_regs. admit. (*loadbytesv, maybe a hack?*)
+            simpl_regs.
+            admit. (*loadbytesv, maybe a hack?*)
 (*            unfold Mem.loadv(*, Mem.encoded_ra, Mem.is_ptr *)in Heqo. repeat destr_in Heqo. inversion 1. *)
             simpl. simpl_regs. rewrite REQ, H by congruence. simpl. rewrite H0. rewrite FI. subst; eauto.
             auto.

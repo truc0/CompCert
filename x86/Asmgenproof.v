@@ -413,6 +413,79 @@ Inductive astack_consistency : Mach.state -> Prop :=
      (SC:size_consisitency (size_of_callstack cs) (Mem.astack(Mem.support m))),
       astack_consistency (Mach.Returnstate cs rs m).
 *)
+
+Lemma code_tail_code_size:
+  forall a b sz,
+    code_tail sz (a ++ b) b ->
+    sz = code_size a.
+Proof.
+  intros a b sz.
+  remember (a++b).
+  intro CT; revert sz l b CT a Heql.
+  induction 1; simpl; intros; eauto.
+  apply (f_equal (@length _)) in Heql. rewrite app_length in Heql.
+  destruct a; simpl in *; try omega.
+  destruct a. simpl in *. subst. apply code_tail_no_bigger in CT. simpl in CT. omega. simpl in Heql.
+  inv Heql.
+  specialize (IHCT _ eq_refl). subst. simpl. unfold instr_size. lia.
+Qed.
+
+Lemma offsets_after_call_app:
+  forall y z pos,
+    offsets_after_call (y ++ z) pos =  offsets_after_call y pos ++ offsets_after_call z (pos + code_size y).
+Proof.
+  induction y; simpl; intros; eauto. rewrite Z.add_0_r. auto.
+  rewrite ! IHy. destr. simpl. rewrite Z.add_assoc. unfold instr_size. f_equal.
+  f_equal. f_equal. lia.
+  simpl. rewrite Z.add_assoc. f_equal. f_equal.  lia.
+Qed.
+
+Lemma code_size_app:
+  forall c1 c2,
+    code_size (c1 ++ c2) = code_size c1 + code_size c2.
+Proof.
+  induction c1; simpl; intros; rewrite ? IHc1; omega.
+Qed.
+
+Lemma has_code_parent_ra_after_call:
+  forall s
+    (HC: callstack_function_defined return_address_offset ge s),
+    ra_after_call tge (parent_ra s).
+Proof.
+  intros s HC.
+  destruct s; simpl. constructor.
+  unfold Vnullptr. destr. intros. inv H.
+  destruct s; simpl.
+  inv HC.
+  split. congruence.
+  intros b o EQ; inv EQ.
+  edestruct functions_translated as (tf & FFP' & TF); eauto.
+  rewrite FFP'. intros f EQ; inv EQ.
+  red. simpl in TF. monadInv TF.
+  red in RAU.
+  specialize (fun tc => RAU _ tc EQ).
+  monadInv EQ. repeat destr_in EQ1.
+  monadInv EQ0. repeat destr_in EQ1. simpl in *. rewrite pred_dec_false. 2: inversion 1.
+  destruct TAIL as (l' & sg & ros & CODE). rewrite CODE in EQ.
+  rewrite transl_code'_transl_code in EQ.
+  edestruct transl_code_app as (ep2 & y & TC1 & TC2); eauto.
+  monadInv TC2.
+  simpl in EQ0. monadInv EQ0.
+  specialize (RAU _ EQ1).
+  assert (exists icall, x = icall :: x0 /\ is_call icall).
+  {
+    destr_in EQ2; monadInv EQ2; eexists; split; eauto; constructor.
+  }
+  destruct H as (icall & ICALL & ISCALL). subst.
+  generalize (code_tail_code_size (Pallocframe (Mach.fn_stacksize trf)(fn_retaddr_ofs trf)(fn_link_ofs trf) :: y ++ icall :: nil) x0).
+  simpl. rewrite app_ass. simpl. intro EQSZ; specialize (EQSZ _ RAU).
+  rewrite offsets_after_call_app.
+  apply in_app. right.  unfold offsets_after_call. rewrite pred_dec_true.
+  left. rewrite EQSZ.
+  rewrite code_size_app. f_equal. unfold instr_size.
+  rewrite Z.add_comm. f_equal. auto.
+Qed.
+
 Inductive match_states: Mach.state -> Asm.state -> Prop :=
   | match_states_intro:
       forall s fb sp c ep ms m m' rs f tf tc
@@ -420,6 +493,7 @@ Inductive match_states: Mach.state -> Asm.state -> Prop :=
         (FIND: Genv.find_funct_ptr ge fb = Some (Internal f))
         (MEXT: Mem.extends m m')
         (AT: transl_code_at_pc ge (rs PC) fb f c ep tf tc)
+        (CODE: has_code return_address_offset ge s)
         (AG: agree ms sp rs)
         (SC: size_consistency
                ((Some (Mach.fn_stacksize f))::(size_of_callstack s))
@@ -432,6 +506,7 @@ Inductive match_states: Mach.state -> Asm.state -> Prop :=
       forall s fb ms m m' rs id
         (STACKS: match_stack ge s)
         (MEXT: Mem.extends m m')
+        (CODE: has_code return_address_offset ge s)
         (AG: agree ms (parent_sp s) rs)
         (SC: size_consistency (size_of_callstack s) (Mem.astack(Mem.support m)))
         (SPC: sp_consistency (sp_of_stack (Mem.stack (Mem.support m))) (sp_of_callstack s))
@@ -444,6 +519,7 @@ Inductive match_states: Mach.state -> Asm.state -> Prop :=
       forall s ms m m' rs
         (STACKS: match_stack ge s)
         (MEXT: Mem.extends m m')
+        (CODE: has_code return_address_offset ge s)
         (AG: agree ms (parent_sp s) rs)
         (SC: size_consistency (size_of_callstack s) (Mem.astack(Mem.support m)))
         (SPC: sp_consistency (sp_of_stack (Mem.stack (Mem.support m))) (sp_of_callstack s))
@@ -456,6 +532,7 @@ Lemma exec_straight_steps:
   match_stack ge s ->
   Mem.extends m2 m2' ->
   Genv.find_funct_ptr ge fb = Some (Internal f) ->
+  return_address_offset ge s ->
   size_consistency
     ((Some (Mach.fn_stacksize f))::(size_of_callstack s))
     (Mem.astack(Mem.support m2)) ->
@@ -470,8 +547,8 @@ Lemma exec_straight_steps:
   plus step tge (State rs1 m1') E0 st' /\
   match_states (Mach.State s fb sp c ms2 m2) st'.
 Proof.
-  intros. inversion H4. subst. monadInv H9.
-  exploit H5; eauto. intros [rs2 [A [B C]]].
+  intros. inversion H5. subst. monadInv H10.
+  exploit H6; eauto. intros [rs2 [A [B C]]].
   exists (State rs2 m2'); split.
   eapply exec_straight_exec; eauto.
   econstructor; eauto. eapply exec_straight_at; eauto.
@@ -482,6 +559,7 @@ Lemma exec_straight_steps_goto:
   match_stack ge s ->
   Mem.extends m2 m2' ->
   Genv.find_funct_ptr ge fb = Some (Internal f) ->
+  has_code return_address_offset ge s ->
   size_consistency
     (Some (Mach.fn_stacksize f)::(size_of_callstack s))
     (Mem.astack(Mem.support m2)) ->
@@ -498,10 +576,10 @@ Lemma exec_straight_steps_goto:
   plus step tge (State rs1 m1') E0 st' /\
   match_states (Mach.State s fb sp c' ms2 m2) st'.
 Proof.
-  intros. inversion H5. subst. monadInv H11.
-  exploit H7; eauto. intros [jmp [k' [rs2 [A [B C]]]]].
-  generalize (functions_transl _ _ _ H9 H10); intro FN.
-  generalize (transf_function_no_overflow _ _ H10); intro NOOV.
+  intros. inversion H6. subst. monadInv H12.
+  exploit H8; eauto. intros [jmp [k' [rs2 [A [B C]]]]].
+  generalize (functions_transl _ _ _ H10 H11); intro FN.
+  generalize (transf_function_no_overflow _ _ H11); intro NOOV.
   exploit exec_straight_steps_2; eauto.
   intros [ofs' [PC2 CT2]].
   exploit find_label_goto_label; eauto.
@@ -532,44 +610,6 @@ Definition measure (s: Mach.state) : nat :=
   | Mach.Callstate _ _ _ _ _ => 0%nat
   | Mach.Returnstate _ _ _ => 1%nat
   end.
-(*
-Lemma has_code_parent_ra_after_call:
-  forall s
-    (HC: callstack_function_defined return_address_offset ge s),
-    ra_after_call tge (parent_ra init_ra s).
-Proof.
-  intros init_ra_after_call s HC.
-  destruct s; simpl. auto.
-  destruct s; simpl.
-  inv HC.
-  split. congruence.
-  intros b o EQ; inv EQ.
-  edestruct functions_translated as (tf & FFP' & TF); eauto.
-  rewrite FFP'. intros f EQ; inv EQ.
-  red. simpl in TF. monadInv TF.
-  red in RAU.
-  specialize (fun tc => RAU _ tc EQ).
-  monadInv EQ. repeat destr_in EQ1.
-  monadInv EQ0. repeat destr_in EQ1. simpl in *. rewrite pred_dec_false. 2: inversion 1.
-  destruct TAIL as (l & sg & ros & CODE). rewrite CODE in EQ.
-  rewrite transl_code'_transl_code in EQ.
-  edestruct transl_code_app as (ep2 & y & TC1 & TC2); eauto.
-  monadInv TC2.
-  simpl in EQ0. monadInv EQ0.
-  specialize (RAU _ EQ1).
-  assert (exists icall, x = icall :: x0 /\ is_call icall).
-  {
-    destr_in EQ2; monadInv EQ2; eexists; split; eauto; constructor.
-  }
-  destruct H as (icall & ICALL & ISCALL). subst.
-  generalize (code_tail_code_size (Pallocframe (Mach.fn_stacksize trf) (fn_frame_pubrange trf) (fn_retaddr_ofs trf) :: y ++ icall :: nil) x0).
-  simpl. rewrite app_ass. simpl. intro EQSZ; specialize (EQSZ _ RAU).
-  rewrite offsets_after_call_app.
-  apply in_app. right. simpl. rewrite pred_dec_true.
-  left. rewrite EQSZ.
-  rewrite code_size_app. simpl. omega. auto.
-Qed.
-*)
 
 (** This is the simulation diagram.  We prove it by case analysis on the Mach transition. *)
 
@@ -708,6 +748,8 @@ Opaque loadind.
   econstructor; eauto.
   econstructor; eauto.
   eapply agree_sp_def; eauto.
+  econstructor; eauto.
+  econstructor; eauto. constructor.
   simpl. eapply agree_exten; eauto. intros. Simplifs.
   simpl. rewrite H2. auto.
   Simplifs. rewrite <- H. auto.
@@ -1000,7 +1042,7 @@ Transparent destroyed_by_jumptable.
   transitivity (Val.offset_ptr rs0#PC Ptrofs.one). auto. rewrite <- H5. simpl. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
   simpl. rewrite pred_dec_true. eauto. rewrite nextinstr_inv by congruence.
-  setoid_rewrite Pregmap.gss. admit.
+  setoid_rewrite Pregmap.gss. ra_after_call admit.
 (*  eapply has_code_parent_ra_after_call. *)
   traceEq.
   constructor; auto.
