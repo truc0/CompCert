@@ -229,10 +229,10 @@ Qed.
 Ltac regs_eq :=
   repeat
     match goal with
-    | |- nextinstr _ _ ?r = nextinstr _ _ ?r => apply nextinstr_eq
-    | |- nextinstr_nf _ _ ?r = nextinstr_nf _ _ ?r => apply nextinstr_nf_eq
-    | |- undef_regs _ _ ?r = undef_regs _ _ ?r => apply undef_regs_eq; [intros | eauto]
-    | |- _ # ?r0 <- ?v ?r = _ # ?r0 <- ?v' ?r => apply set_reg_eq; [intros | eauto]
-    | H: forall r: preg, r <> RA -> ?rs1 r = ?rs2 r |- ?rs1 _ = ?rs2 _ => apply H ; congruence
+    | |- nextinstr _ ?r = nextinstr _ ?r => apply nextinstr_eq
+    | |- nextinstr_nf _ ?r = nextinstr_nf _ ?r => apply nextinstr_nf_eq
+    | |- undef_regs _ _ ?r = undef_regs _ _ ?r => apply undef_regs_eq; intros; eauto
+    | |- _ # ?r0 <- ?v ?r = _ # ?r0 <- ?v' ?r => apply set_reg_eq; intros; eauto
+    | H: forall r: preg, r <> RA -> ?rs1 r = ?rs2 r |- ?rs1 _ = ?rs2 _ => apply H; auto; congruence
     | |- _ => unfold compare_ints, compare_longs, compare_floats, compare_floats32
     end.

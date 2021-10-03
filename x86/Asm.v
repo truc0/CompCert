@@ -297,6 +297,28 @@ Record function : Type := mkfunction { fn_sig: signature; fn_code: code; fn_stac
 Definition fundef := AST.fundef function.
 Definition program := AST.program fundef unit.
 
+Definition instr_size (i:instruction) := 1%Z.
+
+Lemma instr_size_repr : forall i, 0<= instr_size i <= Ptrofs.max_unsigned.
+Proof.
+  intro. unfold instr_size. vm_compute. split; congruence.
+Qed.
+
+Lemma instr_size_positive :forall i, 0 < instr_size i.
+Proof.
+  intro. unfold instr_size. lia.
+Qed.
+Fixpoint code_size (c:code) : Z :=
+  match c with
+  |nil => 0
+  |i::c' => code_size c' + instr_size i
+  end.
+
+Lemma code_size_non_neg: forall c, 0 <= code_size c.
+Proof.
+  intros. induction c; simpl. lia. unfold instr_size. lia.
+Qed.
+
 (** * Operational semantics *)
 
 Lemma preg_eq: forall (x y: preg), {x=y} + {x<>y}.
@@ -558,6 +580,57 @@ Fixpoint label_pos (lbl: label) (pos: Z) (c: code) {struct c} : option Z :=
       if is_label lbl instr then Some (pos + 1) else label_pos lbl (pos + 1) c'
   end.
 
+Lemma label_pos_rng:
+  forall lbl c pos z,
+    label_pos lbl pos c = Some z ->
+    0 <= pos ->
+    0 <= z - pos <= code_size c.
+Proof.
+  induction c; simpl; intros; eauto. congruence. repeat destr_in H.
+  generalize (code_size_non_neg c) (instr_size_positive a); lia.
+  apply IHc in H2.
+  generalize (instr_size_positive a); lia.
+  generalize (instr_size_positive a); lia.
+Qed.
+
+Lemma label_pos_repr:
+  forall lbl c pos z,
+    code_size c + pos <= Ptrofs.max_unsigned ->
+    0 <= pos ->
+    label_pos lbl pos c = Some z ->
+    Ptrofs.unsigned (Ptrofs.repr (z - pos)) = z - pos.
+Proof.
+  intros.
+  apply Ptrofs.unsigned_repr.
+  generalize (label_pos_rng _ _ _ _ H1 H0). lia.
+Qed.
+
+Lemma find_instr_ofs_pos:
+  forall c o i,
+    find_instr o c = Some i ->
+    0 <= o.
+Proof.
+  induction c; simpl; intros; repeat destr_in H.
+  lia. apply IHc in H1. generalize (instr_size_positive a); lia.
+Qed.
+
+Lemma label_pos_spec:
+  forall lbl c pos z,
+    code_size c + pos <= Ptrofs.max_unsigned ->
+    0 <= pos ->
+    label_pos lbl pos c = Some z ->
+    find_instr ((z - pos) - instr_size (Plabel lbl)) c = Some (Plabel lbl).
+Proof.
+  unfold instr_size.
+  induction c; simpl; intros; repeat destr_in H1.
+  destruct a; simpl in Heqb; try congruence. repeat destr_in Heqb.
+  apply pred_dec_true. unfold instr_size. lia.
+  eapply IHc in H3. 3: lia. 2: generalize (instr_size_positive a); lia.
+  generalize (find_instr_ofs_pos _ _ _ H3). intro.
+  rewrite pred_dec_false. 2: generalize (instr_size_positive a); lia.
+  rewrite <- H3. f_equal. lia.
+Qed.
+
 Variable ge: genv.
 
 (** Evaluating an addressing mode *)
@@ -809,28 +882,6 @@ Proof.
   left; econstructor; eauto.
   left; econstructor; eauto.
 Qed.
-
-  Definition instr_size (i:instruction) := 1%Z.
-
-  Lemma instr_size_repr : forall i, 0<= instr_size i <= Ptrofs.max_unsigned.
-  Proof.
-    intro. unfold instr_size. vm_compute. split; congruence.
-  Qed.
-
-  Lemma instr_size_positive :forall i, 0 < instr_size i.
-  Proof.
-    intro. unfold instr_size. lia.
-  Qed.
-  Fixpoint code_size (c:code) : Z :=
-    match c with
-      |nil => 0
-      |i::c' => code_size c' + instr_size i
-    end.
-
-  Lemma code_size_non_neg: forall c, 0 <= code_size c.
-    Proof.
-      intros. induction c; simpl. lia. unfold instr_size. lia.
-    Qed.
 
 Fixpoint offsets_after_call (c: code) (p: Z) : list Z :=
   match c with
@@ -1236,10 +1287,10 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
      |None => Stuck
      |Some m2 =>
       let sp := Vptr stk Ptrofs.zero in
-      match Mem.storev Mptr m2 (Val.offset_ptr sp ofs_link) rs#RSP with
+      match Mem.storev Mptr m2 (Val.offset_ptr sp ofs_ra) rs#RA with
       | None => Stuck
       | Some m3 =>
-        match Mem.storev Mptr m3 (Val.offset_ptr sp ofs_ra) rs#RA with
+        match Mem.storev Mptr m3 (Val.offset_ptr sp ofs_link) rs#RSP with
         | None => Stuck
         | Some m4 => Next (nextinstr (rs #RAX <- (rs#RSP) #RSP <- sp)) m4
         end
@@ -1440,7 +1491,12 @@ Inductive step: state -> trace -> state -> Prop :=
         (SP_NOT_VUNDEF: rs RSP <> Vundef)
         (RA_NOT_VUNDEF: rs RA <> Vundef),
       external_call ef ge args m t res m' ->
-      rs' = (set_pair (loc_external_result (ef_sig ef)) res (undef_caller_save_regs rs)) #PC <- (rs RA) ->
+      no_rsp_pair (loc_external_result (ef_sig ef)) ->
+      ra_after_call ge (rs#RA)->
+      rs' = (set_pair (loc_external_result (ef_sig ef)) res (undef_caller_save_regs rs))
+              #PC <- (rs RA)
+              #RA <- Vundef
+      ->
       step (State rs m) t (State rs' m').
 
 End RELSEM.
@@ -1511,7 +1567,7 @@ Ltac Equalities :=
   exploit external_call_determ. eexact H5. eexact H11. intros [A B].
   split. auto. intros. destruct B; auto. subst. auto.
 + assert (args0 = args) by (eapply extcall_arguments_determ; eauto). subst args0.
-  exploit external_call_determ. eexact H4. eexact H9. intros [A B].
+  exploit external_call_determ. eexact H4. eexact H11. intros [A B].
   split. auto. intros. destruct B; auto. subst. auto.
 - (* trace length *)
   red; intros; inv H; simpl.

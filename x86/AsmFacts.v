@@ -91,7 +91,7 @@ Definition asm_external_unchange_rsp (ge: Genv.t Asm.fundef unit) : Prop :=
     Genv.find_funct_ptr ge b = Some (External ef) ->
     extcall_arguments rs m (ef_sig ef) args ->
     external_call ef ge args m t res m' ->
-    rs' = (set_pair (loc_external_result (ef_sig ef)) res (undef_caller_save_regs rs)) #PC <- (rs RA) ->
+    rs' = ((set_pair (loc_external_result (ef_sig ef)) res (undef_caller_save_regs rs)) #PC <- (rs RA)) #RA <- Vundef ->
     rs # RSP = rs' # RSP.
 
 Definition asm_prog_unchange_rsp (ge: Genv.t Asm.fundef unit) : Prop :=
@@ -100,11 +100,6 @@ Definition asm_prog_unchange_rsp (ge: Genv.t Asm.fundef unit) : Prop :=
   asm_external_unchange_rsp ge.
 
 (** Proof *)
-Definition no_rsp_pair (b: rpair preg) :=
-  match b with
-  | One r => r <> RSP
-  | Twolong hi lo => hi <> RSP /\ lo <> RSP
-  end.
 
 Lemma set_pair_no_rsp:
   forall p res rs,

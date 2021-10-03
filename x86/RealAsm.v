@@ -51,7 +51,6 @@ Section WFASM.
     left. econstructor; eauto.
   Defined.
   Inductive is_jmp: instruction -> Prop :=
-  | is_jmpl_intro: forall l, is_jmp (Pjmp_l l)
   | is_jmps_intro: forall i sg, is_jmp (Pjmp_s i sg)
   | is_jmpr_intro: forall ir sg, is_jmp (Pjmp_r ir sg).
 
@@ -111,7 +110,7 @@ Section WFASM.
       wf_asm_free_spec:
         forall o sz ora olink,
           find_instr o (fn_code f) = Some (Pfreeframe sz ora olink) ->
-          sz = fn_stacksize f /\ ora = Ptrofs.sub (Ptrofs.repr (align (Z.max 0 sz) 8)) (Ptrofs.repr (size_chunk Mptr));
+          sz = fn_stacksize f /\ ora = Ptrofs.sub (Ptrofs.repr (align sz 8)) (Ptrofs.repr (size_chunk Mptr));
 
       wf_allocframe_repr:
         forall o sz ora olink,
@@ -122,7 +121,7 @@ Section WFASM.
       wf_freeframe_repr:
         forall o sz ora olink,
           find_instr o (fn_code f) = Some (Pfreeframe sz ora olink) ->
-          Ptrofs.repr (align sz 8 - size_chunk Mptr) = Ptrofs.sub (Ptrofs.repr (align (Z.max 0 sz) 8)) (Ptrofs.repr (size_chunk Mptr));
+          Ptrofs.repr (align sz 8 - size_chunk Mptr) = Ptrofs.sub (Ptrofs.repr (align sz 8)) (Ptrofs.repr (size_chunk Mptr));
     }.
 
   Definition is_make_palloc a f :=  a = make_palloc f /\
@@ -169,7 +168,7 @@ Section WFASM.
 
   Definition check_ret_or_jmp roj :=
     match roj with
-    | Pret | Pjmp_l _ |Pjmp_r _ _ | Pjmp_s _ _=> true
+    | Pret |Pjmp_r _ _ | Pjmp_s _ _=> true
     | _ => false
     end.
 
@@ -180,8 +179,8 @@ Section WFASM.
     end.
 
   Definition check_free f sz ora :=
-      sz = fn_stacksize f /\ ora = Ptrofs.sub (Ptrofs.repr (align (Z.max 0 sz) 8)) (Ptrofs.repr (size_chunk Mptr)) /\
-      Ptrofs.repr (align sz 8 - size_chunk Mptr) = Ptrofs.sub (Ptrofs.repr (align (Z.max 0 sz) 8)) (Ptrofs.repr (size_chunk Mptr)).
+      sz = fn_stacksize f /\ ora = Ptrofs.sub (Ptrofs.repr (align sz 8)) (Ptrofs.repr (size_chunk Mptr)) /\
+      Ptrofs.repr (align sz 8 - size_chunk Mptr) = Ptrofs.sub (Ptrofs.repr (align sz 8)) (Ptrofs.repr (size_chunk Mptr)).
 
   Definition check_free_dec f sz ora : { check_free f sz ora } + { ~ check_free f sz ora }.
   Proof.
@@ -431,7 +430,7 @@ Section WFASM.
   Proof.
     induction a; simpl; intros; eauto.
     - apply andb_true_iff in H. destruct H as (A & B).
-      destruct H0 as [ROJ|ROJ]; inv ROJ; simpl in *. destr_in B. destr_in B.
+      destruct H0 as [ROJ|ROJ]; inv ROJ; simpl in *. destr_in B.
       destruct roj. auto. congruence. destr_in B.
     - apply andb_true_iff in H. destruct H as (A & B).
       destruct (is_free_dec a); simpl in *. inv i0.
@@ -646,9 +645,9 @@ Section WFASM.
   Qed.
 
   Lemma wf_asm_wf_allocframe:
-    forall f (WF: wf_asm_function f) o sz pubrange ora
-      (FI: find_instr o (fn_code f) = Some (Pallocframe sz pubrange ora)),
-      make_palloc f = Pallocframe sz pubrange ora.
+    forall f (WF: wf_asm_function f) o sz ora olink
+      (FI: find_instr o (fn_code f) = Some (Pallocframe sz ora olink)),
+      make_palloc f = Pallocframe sz ora olink.
   Proof.
     intros.
     exploit wf_asm_alloc_only_at_beginning; eauto. intro; subst.
@@ -656,7 +655,6 @@ Section WFASM.
   Qed.
 
 End WFASM.
-
 
 Section WITHGE.
   Variable ge : Genv.t Asm.fundef unit.
@@ -666,14 +664,14 @@ Section WITHGE.
     | Pallocframe sz ofs_ra ofs_link =>
       let aligned_sz := align sz 8 in
       let psp := (Val.offset_ptr (rs#RSP) (Ptrofs.repr (size_chunk Mptr))) in (* parent stack pointer *)
-      let sp := Val.offset_ptr rs#RSP (Ptrofs.neg (Ptrofs.sub (Ptrofs.repr aligned_sz) (Ptrofs.repr (size_chunk Mptr)))) in
+      let sp := Val.offset_ptr (rs#RSP) (Ptrofs.neg (Ptrofs.sub (Ptrofs.repr aligned_sz) (Ptrofs.repr (size_chunk Mptr)))) in
       match Mem.storev Mptr m (Val.offset_ptr sp ofs_link) psp with
         |None => Stuck
         |Some m1 =>
       Next (nextinstr (rs #RAX <- (Val.offset_ptr (rs RSP) (Ptrofs.repr (size_chunk Mptr))) #RSP <- sp)) m1
       end
     | Pfreeframe sz ofs_ra ofs_link =>
-      let sp := Val.offset_ptr (rs RSP) (Ptrofs.sub (Ptrofs.repr (align (Z.max 0 sz) 8)) (Ptrofs.repr (size_chunk Mptr))) in
+      let sp := Val.offset_ptr (rs RSP) (Ptrofs.sub (Ptrofs.repr (align sz 8)) (Ptrofs.repr (size_chunk Mptr))) in
       Next (nextinstr (rs#RSP <- sp)) m
     | Pcall_s i sg =>
       let sp := Val.offset_ptr (rs RSP) (Ptrofs.neg (Ptrofs.repr (size_chunk Mptr))) in
