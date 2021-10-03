@@ -397,7 +397,7 @@ Definition written_regs i : list preg :=
     unfold preg_of. intros; subst.
     destruct m; congruence.
   Qed.
-  
+ 
   Lemma ireg_of_not_rsp:
     forall m x,
       Asmgen.ireg_of m = Errors.OK x ->

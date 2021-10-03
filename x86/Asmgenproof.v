@@ -570,6 +570,7 @@ Proof.
   rewrite code_size_app. simpl. omega. auto.
 Qed.
 *)
+
 (** This is the simulation diagram.  We prove it by case analysis on the Mach transition. *)
 
 Theorem step_simulation:
@@ -781,7 +782,11 @@ Opaque loadind.
   transitivity (Val.offset_ptr rs0#PC Ptrofs.one). auto.
   rewrite <- H. simpl. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
-  simpl. eauto. traceEq.
+  simpl.
+  setoid_rewrite Pregmap.gso. 2: congruence.
+  setoid_rewrite Pregmap.gso. 2: eapply ireg_of_not_rsp; eauto.
+  unfold Genv.find_funct.
+  eauto. traceEq.
   econstructor; eauto.
   apply agree_set_other; auto. apply agree_nextinstr. apply agree_set_other; auto.
   eapply agree_change_sp; eauto. eapply parent_sp_def; eauto.

@@ -360,6 +360,7 @@ Fixpoint no_rsp_pair (b: rpair preg) :=
   | One r => r <> RSP
   | Twolong hi lo => hi <> RSP /\ lo <> RSP
   end.
+
 (** Assigning the result of a builtin *)
 
 Fixpoint set_res (res: builtin_res preg) (v: val) (rs: regset) : regset :=
@@ -1216,9 +1217,19 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
   | Pjmp_l lbl =>
       goto_label f lbl rs m
   | Pjmp_s id sg =>
-      Next (rs#PC <- (Genv.symbol_address ge id Ptrofs.zero)) m
+    let addr := Genv.symbol_address ge id Ptrofs.zero in
+    match Genv.find_funct ge addr with
+    | Some _ =>
+      Next (rs#PC <- addr) m
+    | _ => Stuck
+    end
   | Pjmp_r r sg =>
-      Next (rs#PC <- (rs r)) m
+    let addr := (rs r) in
+    match Genv.find_funct ge addr with
+    | Some _ =>
+      Next (rs#PC <- addr) m
+    | _ => Stuck
+    end
   | Pjcc cond lbl =>
       match eval_testcond cond rs with
       | Some true => goto_label f lbl rs m
