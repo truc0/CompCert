@@ -477,7 +477,8 @@ Lemma has_code_step:
     has_code s1 ->
     has_code s2.
 Proof.
-  destruct 1; simpl; intros HC; inv HC; try now (econstructor; eauto).
+  destruct 1; simpl;
+  intros HC; inv HC; try now (econstructor; eauto).
   - destruct CODE as (l & CODE); econstructor; eauto; rewrite CODE;
     eexists (l ++ _ :: nil); simpl; rewrite app_ass; reflexivity.
   - destruct CODE as (l & CODE); econstructor; eauto; rewrite CODE;
@@ -498,7 +499,7 @@ Proof.
       eexists (l ++ _ :: nil); simpl; rewrite app_ass; reflexivity.
   - destruct CODE as (l & CODE).
     rewrite H in FIND; inv FIND.
-    econstructor; eauto. eapply find_label_ex. eauto. 
+    econstructor; eauto. eapply find_label_ex. eauto.
   - destruct CODE as (l & CODE).
     rewrite H0 in FIND; inv FIND.
     econstructor; eauto. eapply find_label_ex. eauto.

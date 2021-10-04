@@ -2836,14 +2836,13 @@ Proof.
   unfold encode_val, decode_val, Mptr. destruct Archi.ptr64.
   destruct (proj_bytes (getN (size_chunk_nat Mint64) (Ptrofs.unsigned i) mem_contents0 #b )).
   Search setN.
-Admitted.
 
 Lemma loadv_Mptr_def:
   forall m vptr val,loadv Mptr m vptr = Some val -> val <> Vundef.
 Proof.
   intros.
   unfold loadv,load,decode_val in H.
-  do 3 destr_in H. admit.
+  do 3 destr_in H.
   unfold Mptr in H. destruct Archi.ptr64.
   Search Val.load_result.
   simpl in H.

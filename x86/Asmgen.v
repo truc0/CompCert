@@ -1036,6 +1036,24 @@ Proof.
   intros. repeat destr.
 Qed.
 
+Lemma loadind_eq:
+  forall r i t m c tc,
+    loadind r i t m c = OK tc ->
+    exists ti,
+      loadind r i t m nil = OK ti /\ tc = ti ++ c.
+Proof.
+  intros r i t m c tc TI. destruct i; simpl in *.
+  unfold loadind in *. repeat destr_in TI; simpl; eauto.
+Qed.
+
+Lemma loadind_split:
+  forall r i t m c1 c2 tc,
+    loadind r i t m (c1++c2) = OK tc ->
+    exists tc1, loadind r i t m c1 = OK tc1 /\ tc = tc1 ++ c2.
+Proof.
+  intros. unfold loadind in *. repeat destr_in H; simpl; eauto.
+Qed.
+
 Lemma transl_instr_eq:
   forall f i ax c tc,
     transl_instr f i ax c = OK tc ->
@@ -1047,14 +1065,11 @@ Proof.
   - Transparent loadind.
     unfold loadind in *. repeat destr_in TI; simpl; eauto.
   - unfold storeind in *. repeat destr_in TI; simpl; eauto.
-  - admit.
-(*    destr.
-    unfold loadind in *. repeat destr_in TI; simpl; eauto.
-    monadInv TI. unfold loadind in EQ. unfold loadind.
-    repeat destr_in EQ; simpl; eauto. unfold loadind in EQ0.
-    destruct Tptr; simpl in *; inv EQ0; simpl; eauto.
-    destr. eauto. simpl. admit.
-    repeat destr_in EQ0; simpl; eauto. *)
+  - destruct ax.
+    + unfold loadind in *. repeat destr_in TI; simpl; eauto.
+    + monadInv TI.
+      exploit loadind_eq. apply EQ. eauto. intros (ti1 & A & B).
+      inv B. rewrite A. simpl. eapply loadind_split; eauto.
   - edestruct transl_op_eq as (ti & TOP & EQ); eauto.
   - eauto using transl_load_eq.
   - eauto using transl_store_eq.
@@ -1066,7 +1081,7 @@ Proof.
   - eapply transl_cond_app; eauto. erewrite <- mk_jcc_app. auto.
   - monadInv TI; rewrite EQ; simpl; eauto.
   - inv TI. eauto.
-Admitted.
+Qed.
 
 Lemma mk_jcc_app':
   forall cond x c c',
@@ -1074,6 +1089,15 @@ Lemma mk_jcc_app':
 Proof.
   unfold mk_jcc.
   intros. repeat destr.
+Qed.
+
+Lemma loadind_app:
+      forall r i t m c tc c',
+        loadind r i t m c = OK tc ->
+        loadind r i t m (c++c') = OK (tc++c').
+Proof.
+  intros. unfold loadind in *.
+  repeat destr_in H; simpl; eauto.
 Qed.
 
 Lemma transl_instr_eq':
@@ -1092,15 +1116,16 @@ Proof.
            | H: OK _ = OK _ |- _ => inv H
            | |- _ => simpl in *; eauto
            end.
-  unfold loadind in *. repeat destr_in H0; eauto.
-  unfold storeind in *. repeat destr_in H0; eauto.
-  unfold loadind in *. repeat destr_in H0; eauto.
-  admit.
-  eapply transl_op_eq'; eauto.
-  eapply transl_load_eq'; eauto.
-  eapply transl_store_eq'; eauto.
-  rewrite mk_jcc_app'. eapply transl_cond_app'; eauto.
-Admitted.
+  + unfold loadind in *. repeat destr_in H0; eauto.
+  + unfold storeind in *. repeat destr_in H0; eauto.
+  + unfold loadind in *. repeat destr_in H0; eauto.
+  + exploit loadind_app. apply EQ. intros. rewrite H. simpl.
+    eapply loadind_app; eauto.
+  + eapply transl_op_eq'; eauto.
+  + eapply transl_load_eq'; eauto.
+  + eapply transl_store_eq'; eauto.
+  + rewrite mk_jcc_app'. eapply transl_cond_app'; eauto.
+Qed.
 
 Lemma transl_code_app:
   forall f l1 l2 ep1 x,
