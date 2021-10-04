@@ -128,12 +128,6 @@ Proof.
 Qed.
 
 
-Lemma asmgen_prog_unchange_rsp: forall p tp, Asmgen.transf_program p  = OK tp -> AsmFacts.asm_prog_unchange_rsp (Globalenvs.Genv.globalenv tp).
-Proof.
-  intros.
-  unfold Linking.match_program in H.
-  unfold Linking.match_program_gen in H.
-Admitted.
 
 Definition written_regs i : list preg :=
     match i with
@@ -494,17 +488,213 @@ Qed.
       (IN: In i c'),
       ~ In (IR RSP) (written_regs i).
   Proof.
-
     intros.
-    destruct op; simpl in TC; repeat destr_in TC; simpl; solve_in_regs.
-    admit.
-    admit.
+    destruct op; simpl in TC; repeat destr_in TC; simpl;solve_in_regs.
+    
+    destruct (Archi.ptr64 || low_ireg x);monadInv  EQ2;
+    destruct r;unfold ireg_of in EQ1; simpl in EQ1; monadInv  EQ1;
+      destr_in IN;simpl;solve_in_regs.
+
+    destruct (Archi.ptr64 || low_ireg x);monadInv  EQ2;
+    destruct r;unfold ireg_of in EQ1; simpl in EQ1; monadInv  EQ1;
+    destr_in IN;simpl;solve_in_regs.
+
     eapply transl_cond_no_rsp in EQ0; eauto.
     destruct EQ0; auto.
     unfold mk_setcc, mk_setcc_base in *; simpl in *.
     solve_in_regs; solve_rs.
-    admit.
-  Admitted.
+
+    unfold transl_sel in EQ2.
+    (* destruct r;unfold ireg_of in EQ; simpl in EQ; monadInv  EQ. *)
+    destruct ireg_eq;subst;monadInv EQ2;try destr_in IN;simpl;solve_in_regs.
+    eapply transl_cond_no_rsp in EQ3; eauto.
+    destruct EQ3; auto.
+    unfold mk_sel in *; simpl in *.
+    destruct testcond_for_condition;monadInv  EQ0;
+    destr_in H;
+    solve_in_regs; solve_rs.
+                                
+Qed.
+
+  (* should put this section in Asmgen.v *)
+Section AsmgenFacts.
+
+  
+Lemma mk_setcc_app:
+  forall cond x c,
+    mk_setcc cond x c = mk_setcc cond x nil ++ c.
+Proof.
+  unfold mk_setcc, mk_setcc_base.
+  intros. repeat destr.
+Qed.
+
+Lemma transl_cond_app:
+  forall a b cond lr tc,
+    transl_cond cond lr (a ++ b) = OK tc ->
+    exists tc', transl_cond cond lr a = OK tc' /\ tc = tc' ++ b.
+Proof.
+  intros a b cond lr tc TC.
+  unfold transl_cond in *.
+  repeat destr_in TC; monadInv H0; rewrite EQ, ? EQ1; simpl; eauto.
+Qed.
+  
+Lemma transl_op_eq:
+  forall op lr r c tc,
+    transl_op op lr r c = OK tc ->
+    exists ti,
+      transl_op op lr r nil = OK ti /\ tc = ti ++ c.
+Proof.
+  intros op lr r c tc TO.
+  destruct op; simpl in *; repeat destr_in TO; eauto; try (monadInv H0; rewrite EQ; simpl; now eauto).
+  - unfold mk_mov in *. repeat destr_in H0; eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl.
+    unfold mk_intconv in *. repeat destr_in EQ2; eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl.
+    unfold mk_intconv in *. repeat destr_in EQ2; eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl.
+    unfold mk_intconv in *. repeat destr_in EQ2; eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl.
+    unfold mk_intconv in *. repeat destr_in EQ2; eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl.
+    unfold mk_intconv in *. repeat destr_in EQ2; eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl.
+    unfold mk_intconv in *. repeat destr_in EQ2; eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl.
+    unfold mk_intconv in *. repeat destr_in EQ2; eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl.
+    unfold mk_intconv in *. repeat destr_in EQ2; eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl.
+    unfold mk_intconv in *. repeat destr_in EQ2; eauto.
+  - unfold mk_shrximm.  eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - unfold mk_shrxlimm. destr. eauto. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. repeat destr; eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ, EQ1. simpl. eauto.
+  - monadInv H0. rewrite EQ.
+    rewrite mk_setcc_app in EQ0.
+    edestruct transl_cond_app as (tc' & TC & APP); eauto.
+  - monadInv H0. rewrite EQ. unfold transl_sel in *.
+    destruct ireg_eq eqn:EQI.
+    cbn [bind]. rewrite EQ1. cbn [bind].
+    rewrite EQI. simpl. monadInv  EQ2. eauto.
+    cbn [bind]. rewrite EQ1. cbn [bind].
+    rewrite EQI. monadInv EQ2.
+    destruct testcond_for_condition.
+    simpl in *. monadInv EQ0. eapply transl_cond_app.
+    simpl. auto.
+
+    simpl in *. monadInv  EQ0.
+    simpl in *. monadInv  EQ0. eapply transl_cond_app.
+     simpl. auto.    
+Qed.
+
+
+Lemma transl_load_eq:
+  forall m a l m0 c tc
+    (TI : transl_load m a l m0 c = OK tc),
+  exists ti, transl_load m a l m0 nil = OK ti /\ tc = ti ++ c.
+Proof.
+  intros.
+  unfold transl_load. monadInv TI. destruct m;monadInv EQ0;rewrite EQ;
+  cbn [bind]; rewrite EQ1;cbn [bind];eauto.
+ 
+Qed.
+
+Lemma mk_storebyte_eq:
+  forall x x0 c tc
+    (EQ1 : mk_storebyte x x0 c = OK tc),
+  exists ti, mk_storebyte x x0 nil = OK ti /\ tc = ti ++ c.
+Proof.
+  unfold mk_storebyte.
+  intros. inv EQ1. repeat (destr; eauto).
+Qed.
+
+
+Lemma transl_store_eq:
+  forall m a l m0 c tc
+    (TI : transl_store m a l m0 c = OK tc),
+  exists ti, transl_store m a l m0 nil = OK ti /\ tc = ti ++ c.
+Proof.
+  intros.
+  unfold transl_store. monadInv TI. rewrite EQ; simpl.
+  repeat destr_in EQ0; monadInv H0; rewrite EQ0; simpl; eauto using mk_storebyte_eq.
+Qed.
+
+Lemma mk_jcc_app:
+  forall cond x c,
+    mk_jcc cond x c = mk_jcc cond x nil ++ c.
+Proof.
+  unfold mk_jcc.
+  intros. repeat destr.
+Qed.
+  
+Lemma transl_instr_eq:
+  forall f i ax c tc,
+    transl_instr f i ax c = OK tc ->
+    exists ti,
+      transl_instr f i ax nil = OK ti /\ tc = ti ++ c.
+Proof.
+  intros f i ax c tc TI.
+  destruct i; simpl in *.
+  - unfold loadind in *.
+    destruct t;destruct preg_of;try monadInv TI; repeat destr_in EQ; simpl; eauto.
+    destruct Archi.ptr64;monadInv  TI;repeat destr_in EQ; simpl; eauto.
+    destruct Archi.ptr64;monadInv  TI;repeat destr_in EQ; simpl; eauto.
+
+  - unfold storeind in *. destruct t;destruct preg_of;try monadInv TI; repeat destr_in EQ; simpl; eauto.
+    destruct Archi.ptr64;monadInv  TI;repeat destr_in EQ; simpl; eauto.
+    destruct Archi.ptr64;monadInv  TI;repeat destr_in EQ; simpl; eauto.
+  - destr.
+    unfold loadind in *.
+    destruct t;destruct preg_of;try monadInv TI; repeat destr_in EQ; simpl; eauto.
+    destruct Archi.ptr64;monadInv  TI;repeat destr_in EQ; simpl; eauto.
+    destruct Archi.ptr64;monadInv  TI;repeat destr_in EQ; simpl; eauto.
+
+    monadInv TI. unfold loadind in *.
+    destruct t;destruct preg_of;try monadInv EQ;
+    repeat destr_in EQ0;
+    simpl; eauto;
+    destruct Archi.ptr64;monadInv  EQ;repeat destr_in EQ; simpl; eauto.
+   
+  - edestruct transl_op_eq as (ti & TOP & EQ); eauto.
+  - eauto using transl_load_eq.
+  - eauto using transl_store_eq.
+  - destr_in TI; monadInv TI; rewrite ? EQ; simpl; eauto.
+  - destr_in TI; monadInv TI; rewrite ? EQ; simpl; eauto.
+  - inv TI; eauto.
+  - inv TI; eauto.
+  - inv TI; eauto.
+  - eapply transl_cond_app; eauto. erewrite <- mk_jcc_app. auto.
+  - monadInv TI; rewrite EQ; simpl; eauto.
+  - inv TI. eauto.
+Qed.
+
+End AsmgenFacts.
 
   Lemma transl_code_no_rsp:
     forall f c b c' i
@@ -513,36 +703,58 @@ Qed.
       (IN: In i c'),
       ~ In (IR RSP) (written_regs i).
   Proof.
-    Admitted.
-  (*   induction c; simpl; intros; eauto. inv TC. easy. *)
-  (*   monadInv TC. *)
-  (*   edestruct transl_instr_eq as (ti & TI & EQti). eauto. subst. *)
-  (*   rewrite in_app in IN. *)
-  (*   destruct IN as [IN|IN]; eauto. *)
-  (*   clear EQ EQ0. *)
-  (*   destruct a; simpl in TI; repeat destr_in TI; eauto using loadind_no_rsp, storeind_no_rsp. *)
-  (*   - monadInv H0. simpl in IN. destruct IN as [IN|IN]. inv IN. simpl. intuition congruence. *)
-  (*     eapply loadind_no_rsp; eauto. *)
-  (*   - eapply transl_op_no_rsp; eauto. *)
-  (*   - unfold transl_load in H0. solve_in_regs. *)
-  (*     repeat destr_in EQ1; solve_in_regs. *)
-  (*   - unfold transl_store in H0. solve_in_regs. *)
-  (*     repeat destr_in EQ0; solve_in_regs; auto. *)
-  (*     inv EQ1; solve_in_regs; auto. *)
-  (*     inv EQ1; solve_in_regs; auto. *)
-  (*   - solve_in_regs. *)
-  (*   - solve_in_regs. *)
-  (*   - solve_in_regs. *)
-  (*   - solve_in_regs. *)
-  (*   - solve_in_regs. *)
-  (*   - solve_in_regs. *)
-  (*   - solve_in_regs. *)
-  (*   - eapply transl_cond_no_rsp in H0 ; eauto. destruct H0; auto. *)
-  (*     unfold mk_jcc in *; simpl in *. *)
-  (*     solve_in_regs; solve_rs; auto. *)
-  (*   - solve_in_regs. *)
-  (*   - solve_in_regs. *)
-  (* Qed. *)
+
+    induction c; simpl; intros; eauto. inv TC. easy.
+    monadInv TC.
+    edestruct transl_instr_eq as (ti & TI & EQti). eauto. subst.
+    rewrite in_app in IN.
+    destruct IN as [IN|IN]; eauto.
+    clear EQ EQ0.
+    destruct a; simpl in TI; repeat destr_in TI; eauto using loadind_no_rsp, storeind_no_rsp.
+    - monadInv H0. unfold loadind in EQ0. destruct Tptr;simpl in EQ0;try monadInv EQ0.                                                                    
+      simpl in IN. destruct IN as [IN|IN]. inv IN. simpl. intuition congruence. eapply loadind_no_rsp; eauto.
+      destruct IN as [IN|IN]. inv IN. simpl. intuition congruence. eapply loadind_no_rsp; eauto.
+      destruct Archi.ptr64;monadInv EQ0.
+      destruct IN as [IN|IN]. inv IN. simpl. intuition congruence. eapply loadind_no_rsp; eauto.
+      destruct Archi.ptr64;monadInv EQ0.
+      destruct IN as [IN|IN]. inv IN. simpl. intuition congruence. eapply loadind_no_rsp; eauto.
+    - eapply transl_op_no_rsp; eauto.
+    - unfold transl_load in H0. monadInv H0. destruct m; solve_in_regs;
+      monadInv  EQ0.
+    - unfold transl_store in H0. monadInv H0. destruct m;solve_in_regs;try monadInv EQ0.
+      unfold mk_storebyte in EQ2. destruct (Archi.ptr64 || low_ireg x1).
+      monadInv EQ2. destr_in IN. simpl. auto.
+      simpl in H. congruence.
+      destruct  (addressing_mentions x0 RAX);monadInv EQ2;destr_in IN.
+      simpl;intuition congruence.
+      destr_in H;simpl;try intuition congruence.
+      destr_in H0;simpl;try intuition congruence.
+      simpl;intuition congruence.
+      destr_in H;simpl;try intuition congruence.
+
+      unfold mk_storebyte in EQ2. destruct (Archi.ptr64 || low_ireg x1).
+      monadInv EQ2. destr_in IN. simpl. auto.
+      simpl in H. congruence.
+      destruct  (addressing_mentions x0 RAX);monadInv EQ2;destr_in IN.
+      simpl;intuition congruence.
+      destr_in H;simpl;try intuition congruence.
+      destr_in H0;simpl;try intuition congruence.
+      simpl;intuition congruence.
+      destr_in H;simpl;try intuition congruence.
+      
+    - solve_in_regs.
+    - solve_in_regs.
+    - solve_in_regs.
+    - solve_in_regs.
+    - solve_in_regs.
+    - solve_in_regs.
+    - solve_in_regs.
+    - eapply transl_cond_no_rsp in H0 ; eauto. destruct H0; auto.
+      unfold mk_jcc in *; simpl in *.
+      solve_in_regs; solve_rs; auto.
+    - solve_in_regs.
+    - solve_in_regs.
+  Qed.
 
 Lemma asmgen_no_change_rsp:
     forall f tf,
