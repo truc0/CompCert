@@ -2818,6 +2818,43 @@ Proof.
   rewrite addressing_int64_split; auto.
   exploit store_valid_access_3. eexact H2. intros [P Q]. exact Q.
 Qed.
+(*
+Lemma loadv_storev: forall m vptr val,
+   loadv Mptr m vptr = Some val ->
+   storev Mptr m vptr val = Some m.
+Proof.
+  intros. unfold Mem.storev.
+  unfold loadv in H. destr_in H.
+  unfold load in H. unfold store. destr_in H.
+  rewrite pred_dec_true. destruct m. f_equal.
+  apply mkmem_ext; auto. simpl. simpl in H.
+  Search NMap.set. apply Axioms.extensionality.
+  intros. destruct (eq_block x b).
+  subst. rewrite NMap.gss. inv H.
+  Search decode_val.
+  Search encode_val.
+  unfold encode_val, decode_val, Mptr. destruct Archi.ptr64.
+  destruct (proj_bytes (getN (size_chunk_nat Mint64) (Ptrofs.unsigned i) mem_contents0 #b )).
+  Search setN.
+
+Lemma loadv_Mptr_def:
+  forall m vptr val,loadv Mptr m vptr = Some val -> val <> Vundef.
+Proof.
+  intros.
+  unfold loadv,load,decode_val in H.
+  do 3 destr_in H.
+  unfold Mptr in H. destruct Archi.ptr64.
+  Search Val.load_result.
+  simpl in H.
+  try congruence.
+  destruct Archi.ptr64 in Heqm0; congruence.
+  destruct Archi.ptr64 in Heqm0; congruence.
+  destruct Archi.ptr64 in Heqm0; congruence.
+  destruct Archi.ptr64 in Heqm0; congruence.
+  destruct Archi.ptr64 in Heqm0; congruence.
+  destruct Archi.ptr64 in Heqm0; congruence.
+  destr. destr_in Heqv0.
+*)
 
 (** ** Properties related to [alloc_frame]. *)
 

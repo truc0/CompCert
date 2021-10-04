@@ -32,40 +32,24 @@ Proof.
   simpl; intuition subst; congruence.
 Qed.
 
-(* Internal Step *)
-(* Definition asm_exec_instr_unchange_rsp (i : instruction) : Prop := *)
-(*   forall ge rs1 m1 rs2 m2 f, *)
-(*     Asm.exec_instr ge f i rs1 m1 = Next rs2 m2 -> *)
-(*     rs2 # RSP = rs1 # RSP. *)
-
 Definition asm_instr_unchange_rsp (i : instruction) : Prop :=
   forall ge f rs m rs' m',
     stk_unrelated_instr i = true ->
     Asm.exec_instr ge f i rs m = Next rs' m' ->
     rs # RSP = rs' # RSP.
 
-(* Lemma find_instr_eq: *)
-(*   forall code ofs i, *)
-(*     find_instr ofs code = Some i -> In i code. *)
-(* Proof. *)
-(*   intro code. induction code. *)
-(*   - intros. inv H. *)
-(*   - intros. simpl in H. *)
-(*     destruct (zeq ofs 0) eqn:EQ. *)
-(*     + inv H. simpl. auto. *)
-(*     + apply IHcode in H. *)
-(*       simpl. right. auto. *)
-(* Qed. *)
-
- Definition asm_code_unchange_rsp (c : Asm.code) : Prop :=
-   forall i,
-     In i c ->
-     asm_instr_unchange_rsp i.
-
-(* Definition asm_internal_unchange_rsp (ge: Genv.t Asm.fundef unit) : Prop := *)
-(*   forall b f, *)
-(*     Genv.find_funct_ptr ge b = Some (Internal f) -> *)
-(*     asm_code_unchange_rsp (fn_code f). *)
+ Lemma find_instr_eq:
+  forall code ofs i,
+     find_instr ofs code = Some i -> In i code.
+ Proof.
+   intro code. induction code.
+   - intros. inv H.
+   - intros. simpl in H.
+     destruct (zeq ofs 0) eqn:EQ.
+     + inv H. simpl. auto.
+     + apply IHcode in H.
+       simpl. right. auto.
+ Qed.
 
 Definition asm_internal_unchange_rsp (ge: Genv.t Asm.fundef unit) : Prop :=
   forall b ofs f i,
@@ -80,6 +64,7 @@ Definition asm_builtin_unchange_rsp (ge: Genv.t Asm.fundef unit) : Prop :=
     find_instr (Ptrofs.unsigned ofs) f.(fn_code) = Some (Pbuiltin ef args res) ->
     eval_builtin_args ge rs (rs RSP) m args vargs ->
     external_call ef ge vargs m t vres m' ->
+    ~ in_builtin_res res RSP ->
     rs' = nextinstr_nf
               (set_res res vres
                        (undef_regs (map preg_of (Machregs.destroyed_by_builtin ef)) rs)) ->
@@ -93,6 +78,7 @@ Definition asm_external_unchange_rsp (ge: Genv.t Asm.fundef unit) : Prop :=
     external_call ef ge args m t res m' ->
     rs' = ((set_pair (loc_external_result (ef_sig ef)) res (undef_caller_save_regs rs)) #PC <- (rs RA)) #RA <- Vundef ->
     rs # RSP = rs' # RSP.
+
 
 Definition asm_prog_unchange_rsp (ge: Genv.t Asm.fundef unit) : Prop :=
   asm_internal_unchange_rsp ge /\
@@ -348,8 +334,7 @@ Definition written_regs i : list preg :=
     solvegl H7.
     solvegl H7.
   Qed.
-  
-  
+
   Definition check_asm_instr_no_rsp i :=
     negb (in_dec preg_eq RSP (written_regs i)).
 
@@ -365,7 +350,7 @@ Definition written_regs i : list preg :=
     simpl. intro A. decompose [or] A; try congruence.
     unfold check_asm_instr_no_rsp in H. unfold proj_sumbool in H. destr_in H. simpl in H. congruence.
   Qed.
-  
+
   Definition asm_code_no_rsp (c : Asm.code) : Prop :=
     forall i,
       In i c ->
@@ -381,7 +366,6 @@ Definition written_regs i : list preg :=
     red; congruence.
   Qed.
 
-
   Lemma preg_of_not_rsp:
     forall m x,
       preg_of m = x ->
@@ -390,7 +374,7 @@ Definition written_regs i : list preg :=
     unfold preg_of. intros; subst.
     destruct m; congruence.
   Qed.
- 
+
   Lemma ireg_of_not_rsp:
     forall m x,
       Asmgen.ireg_of m = Errors.OK x ->
@@ -413,7 +397,6 @@ Definition written_regs i : list preg :=
   Qed.
 
 
-  
   Ltac solve_rs:=
     match goal with
     | |- not (@eq preg _ (IR RSP)) => solve [ eapply preg_of_not_rsp; eauto
@@ -445,7 +428,6 @@ Definition written_regs i : list preg :=
     simpl in TI;try monadInv TI;try destruct IN;try simpl in H;try congruence;
     subst;simpl;intro EQ;repeat destr_in EQ;try congruence.
 Qed.
-   
 
   Ltac solve_in_regs :=
     repeat match goal with
@@ -774,6 +756,60 @@ Lemma asmgen_no_change_rsp:
     eapply transl_code_no_rsp in EQ0; eauto. simpl. auto.
   Qed.
 
+Lemma asm_external_unchange_rsp_valid (ge: Genv.t Asm.fundef unit) :
+  asm_external_unchange_rsp ge.
+Proof.
+  red. intros.
+  subst.
+  assert (NORSPPAIR: no_rsp_pair (loc_external_result (ef_sig ef))).
+  {
+    red. unfold loc_external_result.
+    remember (Conventions1.loc_result (ef_sig ef)) as Mpair.
+    destruct Mpair; simpl.
+    - destruct r; try (simpl; congruence).
+    - split. destruct rhi; try (simpl; congruence).
+      destruct rlo; try (simpl; congruence).
+  }
+  repeat rewrite Pregmap.gso by (congruence).
+  rewrite set_pair_no_rsp; eauto.
+Qed.
+
+Lemma preg_notin_rsp: forall l,
+    preg_notin RSP l.
+Proof.
+  induction l. constructor.
+  simpl. destruct l.
+  generalize (preg_of_not_rsp a). intro. intro. symmetry in H0. eapply H in H0. congruence.
+  split.  generalize (preg_of_not_rsp a). intro. intro. symmetry in H0. eapply H in H0. congruence.
+  auto.
+Qed.
+
+Lemma asm_builtin_unchange_rsp_valid (ge: Genv.t Asm.fundef unit) :
+  asm_builtin_unchange_rsp ge.
+Proof.
+  red. intros.
+  subst.
+  assert (NORSPPAIR: no_rsp_pair (loc_external_result (ef_sig ef))).
+  {
+    red. unfold loc_external_result.
+    remember (Conventions1.loc_result (ef_sig ef)) as Mpair.
+    destruct Mpair; simpl.
+    - destruct r; try (simpl; congruence).
+    - split. destruct rhi; try (simpl; congruence).
+      destruct rlo; try (simpl; congruence).
+  }
+  repeat rewrite Pregmap.gso by (congruence).
+  rewrite nextinstr_nf_rsp.
+  rewrite set_res_other; eauto.
+  rewrite undef_regs_other_2. auto.
+  apply preg_notin_rsp.
+Qed.
+(*
+Lemma asm_internal_unchange_rsp_valid (ge: Genv.t Asm.fundef unit):
+  asm_internal_unchange_rsp ge.
+Proof.
+  red. intros. apply 
+*)
 (** modify abstract stack *)
 Definition asm_instr_unchange_sup (i : instruction) : Prop :=
   stk_unrelated_instr i = true ->

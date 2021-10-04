@@ -926,7 +926,7 @@ Definition m_state s :=
     Definition asm_prog_no_rsp (ge: Genv.t Asm.fundef unit):=
       forall b f,
         Genv.find_funct_ptr ge b = Some (Internal f) ->
-        asm_code_unchange_rsp (fn_code f).
+        asm_code_no_rsp (fn_code f).
 
     Definition wf_asm_prog (ge: Genv.t Asm.fundef unit):=
       forall b f,

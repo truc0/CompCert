@@ -442,8 +442,77 @@ Inductive callstack_function_defined : list stackframe -> Prop :=
     forall fb sp' ra c' cs' trf
       (FINDF: Genv.find_funct_ptr ge fb = Some (Internal trf))
       (CFD: callstack_function_defined cs')
+      (RAU: return_address_offset trf c' ra)
       (TAIL: exists l sg ros, fn_code trf = l ++ (Mcall sg ros :: c')),
       callstack_function_defined (Stackframe fb sp' (Vptr fb ra) c' :: cs').
+
+Inductive has_code: state -> Prop :=
+| has_code_intro fb f cs sp c rs m
+                 (FIND: Genv.find_funct_ptr ge fb = Some (Internal f))
+                 (CODE: exists l, fn_code f = l ++ c)
+                 (CFD: callstack_function_defined cs):
+    has_code (State cs fb sp c rs m)
+| has_code_call:
+    forall cs fb rs m id
+      (CFD: callstack_function_defined cs),
+      has_code (Callstate cs fb rs m id)
+| has_code_ret:
+    forall cs rs m
+      (CFD: callstack_function_defined cs),
+      has_code (Returnstate cs rs m).
+
+Lemma find_label_ex:
+  forall lbl c c', find_label lbl c = Some c' -> exists l, c = l ++ c'.
+Proof.
+  induction c; simpl; intros. discriminate.
+  destruct (is_label lbl a). inv H.
+  exists (a::nil); simpl. auto.
+  apply IHc in H. destruct H as (l & CODE); rewrite CODE.
+  exists (a::l); simpl. reflexivity.
+Qed.
+
+Lemma has_code_step:
+  forall s1 t s2,
+    step s1 t s2 ->
+    has_code s1 ->
+    has_code s2.
+Proof.
+  destruct 1; simpl;
+  intros HC; inv HC; try now (econstructor; eauto).
+  - destruct CODE as (l & CODE); econstructor; eauto; rewrite CODE;
+    eexists (l ++ _ :: nil); simpl; rewrite app_ass; reflexivity.
+  - destruct CODE as (l & CODE); econstructor; eauto; rewrite CODE;
+      eexists (l ++ _ :: nil); simpl; rewrite app_ass; reflexivity.
+  - destruct CODE as (l & CODE); econstructor; eauto; rewrite CODE;
+      eexists (l ++ _ :: nil); simpl; rewrite app_ass; reflexivity.
+  - destruct CODE as (l & CODE); econstructor; eauto; rewrite CODE;
+      eexists (l ++ _ :: nil); simpl; rewrite app_ass; reflexivity.
+  - destruct CODE as (l & CODE); econstructor; eauto; rewrite CODE;
+      eexists (l ++ _ :: nil); simpl; rewrite app_ass; reflexivity.
+  - destruct CODE as (l & CODE); econstructor; eauto; rewrite CODE;
+      eexists (l ++ _ :: nil); simpl; rewrite app_ass; reflexivity.
+  - destruct CODE as (l & CODE); econstructor; eauto; rewrite CODE;
+      eexists (l ++ _ :: nil); simpl; rewrite app_ass; reflexivity.
+  - destruct CODE as (l & CODE).
+    repeat econstructor; eauto. congruence.
+  - destruct CODE as (l & CODE); econstructor; eauto; rewrite CODE;
+      eexists (l ++ _ :: nil); simpl; rewrite app_ass; reflexivity.
+  - destruct CODE as (l & CODE).
+    rewrite H in FIND; inv FIND.
+    econstructor; eauto. eapply find_label_ex. eauto.
+  - destruct CODE as (l & CODE).
+    rewrite H0 in FIND; inv FIND.
+    econstructor; eauto. eapply find_label_ex. eauto.
+  - destruct CODE as (l & CODE); econstructor; eauto; rewrite CODE;
+      eexists (l ++ _ :: nil); simpl; rewrite app_ass; reflexivity.
+  - destruct CODE as (l & CODE).
+    rewrite H1 in FIND; inv FIND.
+    econstructor; eauto. eapply find_label_ex. eauto.
+  - econstructor; eauto. exists nil; simpl; auto.
+  - inv CFD. econstructor; eauto.
+    destruct TAIL as (l & sg & ros & EQ); rewrite EQ.
+    eexists (l ++ _ :: nil); simpl; rewrite app_ass; reflexivity.
+Qed.
 
 End RELSEM.
 
