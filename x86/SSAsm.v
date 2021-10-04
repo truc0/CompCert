@@ -25,7 +25,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
   | Pfreeframe sz ofs_ra ofs_link =>
     let aligned_sz := align sz 8 in
     let sp := Val.offset_ptr rs#RSP (Ptrofs.repr aligned_sz) in
-    match Mem.loadv Mptr m (Val.offset_ptr rs#RSP ofs_ra) with
+    match loadvv Mptr m (Val.offset_ptr rs#RSP ofs_ra) with
     | None => Stuck
     | Some ra => Next (nextinstr (rs#RSP <- sp #RA <- ra)) m
     end

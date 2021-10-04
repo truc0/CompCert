@@ -692,7 +692,7 @@ Section WITHGE.
                 #RSP <- sp) m1
       end
     | Pret =>
-      match Mem.loadv Mptr m rs#RSP with
+      match loadvv Mptr m rs#RSP with
       | None => Stuck
       | Some ra =>
         let sp := Val.offset_ptr (rs RSP) (Ptrofs.repr (size_chunk Mptr)) in

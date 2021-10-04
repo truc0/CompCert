@@ -247,8 +247,6 @@ Definition extcall_arguments
 
 (** Mach execution states. *)
 
-(** Mach execution states. *)
-
 Inductive stackframe: Type :=
   | Stackframe:
       forall (f: block)       (**r pointer to calling function *)

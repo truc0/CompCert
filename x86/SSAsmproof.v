@@ -1827,10 +1827,13 @@ Proof.
       rename e0 into RSPTOP.
       inv MS.
       clear NOTSTKINSTR.
-      rename v into val_ra.
-      exploit Mem.loadv_inject. apply MINJ. apply LOADRA.
+      rename v into val_ra. unfold loadvv in LOADRA. destr_in LOADRA.
+      exploit Mem.loadv_inject. apply MINJ. apply Heqo.
       apply Val.offset_ptr_inject. rewrite <- RSRSP. auto.
-      intros (val_ra' & LOADRA' & INJRA). rewrite LOADRA'.
+      intros (val_ra' & LOADRA' & INJRA).
+      assert (v = val_ra). destr_in LOADRA. subst.
+      assert (RA':val_ra' <> Vundef). destruct val_ra; inv INJRA; try congruence.
+      erewrite loadv_loadvv; eauto.
       exploit Mem.loadv_inject. apply MINJ. apply LOADLINK.
       apply Val.offset_ptr_inject. rewrite <- RSRSP. auto.
       intros (val_link' & LOADLINK' & INJLINK).

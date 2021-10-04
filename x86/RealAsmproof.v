@@ -42,8 +42,12 @@ Require Import Linking.
 
   Inductive seq: state -> state -> Prop :=
   | seq_intro rs1 rs2 m (REQ: forall r, r <> RA -> rs1 r = rs2 r): seq (State rs1 m) (State rs2 m).
-
-
+(*
+  Definition loadv_ptr chunk m v : option val :=
+    match Mem.loadv chunk m v with
+      |Some (Vptr b ofs ) => Some (Vptr b ofs)
+      |_ => None
+    end. *)
   Inductive match_states: state -> state -> Prop :=
   | match_states_call_alloc
       (rs1 rs2: regset) m1 m2
@@ -66,7 +70,7 @@ Require Import Linking.
       (rs1 rs2: regset) m
       (REQ: forall r : preg, r <> RSP -> r <> RA -> rs1 r = rs2 r)
       (RRSP: rs1 RSP = Val.offset_ptr (rs2 RSP) ((Ptrofs.repr (size_chunk Mptr))))
-      (LOADRA: Mem.loadv Mptr m (rs2 RSP) = Some (rs1 RA))
+      (LOADRA: loadvv Mptr m (rs2 RSP) = Some (rs1 RA))
       f
       (PC1: pc_at (State rs1 m) = Some (inl (f,Pret))):
       match_states (State rs1 m) (State rs2 m)
@@ -74,7 +78,7 @@ Require Import Linking.
       (rs1 rs2: regset) m
       (REQ: forall r: preg, r <> RSP -> r <> RA -> rs1 r = rs2 r)
       (RRSP: rs1 RSP = Val.offset_ptr (rs2 RSP) ((Ptrofs.repr (size_chunk Mptr))))
-      (MEQ: Mem.loadv Mptr m (rs2 RSP) = Some (rs1 RA))
+      (MEQ: loadvv Mptr m (rs2 RSP) = Some (rs1 RA))
       (RANU: rs1 RA <> Vundef)
       f ijmp
       (PC1: pc_at (State rs1 m) = Some (inl (f,ijmp)))
@@ -497,7 +501,9 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
     - exploit step_internal. apply STEP. eauto. intro IB; inv IB. intros (EI & T0).
       simpl in EI. repeat destr_in EI.
       simpl in *.
-      repeat destr_in PC1. unfold Mem.loadv in LOADRA. destr_in LOADRA.
+      repeat destr_in PC1. unfold loadvv in LOADRA.
+      unfold Mem.loadv in LOADRA. destr_in LOADRA. destr_in Heqo1.
+      assert (v = rs1 RA). destr_in LOADRA. subst.
 (*    unfold Mem.loadbytesv in LOADRA. repeat destr_in LOADRA.
       exploit Mem.loadbytes_load. apply Heqo1. *)
       inv SPAL. red in RSPPTR. simpl in RSPPTR. rewrite Heqv0 in RSPPTR.
@@ -506,7 +512,8 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
       right; do 2 eexists.
       eapply exec_step_internal.
       rewrite <- REQ by congruence. eauto. eauto. eauto.
-      simpl. rewrite Heqv0. simpl; rewrite LOADRA. eauto.
+      simpl. rewrite Heqv0. unfold loadvv.
+      simpl. rewrite Heqo1. rewrite LOADRA. eauto.
     - exploit step_internal. apply STEP. eauto. intro IB; inv IB; inv JMP. intros (EI & T0).
       simpl in *.
       repeat destr_in PC1.
@@ -1057,7 +1064,8 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
       simpl in H6. destr_in H6. inv H6.
       assert (RAV: rs1 RA = v).
       {
-        unfold Mem.loadv in LOADRA. repeat destr_in LOADRA. auto.
+        unfold loadvv in Heqo1. destr_in Heqo1.
+
 (*        simpl in Heqo1.
         edestruct Mem.load_loadbytes as (bytes & LB & DEC); eauto. rewrite Heqo2 in LB.  inv LB.
         revert H0.
@@ -1287,8 +1295,7 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
             rewrite <- REQ by congruence; auto.
             eapply wf_asm_free_spec in H1; eauto. f_equal. destruct H1 as (SZ & ORA); subst. auto.
             simpl_regs.
-            admit. (*loadbytesv, maybe a hack?*)
-(*            unfold Mem.loadv(*, Mem.encoded_ra, Mem.is_ptr *)in Heqo. repeat destr_in Heqo. inversion 1. *)
+            unfold loadvv in Heqo. destr_in Heqo. destr_in Heqo.
             simpl. simpl_regs. rewrite REQ, H by congruence. simpl. rewrite H0. rewrite FI. subst; eauto.
             auto.
         }

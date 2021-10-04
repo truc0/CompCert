@@ -925,6 +925,22 @@ Proof.
   right; intros (B & A); specialize (A _ _ eq_refl _ FFP). congruence.
 Defined.
 
+(*ra from mem shound not be Vundef*)
+Definition loadvv chunk m v : option val:=
+  match Mem.loadv chunk m v with
+  | None | Some Vundef => None
+  | Some v => Some v
+  end.
+
+Lemma loadv_loadvv :
+  forall chunk m vp v,
+    Mem.loadv chunk m vp = Some v -> v <> Vundef ->
+    loadvv chunk m vp = Some v.
+Proof.
+  intros.
+  unfold loadvv. rewrite H. destruct v; eauto. congruence.
+Qed.
+
 Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : outcome :=
   match i with
   (** Moves *)
@@ -1267,14 +1283,6 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
     end
   | Pret =>
     if check_ra_after_call ge (rs#RA) then Next (rs#PC <- (rs#RA) #RA <- Vundef) m else Stuck
-(*
-  | Pcall_s id sg =>
-      Next (rs#RA <- (Val.offset_ptr rs#PC Ptrofs.one) #PC <- (Genv.symbol_address ge id Ptrofs.zero)) m
-  | Pcall_r r sg =>
-      Next (rs#RA <- (Val.offset_ptr rs#PC Ptrofs.one) #PC <- (rs r)) m
-  | Pret =>
-      Next (rs#PC <- (rs#RA)) m
-*)
   (** Saving and restoring registers *)
   | Pmov_rm_a rd a =>
       exec_load (if Archi.ptr64 then Many64 else Many32) m a rs rd
@@ -1311,7 +1319,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
     end else Stuck
   | Pfreeframe sz ofs_ra ofs_link =>
     if zle 0 sz then
-      match Mem.loadv Mptr m (Val.offset_ptr rs#RSP ofs_ra) with
+      match loadvv Mptr m (Val.offset_ptr rs#RSP ofs_ra) with
       | None => Stuck
       | Some ra =>
           match Mem.loadv Mptr m (Val.offset_ptr rs#RSP ofs_link) with
