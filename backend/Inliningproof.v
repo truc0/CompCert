@@ -1090,36 +1090,7 @@ Proof.
   intros. inv H. simpl in *. repeat destr_in H3.
   econstructor; simpl; eauto.
 Qed.
-(*
-  Fixpoint maxl (l: list nat) : option nat :=
-    match l with
-    | nil => None
-    | a::r => match maxl r with
-               Some b => Some (Nat.max a b)
-             | None => Some a
-             end
-    end.
-  Lemma max_exists:
-    forall l i, In i l -> exists mi, maxl l = Some mi.
-  Proof.
-    destruct l; simpl. easy. intros. destr; eauto.
-  Qed.
-  Lemma max_in:
-    forall l m,
-      maxl l = Some m ->
-      In m l /\ forall x, In x l -> (x <= m)%nat.
-  Proof.
-    induction l; simpl; intros; eauto. easy.
-    repeat destr_in H.
-    - specialize (IHl _ eq_refl). destruct IHl as (IN & MAX).
-      split. destruct (le_dec n a). rewrite Nat.max_l; auto.
-      rewrite Nat.max_r by omega. auto.
-      intros. destruct H. subst. apply Nat.le_max_l.
-      apply Nat.max_le_iff. apply MAX in H. auto.
-    - destruct l. simpl. split; auto. intros x [|[]]; subst; omega.
-      simpl in Heqo. destr_in Heqo.
-  Qed.
-*)
+
 Lemma nth_error_take:
   forall {A} n n' (s s': list A) t,
     lt n n' ->

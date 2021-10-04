@@ -2205,7 +2205,7 @@ Proof.
     + remember (nextinstr_nf (set_res res vres (undef_regs (map preg_of (Machregs.destroyed_by_builtin ef)) rs))) as rs'.
       destruct prog_unchange_rsp as (INT & BUILTIN & EXTCALL).
       red in BUILTIN.
-      destruct (BUILTIN b2 ofs f ef args res rs m vargs t vres rs' m'); eauto.
+      destruct (BUILTIN b2 (Ptrofs.unsigned ofs) f ef args res rs m vargs t vres rs' m'); eauto.
     (* Regset Injection *)
     + intros. apply val_inject_nextinstr_nf.
       apply val_inject_set_res; auto.
@@ -2235,7 +2235,7 @@ Proof.
     + remember (nextinstr_nf (set_res res vres' (undef_regs (map preg_of (Machregs.destroyed_by_builtin ef)) rs'0))) as rs'.
       destruct prog_unchange_rsp as (INT & BUILTIN & EXTCALL).
       red in BUILTIN.
-      destruct (BUILTIN b2 ofs f ef args res rs'0 m'0 vargs' t vres' rs' m2'); eauto.
+      destruct (BUILTIN b2 (Ptrofs.unsigned ofs) f ef args res rs'0 m'0 vargs' t vres' rs' m2'); eauto.
       rewrite <- STKEQ. auto.
     + red. intros b delta o k p JB1' PERM.
       assert (JB1: j b = Some (stkblock, delta)).

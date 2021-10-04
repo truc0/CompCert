@@ -424,8 +424,8 @@ Proof.
   intro CT; revert sz l b CT a Heql.
   induction 1; simpl; intros; eauto.
   apply (f_equal (@length _)) in Heql. rewrite app_length in Heql.
-  destruct a; simpl in *; try omega.
-  destruct a. simpl in *. subst. apply code_tail_no_bigger in CT. simpl in CT. omega. simpl in Heql.
+  destruct a; simpl in *; try lia.
+  destruct a. simpl in *. subst. apply code_tail_no_bigger in CT. simpl in CT. lia. simpl in Heql.
   inv Heql.
   specialize (IHCT _ eq_refl). subst. simpl. unfold instr_size. lia.
 Qed.
@@ -444,7 +444,7 @@ Lemma code_size_app:
   forall c1 c2,
     code_size (c1 ++ c2) = code_size c1 + code_size c2.
 Proof.
-  induction c1; simpl; intros; rewrite ? IHc1; omega.
+  induction c1; simpl; intros; rewrite ? IHc1; lia.
 Qed.
 
 Lemma has_code_parent_ra_after_call:

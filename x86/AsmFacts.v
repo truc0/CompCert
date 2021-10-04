@@ -51,17 +51,30 @@ Definition asm_instr_unchange_rsp (i : instruction) : Prop :=
        simpl. right. auto.
  Qed.
 
+ Lemma in_find_instr:
+   forall code i,
+     In i code -> exists ofs, find_instr ofs code = Some i.
+  Proof.
+    induction code; intros.
+    - inv H.
+    - destruct H. exists 0. simpl. congruence.
+      apply IHcode in H. destruct H. exists (x+1).
+      simpl. destr.
+      apply find_instr_ofs_pos in H. extlia.
+      replace (x+1-1) with x by lia. auto.
+Qed.
+
 Definition asm_internal_unchange_rsp (ge: Genv.t Asm.fundef unit) : Prop :=
   forall b ofs f i,
     Genv.find_funct_ptr ge b = Some (Internal f) ->
-    find_instr (Ptrofs.unsigned ofs) (fn_code f) = Some i ->
+    find_instr ofs (fn_code f) = Some i ->
     asm_instr_unchange_rsp i.
 
 (* Builtin Step *)
 Definition asm_builtin_unchange_rsp (ge: Genv.t Asm.fundef unit) : Prop :=
   forall b ofs f ef args res (rs: regset) m vargs t vres rs' m',
     Genv.find_funct_ptr ge b = Some (Internal f) ->
-    find_instr (Ptrofs.unsigned ofs) f.(fn_code) = Some (Pbuiltin ef args res) ->
+    find_instr ofs f.(fn_code) = Some (Pbuiltin ef args res) ->
     eval_builtin_args ge rs (rs RSP) m args vargs ->
     external_call ef ge vargs m t vres m' ->
     ~ in_builtin_res res RSP ->
@@ -693,7 +706,7 @@ End AsmgenFacts.
     destruct IN as [IN|IN]; eauto.
     clear EQ EQ0.
     destruct a; simpl in TI; repeat destr_in TI; eauto using loadind_no_rsp, storeind_no_rsp.
-    - monadInv H0. unfold loadind in EQ0. destruct Tptr;simpl in EQ0;try monadInv EQ0.                                                                    
+    - monadInv H0. unfold loadind in EQ0. destruct Tptr;simpl in EQ0;try monadInv EQ0.
       simpl in IN. destruct IN as [IN|IN]. inv IN. simpl. intuition congruence. eapply loadind_no_rsp; eauto.
       destruct IN as [IN|IN]. inv IN. simpl. intuition congruence. eapply loadind_no_rsp; eauto.
       destruct Archi.ptr64;monadInv EQ0.

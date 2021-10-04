@@ -29,6 +29,7 @@ Require Linear.
 Require Mach.
 Require Asm.
 Require SSAsm.
+Require RealAsm.
 (** Translation passes. *)
 Require Initializers.
 Require SimplExpr.
@@ -75,6 +76,7 @@ Require Debugvarproof.
 Require Stackingproof.
 Require Asmgenproof.
 Require SSAsmproof.
+Require RealAsmproof.
 (** Command-line flags. *)
 Require Import Compopts.
 
@@ -488,7 +490,7 @@ Ltac DestructM :=
   apply SSAsm.semantics_determinate.
 Qed.
 
-Theorem c_semantic_preservation:
+Theorem c_semantic_preservation_SS:
   forall p tp,
   match_prog p tp ->
   backward_simulation (Csem.semantics (fn_stack_requirements tp) p) (SSAsm.semantics tp).
@@ -503,6 +505,34 @@ Proof.
   exact (proj2 (cstrategy_semantic_preservation _ _ H)).
 Qed.
 
+Lemma match_prog_wf:
+  forall p tp,
+    match_prog p tp ->
+    AsmFacts.asm_prog_unchange_rsp (Globalenvs.Genv.globalenv tp).
+Proof.
+  intros p tp M. unfold match_prog, pass_match in M; simpl in M.
+  repeat DestructM. subst tp.
+  inv M21.
+  eapply Asmgenproof.transf_program_unchange_rsp; eauto.
+  eapply match_program_no_more_functions; eauto.
+Qed.
+
+Theorem c_semantic_preservation_real:
+  forall p tp,
+  match_prog p tp ->
+  backward_simulation (Csem.semantics (fn_stack_requirements tp) p) (RealAsm.semantics tp).
+Proof.
+  intros.
+  apply compose_backward_simulation with (SSAsm.semantics tp).
+  apply RealAsm.real_asm_single_events.
+  eapply c_semantic_preservation_SS; eauto.
+  apply RealAsmproof.real_asm_correct'; eauto.
+  unfold RealAsmproof.match_prog. auto.
+  admit. exploit match_prog_wf; eauto.
+  intros (A&B&C). red in A. red. intros.
+  red. intros. exploit AsmFacts.in_find_instr; eauto.
+  intros [ofs H2]. eapply A; eauto.
+Admitted.
 (** * Correctness of the CompCert compiler *)
 
 (** Combining the results above, we obtain semantic preservation for two
@@ -518,9 +548,9 @@ Qed.
 Theorem transf_c_program_correct:
   forall p tp,
   transf_c_program p = OK tp ->
-  backward_simulation (Csem.semantics (fn_stack_requirements tp) p) (SSAsm.semantics tp).
+  backward_simulation (Csem.semantics (fn_stack_requirements tp) p) (RealAsm.semantics tp).
 Proof.
-  intros. apply c_semantic_preservation. apply transf_c_program_match; auto.
+  intros. apply c_semantic_preservation_real. apply transf_c_program_match; auto.
 Qed.
 
 (** Here is the separate compilation case.  Consider a nonempty list [c_units]
@@ -541,7 +571,7 @@ Theorem separate_transf_c_program_correct:
   link_list c_units = Some c_program ->
   exists asm_program,
       link_list asm_units = Some asm_program
-   /\ backward_simulation (Csem.semantics (fn_stack_requirements asm_program) c_program) (SSAsm.semantics asm_program).
+   /\ backward_simulation (Csem.semantics (fn_stack_requirements asm_program) c_program) (RealAsm.semantics asm_program).
 Proof.
   intros.
   assert (nlist_forall2 match_prog c_units asm_units).
@@ -549,5 +579,5 @@ Proof.
   assert (exists asm_program, link_list asm_units = Some asm_program /\ match_prog c_program asm_program).
   { eapply link_list_compose_passes; eauto. }
   destruct H2 as (asm_program & P & Q).
-  exists asm_program; split; auto. apply c_semantic_preservation; auto.
+  exists asm_program; split; auto. apply c_semantic_preservation_real; auto.
 Qed.
