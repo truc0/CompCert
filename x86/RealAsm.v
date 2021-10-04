@@ -796,7 +796,11 @@ Definition m_state s :=
     Lemma storev_perm :
       forall m chunk addr v m', Mem.storev chunk m addr v = Some m' ->
                            (forall b o k p, Mem.perm m' b o k p <-> Mem.perm m b o k p).
-      Admitted.
+      Proof.
+        intros. unfold Mem.storev in H. destr_in H. split.
+        eapply Mem.perm_store_2; eauto. eapply Mem.perm_store_1; eauto.
+      Qed.
+
     Lemma real_initial_inv:
       forall is,
         initial_state prog is -> real_asm_inv is.

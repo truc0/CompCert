@@ -1293,7 +1293,7 @@ Require Import Linking.
 Qed.
 
   End PRESERVATION.
-
+(*
 Definition transf_program (p: Asm.program) : Asm.program := p.
 
 Definition match_prog (p :Asm.program) (tp:Asm.program):=
@@ -1311,6 +1311,41 @@ Qed.
     intros t tp MT. red in MT. auto.
   Qed.
 
+  Definition match_prog (p: Asm.program) (tp: Asm.program) :=
+    match_program (fun _ f tf => transf_fundef f = OK tf) eq p tp.
+*)
+  Definition match_prog (p: Asm.program) (tp: Asm.program) :=
+    match_program (fun _ f tf => transf_fundef f = OK tf) eq p tp.
+
+  Lemma transf_program_match:
+    forall p tp, transf_program p = OK tp -> match_prog p tp.
+  Proof.
+    intros. eapply match_transform_partial_program; eauto.
+  Qed.
+
+  Lemma match_prog_inv: forall t tp,
+    match_prog t tp -> t = tp.
+  Proof.
+    intros t tp MT. red in MT. red in MT. red in MT.
+    destruct MT as (MT & EQ1 & EQ2).
+    set (P :=
+           (match_ident_globdef (fun (_ : program Asm.fundef unit) (f tf : Asm.fundef) => transf_fundef f = OK tf)
+                                       (@eq unit) t)) in *.
+    destruct t, tp. simpl in *. subst.
+    apply list_forall2_ind with (P:=P) (l:= prog_defs) (l0:= prog_defs0).
+    - auto.
+    - intros a1 al b1 bl Pab LP EQ1. inv EQ1.
+      f_equal.
+      f_equal. red in Pab. red in Pab. destruct Pab as [Pab1 Pab2].
+      destruct a1, b1. simpl in *. subst. f_equal.
+      destruct g. inv Pab2.
+      destruct f. inv H0.
+      monadInv H1. unfold transf_function in EQ.
+      destr_in EQ; inv EQ.
+      simpl in *. inv H1. auto. inv Pab2. inv H0. auto.
+    - auto.
+Qed.
+
   Section PRESERVATION2.
 
   Variable prog: Asm.program.
@@ -1318,7 +1353,7 @@ Qed.
   Hypothesis TRANSF: match_prog prog tprog.
   Let ge := Genv.globalenv prog.
 
-  Hypothesis WF: wf_asm_prog ge.
+(*  Hypothesis WF: wf_asm_prog ge. *)
   Hypothesis prog_no_rsp: asm_prog_no_rsp ge.
 
   Theorem real_asm_correct':
@@ -1326,28 +1361,14 @@ Qed.
   Proof.
     red in TRANSF.
     unfold transf_program in TRANSF.
-    exploit match_prog_inv; eauto. intros EQ. subst.
+    exploit match_prog_inv; eauto. intro EQ. subst tprog.
     apply real_asm_correct; auto.
+    intros. red. intros. exploit (Genv.find_funct_ptr_transf_partial TRANSF); eauto.
+    intros (tf & FFP & TF).
+    simpl in TF; monadInv  TF. unfold transf_function in EQ. destr_in EQ.
+    eapply wf_asm_function_check_correct; eauto.
   Qed.
 
+
   End PRESERVATION2.
-(*
-Theorem transf_program_wellformed:
-  (forall b, Genv.find_funct_ptr ge b = None -> Genv.find_funct_ptr tge b = None) ->
-  wf_asm_prog tge.
-Proof.
-  intros.
-  red. split.
-  red. intros.
-  destruct (Genv.find_funct_ptr ge b ) eqn:?.
-  exploit functions_translated; eauto. intros (tf & FFP & TF).
-  destruct f0; simpl in TF; monadInv  TF; try congruence. rewrite H0 in FFP. inv FFP.
-  assert (asm_code_no_rsp (fn_code x)).
-  apply check_asm_code_no_rsp_correct.
-  eapply asmgen_no_change_rsp; eauto.
-  apply H2. eapply find_instr_eq; eauto.
-  apply H in Heqo. congruence.
-  split. apply asm_builtin_unchange_rsp_valid.
-  apply asm_external_unchange_rsp_valid.
-Qed.
-*)
+

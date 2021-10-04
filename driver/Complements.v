@@ -35,7 +35,7 @@ Theorem transf_c_program_preservation:
   exists beh', program_behaves (Csem.semantics (fn_stack_requirements tp) p) beh' /\ behavior_improves beh' beh.
 Proof.
   intros. eapply backward_simulation_behavior_improves; eauto.
-  apply transf_c_program_correct_SS; auto.
+  apply transf_c_program_correct; auto.
 Qed.
 
 (** As a corollary, if the source C code cannot go wrong, i.e. is free of
@@ -49,7 +49,7 @@ Theorem transf_c_program_is_refinement:
   (forall beh, program_behaves (SSAsm.semantics tp) beh -> program_behaves (Csem.semantics (fn_stack_requirements tp)p) beh).
 Proof.
   intros. eapply backward_simulation_same_safe_behavior; eauto.
-  apply transf_c_program_correct_SS; auto.
+  apply transf_c_program_correct; auto.
 Qed.
 
 (** If we consider the C evaluation strategy implemented by the compiler,
@@ -240,7 +240,7 @@ Let compiled_linking: link_list asm_units = Some asm_program := proj2_sig compil
   [c_program], in the following sense.
   First, every behavior of [asm_program] improves upon one of the possible
   behaviors of [c_program]. *)
-(*
+
 Theorem separate_transf_c_program_preservation:
   forall beh,
   program_behaves (SSAsm.semantics asm_program) beh ->
@@ -300,5 +300,5 @@ Proof.
   subst beh'. destruct beh1'; simpl in A; inv A.
   exists (behavior_app t0 beh1). apply behavior_app_assoc.
 Qed.
-*)
+
 End SEPARATE_COMPILATION.
