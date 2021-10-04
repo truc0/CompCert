@@ -897,6 +897,8 @@ Opaque loadind.
   erewrite <- sp_val by eauto.
   eapply eval_builtin_args_preserved with (ge1 := ge); eauto. exact symbols_preserved.
   eapply external_call_symbols_preserved; eauto. apply senv_preserved.
+  clear. induction res; simpl; intros; eauto. eapply preg_of_not_rsp; eauto.
+  intro. destruct H; congruence.
   eauto.
   econstructor; eauto.
   instantiate (2 := tf); instantiate (1 := x).
@@ -1212,6 +1214,25 @@ Proof.
   eexact transf_initial_states.
   eexact transf_final_states.
   exact step_simulation.
+Qed.
+
+Theorem transf_program_unchange_rsp:
+  (forall b, Genv.find_funct_ptr ge b = None -> Genv.find_funct_ptr tge b = None) ->
+  asm_prog_unchange_rsp tge.
+Proof.
+  intros.
+  red. split.
+  red. intros.
+  destruct (Genv.find_funct_ptr ge b ) eqn:?.
+  exploit functions_translated; eauto. intros (tf & FFP & TF).
+  destruct f0; simpl in TF; monadInv  TF; try congruence. rewrite H0 in FFP. inv FFP.
+  assert (asm_code_no_rsp (fn_code x)).
+  apply check_asm_code_no_rsp_correct.
+  eapply asmgen_no_change_rsp; eauto.
+  apply H2. eapply find_instr_eq; eauto.
+  apply H in Heqo. congruence.
+  split. apply asm_builtin_unchange_rsp_valid.
+  apply asm_external_unchange_rsp_valid.
 Qed.
 
 End PRESERVATION.

@@ -181,7 +181,7 @@ Lemma set_pair_no_rsp:
     no_rsp_pair p ->
     set_pair p res rs RSP = rs RSP.
 Proof.
-  destruct p; simpl; intros; rewrite ! Pregmap.gso; intuition. 
+  destruct p; simpl; intros; rewrite ! Pregmap.gso; intuition.
 Qed.
 *)
 Lemma preg_of_not_rsp:

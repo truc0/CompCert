@@ -22,6 +22,7 @@ Variable prog: Asm.program.
 Let ge := Genv.globalenv prog.
 
 (** this hypothesis can be promised by asmgen *)
+
 Hypothesis prog_unchange_rsp: asm_prog_unchange_rsp ge.
 
 (** Memory Injection Lemmas *)
@@ -2177,7 +2178,7 @@ Proof.
       eapply GLOBFUN_INJ. eauto.
     }
     generalize (RINJ PC); rewrite H. inversion 1; subst.
-    rewrite JB in H8; inv H8.
+    rewrite JB in H9; inv H9.
     do 2 eexists; split.
     eapply exec_step_builtin; eauto.
     rewrite Ptrofs.add_zero; eauto.
@@ -2197,7 +2198,7 @@ Proof.
          unfold Mem.valid_block.
          intros (NV1 & NV2).
          exploit Genv.genv_defs_range. apply FD. intros.
-         apply ENVSUP' in H5. congruence.
+         apply ENVSUP' in H6. congruence.
       ++ intros. exploit symbol_inject; eauto.
     + eapply Mem.sup_include_trans. apply ENVSUP. auto.
     + eapply Mem.sup_include_trans. apply ENVSUP'. auto.
@@ -2217,15 +2218,15 @@ Proof.
       eapply external_call_support ; eauto.
     + unfold Mem.valid_block. apply SUPINCMEM. auto.
     + intros. exploit external_perm_stack. apply H3. instantiate (1:= stkblock).
-      simpl. auto. auto. intro. intro. eapply STKPERMOFS. apply H5,H6.
+      simpl. auto. auto. intro. intro. eapply STKPERMOFS. apply H6,H7.
     + unfold Mem.valid_block. apply SUPINCMEM1. auto.
     + inv STKPERMOFS'. constructor.
       ++ intros ofs0 k p PERM. eapply stack_perm_offset0.
          exploit external_perm_stack. apply EC. instantiate (1:= stkblock). eauto.
-         simpl. auto. auto. intro. eapply H5. eauto.
+         simpl. auto. auto. intro. eapply H6. eauto.
       ++ intros. exploit stack_offset_perm0; eauto.
          intro. exploit external_perm_stack; eauto.
-         simpl. auto. intro. apply H8,H6.
+         simpl. auto. intro. apply H9,H7.
     + eapply inject_stack_incr; eauto.
       erewrite sp_of_stack_external; eauto. erewrite <- external_call_astack; eauto.
       eapply inject_stack_inv; eauto. intros. symmetry.

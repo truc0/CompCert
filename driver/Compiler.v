@@ -477,7 +477,8 @@ Ltac DestructM :=
   eapply compose_forward_simulations.
   eapply Asmgenproof.transf_program_correct; eassumption.
   eapply SSAsmproof.transf_program_correct.
-  eapply AsmFacts.asmgen_prog_unchange_rsp; eauto. }
+  eapply Asmgenproof.transf_program_unchange_rsp; eauto.
+  eapply match_program_no_more_functions; eauto. }
   split. inv M21. auto.
   apply forward_to_backward_simulation.
   inv M21.
