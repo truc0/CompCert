@@ -113,7 +113,7 @@ BACKEND=\
   Bounds.v Stacklayout.v Stacking.v Stackingproof.v \
   Asm.v Asmgen.v Asmgenproof0.v Asmgenproof1.v AsmFacts.v Asmgenproof.v \
   AsmRegs.v SSAsm.v SSAsmproof.v \
-  RealAsm.v RealAsmproof.v
+  RealAsm.v RealAsmgen.v RealAsmproof.v
 
 # C front-end modules (in cfrontend/)
 

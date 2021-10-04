@@ -545,6 +545,14 @@ Admitted.
   exists a backward simulation of the dynamic semantics of [p]
   by the dynamic semantics of [tp]. *)
 
+Theorem transf_c_program_correct_SS:
+  forall p tp,
+  transf_c_program p = OK tp ->
+  backward_simulation (Csem.semantics (fn_stack_requirements tp) p) (SSAsm.semantics tp).
+Proof.
+  intros. apply c_semantic_preservation_SS. apply transf_c_program_match; auto.
+Qed.
+
 Theorem transf_c_program_correct:
   forall p tp,
   transf_c_program p = OK tp ->

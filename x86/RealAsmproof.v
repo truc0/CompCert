@@ -14,7 +14,7 @@ Require Import Events.
 Require Import Values.
 Require Import Conventions1.
 Require Import AsmFacts.
-Require Import SSAsm RealAsm.
+Require Import SSAsm RealAsm RealAsmgen.
 Require Import AsmRegs.
 Require Import Errors.
 Require Import Linking.
@@ -42,12 +42,7 @@ Require Import Linking.
 
   Inductive seq: state -> state -> Prop :=
   | seq_intro rs1 rs2 m (REQ: forall r, r <> RA -> rs1 r = rs2 r): seq (State rs1 m) (State rs2 m).
-(*
-  Definition loadv_ptr chunk m v : option val :=
-    match Mem.loadv chunk m v with
-      |Some (Vptr b ofs ) => Some (Vptr b ofs)
-      |_ => None
-    end. *)
+
   Inductive match_states: state -> state -> Prop :=
   | match_states_call_alloc
       (rs1 rs2: regset) m1 m2
@@ -108,19 +103,15 @@ Require Import Linking.
   Qed.
 
   Hypothesis WF: wf_asm_prog ge.
-  (* Hypothesis main_internal: *)
-  (*   exists bmain fmain, *)
-  (*     Genv.find_symbol ge (prog_main prog) = Some bmain /\ *)
-  (*     Genv.find_funct_ptr ge bmain = Some (Internal fmain). *)
 
-Lemma max_stacksize_aligned : (8 | max_stacksize).
-Proof. unfold max_stacksize. exists 512. lia. Qed.
+  Lemma max_stacksize_aligned : (8 | max_stacksize).
+  Proof. unfold max_stacksize. exists 512. lia. Qed.
 
-Lemma max_stacksize_range : 0 <= max_stacksize <= Ptrofs.max_unsigned.
-Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
+  Lemma max_stacksize_range : 0 <= max_stacksize <= Ptrofs.max_unsigned.
+  Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
 
-Lemma max_stacksize'_range : 0 <= max_stacksize + align (size_chunk Mptr) 8 <= Ptrofs.max_unsigned.
-Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
+  Lemma max_stacksize'_range : 0 <= max_stacksize + align (size_chunk Mptr) 8 <= Ptrofs.max_unsigned.
+  Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
 
 
   Lemma initial_states_match :
@@ -140,7 +131,6 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
       + eapply match_states_call_alloc.
         * intros. simpl_regs. rewrite (Pregmap.gso _ _ H2). rewrite (Pregmap.gso _ _ H3). reflexivity.
         * simpl_regs. Opaque max_stacksize.  simpl. f_equal.
-(*          rewrite Ptrofs.add_assoc. rewrite (Ptrofs.add_commut (Ptrofs.neg _)), Ptrofs.add_neg_zero. rewrite Ptrofs.add_zero. auto. *)
         * simpl_regs.
           simpl. rewrite <- Ptrofs.sub_add_opp.
           unfold Ptrofs.sub.
@@ -155,7 +145,6 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
       + eapply match_states_call_external.
         * intros. simpl_regs. rewrite (Pregmap.gso _ _ H2). rewrite (Pregmap.gso _ _ H3). auto.
         * simpl_regs. simpl. f_equal.
-(*          rewrite Ptrofs.add_assoc. rewrite (Ptrofs.add_commut (Ptrofs.neg _)), Ptrofs.add_neg_zero. rewrite Ptrofs.add_zero. auto. *)
         * simpl_regs.
           simpl. rewrite <- Ptrofs.sub_add_opp.
           unfold Ptrofs.sub.
@@ -328,17 +317,7 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
   Proof.
     unfold goto_label. intros. destr. rewrite <- SEQ. destr. destr. eauto.
   Qed.
-(*
-  Lemma goto_ofs_seq:
-    forall sz ofs rs1 rs2 m rs' m'
-      (GL : goto_ofs ge sz ofs rs1 m = Next rs' m')
-      (SEQ: rs1 PC = rs2 PC),
-    exists (rs2' : regset) (m2' : mem), goto_ofs ge sz ofs rs2 m = Next rs2' m2'.
-  Proof.
-    unfold goto_ofs. intros. destr_in GL. destr_in GL. inv GL. 
-    rewrite <- SEQ, Heqo. eauto.
-  Qed.
-*)
+
   Ltac force_rewrite_match H :=
     match goal with
       H: ?b = _ |- context [ match ?a with _ => _ end ] =>
@@ -504,11 +483,8 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
       repeat destr_in PC1. unfold loadvv in LOADRA.
       unfold Mem.loadv in LOADRA. destr_in LOADRA. destr_in Heqo1.
       assert (v = rs1 RA). destr_in LOADRA. subst.
-(*    unfold Mem.loadbytesv in LOADRA. repeat destr_in LOADRA.
-      exploit Mem.loadbytes_load. apply Heqo1. *)
       inv SPAL. red in RSPPTR. simpl in RSPPTR. rewrite Heqv0 in RSPPTR.
       destruct RSPPTR as (o & EQRSP & AL);inv EQRSP; eauto.
-(*      intro LOAD. *)
       right; do 2 eexists.
       eapply exec_step_internal.
       rewrite <- REQ by congruence. eauto. eauto. eauto.
@@ -518,13 +494,6 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
       simpl in *.
       repeat destr_in PC1.
       inv JMP.
-(*      +
-      right.
-      simpl in EI; simpl; repeat destr_in EI.
-      exploit goto_label_seq. apply H0. rewrite REQ by congruence. reflexivity.
-      intros (A&B&C). do 2 eexists.
-      eapply exec_step_internal.
-      rewrite <- REQ by congruence. eauto. eauto. eauto. eauto. *)
       + (*Pjmp_s*)
       right; do 2 eexists.
       eapply exec_step_internal.
@@ -628,12 +597,6 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
         eapply exec_store_seq; eauto. congruence.
         eapply exec_store_seq; eauto. congruence.
         exfalso; apply PC1. constructor 1. constructor.
-(*
-        eapply goto_ofs_seq; eauto. apply REQ; congruence.
-        erewrite <- eval_testcond_seq by eauto. repeat destr_in H6; eauto. eapply goto_ofs_seq; eauto. apply REQ; congruence.
-        erewrite <- eval_testcond_seq by eauto. destr_in H6.
-        erewrite <- eval_testcond_seq by eauto. repeat destr_in H6; eauto. eapply goto_ofs_seq; eauto. apply REQ; congruence.
-        rewrite <- REQ by congruence. destr. destr. eapply goto_ofs_seq. eauto. simpl_regs. apply REQ; congruence. *)
         eapply eval_builtin_args_eq_rs in H4. rewrite REQ in H4.
         right; do 2 eexists. eapply exec_step_builtin. rewrite <- REQ; eauto. congruence. all: eauto. congruence.
         eapply wf_asm_builtin_not_PC; eauto.
@@ -679,21 +642,6 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
     repeat destr_in GL. inv GL2.
     constructor. intros. regs_eq.
   Qed.
-(*
-  Lemma goto_ofs_match:
-    forall sz ofs rs2 m2 rs2' m2' rs1,
-      (forall r: preg, r<>RA -> rs1 r = rs2 r) ->
-      goto_ofs ge sz ofs rs2 m2 = Next rs2' m2' ->
-      exists rs1' m1', goto_ofs ge sz ofs rs1 m2 = Next rs1' m1' /\ seq (State rs1' m1') (State rs2' m2').
-  Proof.
-    intros sz ofs rs2 m2 rs2' m2' rs1 REQ GL2.
-    edestruct goto_ofs_seq as (rs1' & m1' & GL). eauto. symmetry; apply REQ. congruence. rewrite GL.
-    do 2 eexists; split; eauto.
-    unfold goto_ofs in GL2, GL. rewrite REQ in GL by congruence.
-    repeat destr_in GL. inv GL2.
-    constructor. intros. regs_eq.
-  Qed.
-*)
 
   Lemma find_instr_same : forall c i1 i2 ofs1 ofs2,
       find_instr ofs1 c = i1 ->
@@ -790,10 +738,7 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
         do 2 eexists; split; [eauto|constructor; intros; simpl; regs_eq; repeat destr; simpl; regs_eq].
         eapply goto_label_match; eauto.
         eapply goto_label_match; eauto.
-(*        erewrite eval_ros_eq. 2: now (intros; apply REQ; auto). setoid_rewrite Heqo.
-        do 2 eexists; split; [eauto|constructor; intros; simpl; regs_eq; repeat destr; simpl; regs_eq].
-        intro; subst; eapply wf_asm_jmp_no_rsp; eauto.
-        eapply goto_label_match; eauto. *)
+
         erewrite eval_testcond_seq by eauto. rewrite Heqo0. eapply goto_label_match; eauto.
         erewrite eval_testcond_seq by eauto. rewrite Heqo0.
         do 2 eexists; split; [eauto|constructor; intros; simpl; regs_eq; repeat destr; simpl; regs_eq].
@@ -802,15 +747,6 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
         eapply goto_label_match. 2: eauto. intros; regs_eq.
         contradict NII. constructor 2; auto.
         contradict NII. constructor. constructor.
-(*
-        eapply goto_ofs_match; eauto.
-        eapply goto_ofs_match; eauto.
-        erewrite eval_testcond_seq by eauto. rewrite Heqo0. eapply goto_ofs_match; eauto.
-        erewrite eval_testcond_seq by eauto. rewrite Heqo0.
-        do 2 eexists; split; [eauto|constructor; intros; simpl; regs_eq; repeat destr; simpl; regs_eq].
-        erewrite eval_testcond_seq by eauto. rewrite Heqo0.
-        do 2 eexists; split; [eauto|constructor; intros; simpl; regs_eq; repeat destr; simpl; regs_eq].
-        eapply goto_ofs_match. 2: eauto. intros; regs_eq. *)
     }
     destruct (Val.eq (rs2' PC) (Val.offset_ptr (rs2 PC) (Ptrofs.repr (instr_size i)))).
     {
@@ -847,49 +783,6 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
     contradict NII. constructor 2. auto.
   Qed.
 
-  (*Lemma loadbytesv_storev:
-    forall m' (rs2 rs1 : regset),
-      Mem.loadbytesv Mptr m' (rs2 RSP) = Some (rs1 RA) ->
-      rs1 RA <> Vundef ->
-      bstack_perm prog (State rs2 m') ->
-      stack_top_state prog (State rs2 m') ->
-      rsp_ptr prog (State rs2 m') ->
-      Mem.storev Mptr m' (rs2 RSP) (rs1 RA) = Some m'.
-  Proof.
-    intros m' rs2 rs1 MEQ RANU BSTACK_PERM STOP RSPPTR.
-    unfold Mem.loadbytesv in MEQ; repeat destr_in MEQ. simpl.
-    edestruct (Mem.valid_access_store m' Mptr b (Ptrofs.unsigned i) (rs1 RA)) as (m2 & STORE).
-    {
-      destruct RSPPTR as (o & RSPPTR & SPAL). simpl in RSPPTR. rewrite Heqv in RSPPTR; inv RSPPTR.
-      red; repeat apply conj.
-      - red; intros. eapply BSTACK_PERM. simpl.
-        eapply Mem.loadbytes_range_perm; eauto.
-      - auto.
-      - left. eauto.
-    }
-    assert (Val.has_type (rs1 RA) Tptr).
-    {
-      revert H0; unfold Mem.encoded_ra, Mem.is_ptr; repeat destr; inversion 1.
-      unfold Vptrofs, Tptr. destr; simpl; auto. apply Val.Vptr_has_type.
-    }
-    assert (encode_val Mptr (rs1 RA) = l).
-    {
-      revert H0; unfold Mem.encoded_ra, Mem.is_ptr; repeat destr; inversion 1.
-      unfold Vptrofs, Mptr, Tptr. destr; simpl; auto. apply inj_proj_bytes in Heqo0. subst. f_equal.
-      eapply Mem.encode_decode_long; eauto. eapply Mem.loadbytes_length in Heqo. rewrite length_inj_bytes in Heqo. rewrite Heqo.
-      unfold Mptr; rewrite Heqb0; reflexivity.
-      apply inj_proj_bytes in Heqo0. subst. f_equal.
-      eapply Mem.encode_decode_int; eauto. eapply Mem.loadbytes_length in Heqo. rewrite length_inj_bytes in Heqo. rewrite Heqo.
-      unfold Mptr; rewrite Heqb0; reflexivity.
-      unfold Val.load_result in Heqv0.
-      unfold Mptr in *. unfold encode_val. destruct x86_32.Archi.ptr64 eqn:ARCHI; simpl in Heqv; repeat destr_in Heqv0.
-      eapply Mem.proj_value_inj_value; eauto. congruence.
-      eapply Mem.proj_value_inj_value; eauto. congruence.
-    }
-    subst.          
-    exploit Mem.store_same_ptr; eauto. intro; subst. auto.
-  Qed.
-*)
   Lemma offsets_after_call_correct:
     forall c pos o,
       0 <= pos ->
@@ -918,6 +811,25 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
       replace (oc + 1 - 1) with oc by lia. rewrite INSTR.
       eexists; split; eauto. split; auto. lia.
       generalize (instr_size_positive a) (find_instr_ofs_pos _ _ _ INSTR). lia.
+  Qed.
+
+  Axiom loadv_val_storev:
+    forall m ofs v b,
+      Mem.loadv Mptr m (Vptr b ofs) = Some v ->
+      v <> Vundef -> (align_chunk Mptr | Ptrofs.unsigned ofs) ->
+      (forall o k p, Mem.perm m b o k p -> Mem.perm m b o k Writable) ->
+      Mem.storev Mptr m (Vptr b ofs) v = Some m.
+
+  Lemma loadvv_bastck_storev:
+    forall rs m v ,
+      rsp_ptr (State rs m) -> bstack_perm (State rs m) ->
+      loadvv Mptr m (rs RSP) = Some v ->
+      Mem.storev Mptr m (rs RSP) v = Some m.
+  Proof.
+    intros. destruct H as (ofs & SP & ALIGN).
+    simpl in SP. rewrite SP in *. unfold loadvv in H1. destr_in H1.
+    assert (v0 = v). destr_in H1. subst.
+    eapply loadv_val_storev; eauto. destr_in H1.
   Qed.
 
   Lemma real_asm_step:
@@ -1065,18 +977,6 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
       assert (RAV: rs1 RA = v).
       {
         unfold loadvv in Heqo1. destr_in Heqo1.
-
-(*        simpl in Heqo1.
-        edestruct Mem.load_loadbytes as (bytes & LB & DEC); eauto. rewrite Heqo2 in LB.  inv LB.
-        revert H0.
-        unfold Mem.encoded_ra, decode_val. destr. unfold Mptr, Vptrofs.
-        destruct x86_32.Archi.ptr64 eqn:?; inversion 1.
-        unfold Ptrofs.to_int64. f_equal.
-        apply Int64.eqm_samerepr.  apply Ptrofs.eqm64; auto. apply Ptrofs.eqm_sym, Ptrofs.eqm_unsigned_repr.
-        unfold Ptrofs.to_int. f_equal.
-        apply Int.eqm_samerepr.  apply Ptrofs.eqm32; auto. apply Ptrofs.eqm_sym, Ptrofs.eqm_unsigned_repr.
-        unfold Mptr. destr. simpl. unfold Mem.is_ptr. destr.
-        simpl. unfold Mem.is_ptr. destr. *)
       }
       eexists; split. eapply SSAsm.exec_step_internal. rewrite REQ by congruence; eauto. eauto. eauto.
       simpl. rewrite pred_dec_true. eauto. eauto.
@@ -1118,7 +1018,7 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
         intros. apply set_reg_eq; auto.
         simpl_regs. auto.
         simpl_regs.
-        admit. (*loadv_storev*)
+        eapply loadvv_bastck_storev; eauto.
         simpl. simpl_regs.
         unfold Genv.find_funct in Heqo1. destr.
         unfold Genv.symbol_address in Heqv0. destr_in Heqv0. inv Heqv0.
@@ -1127,8 +1027,7 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
         *(*jmp to an external function*)
         eapply match_states_call_external.
         intros. apply set_reg_eq; auto. simpl_regs. auto.
-        simpl_regs.
-        admit. (*loadv_storev*)
+        simpl_regs.        eapply loadvv_bastck_storev; eauto.
         simpl. simpl_regs. unfold Genv.find_funct in Heqo1. destr.
         unfold Genv.symbol_address in Heqv0. destr_in Heqv0. inv Heqv0.
         rewrite pred_dec_true in Heqo1 by auto. rewrite Heqo1. eauto.
@@ -1146,7 +1045,7 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
         simpl_regs. auto.
         simpl_regs.
         unfold Mem.loadv in MEQ.
-        admit. (*loadv_storev*)
+        eapply loadvv_bastck_storev; eauto.
         simpl. simpl_regs.
         unfold Genv.find_funct in Heqo1. destr.
         unfold Genv.symbol_address in Heqv0. destr_in Heqo1. subst.
@@ -1156,7 +1055,7 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
         eapply match_states_call_external.
         intros. apply set_reg_eq; auto. simpl_regs. auto.
         simpl_regs.
-        admit. (*loadv_storev*)
+        eapply loadvv_bastck_storev; eauto.
         simpl. simpl_regs. unfold Genv.find_funct in Heqo1. destr. destr_in Heqo1.
         subst. rewrite Heqo1. eauto.
     - (*common case*)
@@ -1338,7 +1237,7 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
       + easy.
     - destruct s1. simpl in *. rewrite PCeq in PCnone.
       inv STEP; simpl in *; repeat destr_in PCnone.
-  Admitted.
+  Qed.
 
   Hypothesis prog_no_rsp: asm_prog_no_rsp ge.
 
@@ -1397,7 +1296,8 @@ Qed.
 
 Definition transf_program (p: Asm.program) : Asm.program := p.
 
-Definition match_prog (p :Asm.program) (tp:Asm.program):= p = tp.
+Definition match_prog (p :Asm.program) (tp:Asm.program):=
+  p = tp.
 
 Lemma transf_program_match:
   forall p, match_prog p (transf_program p).
@@ -1431,4 +1331,23 @@ Qed.
   Qed.
 
   End PRESERVATION2.
-
+(*
+Theorem transf_program_wellformed:
+  (forall b, Genv.find_funct_ptr ge b = None -> Genv.find_funct_ptr tge b = None) ->
+  wf_asm_prog tge.
+Proof.
+  intros.
+  red. split.
+  red. intros.
+  destruct (Genv.find_funct_ptr ge b ) eqn:?.
+  exploit functions_translated; eauto. intros (tf & FFP & TF).
+  destruct f0; simpl in TF; monadInv  TF; try congruence. rewrite H0 in FFP. inv FFP.
+  assert (asm_code_no_rsp (fn_code x)).
+  apply check_asm_code_no_rsp_correct.
+  eapply asmgen_no_change_rsp; eauto.
+  apply H2. eapply find_instr_eq; eauto.
+  apply H in Heqo. congruence.
+  split. apply asm_builtin_unchange_rsp_valid.
+  apply asm_external_unchange_rsp_valid.
+Qed.
+*)
