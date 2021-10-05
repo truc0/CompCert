@@ -2819,6 +2819,12 @@ Proof.
   exploit store_valid_access_3. eexact H2. intros [P Q]. exact Q.
 Qed.
 
+Axiom loadv_val_storev:
+  forall m ofs v b,
+    loadv Mptr m (Vptr b ofs) = Some v ->
+    v <> Vundef -> (align_chunk Mptr | Ptrofs.unsigned ofs) ->
+    (forall o k p, perm m b o k p -> perm m b o k Writable) ->
+    storev Mptr m (Vptr b ofs) v = Some m.
 (** ** Properties related to [alloc_frame]. *)
 
 Section ALLOC_FRAME.

@@ -813,13 +813,6 @@ Require Import Linking.
       generalize (instr_size_positive a) (find_instr_ofs_pos _ _ _ INSTR). lia.
   Qed.
 
-  Axiom loadv_val_storev:
-    forall m ofs v b,
-      Mem.loadv Mptr m (Vptr b ofs) = Some v ->
-      v <> Vundef -> (align_chunk Mptr | Ptrofs.unsigned ofs) ->
-      (forall o k p, Mem.perm m b o k p -> Mem.perm m b o k Writable) ->
-      Mem.storev Mptr m (Vptr b ofs) v = Some m.
-
   Lemma loadvv_bastck_storev:
     forall rs m v ,
       rsp_ptr (State rs m) -> bstack_perm (State rs m) ->
@@ -829,7 +822,7 @@ Require Import Linking.
     intros. destruct H as (ofs & SP & ALIGN).
     simpl in SP. rewrite SP in *. unfold loadvv in H1. destr_in H1.
     assert (v0 = v). destr_in H1. subst.
-    eapply loadv_val_storev; eauto. destr_in H1.
+    eapply Mem.loadv_val_storev; eauto. destr_in H1.
   Qed.
 
   Lemma real_asm_step:
