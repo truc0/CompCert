@@ -1106,8 +1106,8 @@ Lemma function_prologue_correct:
      Mem.alloc_frame m0' id = (m1',path)
   /\ Mem.alloc m1' 0 tf.(fn_stacksize) = (m2', sp')
   /\ Mem.record_frame (Mem.push_stage m2') fr = Some m3'
-  /\ store_stack m3' (Vptr sp' Ptrofs.zero) Tptr tf.(fn_link_ofs) parent = Some m4'
-  /\ store_stack m4' (Vptr sp' Ptrofs.zero) Tptr tf.(fn_retaddr_ofs) ra = Some m5'
+  /\ store_stack m3' (Vptr sp' Ptrofs.zero) Tptr tf.(fn_retaddr_ofs) ra = Some m4'
+  /\ store_stack m4' (Vptr sp' Ptrofs.zero) Tptr tf.(fn_link_ofs) parent = Some m5'
   /\ star step tge
          (State cs fb (Vptr sp' Ptrofs.zero) (save_callee_save fe k) rs1 m5')
       E0 (State cs fb (Vptr sp' Ptrofs.zero) k rs' m6')
@@ -1164,20 +1164,20 @@ Local Opaque b fe.
   { apply mconj_intro; rewrite sep_assoc; assumption. }
   (* Dividing up the frame *)
   apply (frame_env_separated b) in SEP. replace (make_env b) with fe in SEP by auto.
-  (* Store of parent *)
-  rewrite sep_swap3 in SEP.
-  apply (range_contains Mptr) in SEP; [|tauto].
-  exploit (contains_set_stack (fun v' => v' = parent) parent (fun _ => True) m3' Tptr).
-  rewrite chunk_of_Tptr; eexact SEP. apply Val.load_result_same; auto.
-  clear SEP; intros (m4' & STORE_PARENT & SEP).
-  rewrite sep_swap3 in SEP.
   (* Store of return address *)
   rewrite sep_swap4 in SEP.
   apply (range_contains Mptr) in SEP; [|tauto].
-  exploit (contains_set_stack (fun v' => v' = ra) ra (fun _ => True) m4' Tptr).
+  exploit (contains_set_stack (fun v' => v' = ra) ra (fun _ => True) m3' Tptr).
   rewrite chunk_of_Tptr; eexact SEP. apply Val.load_result_same; auto.
-  clear SEP; intros (m5' & STORE_RETADDR & SEP).
+  clear SEP; intros (m4' & STORE_RETADDR & SEP).
   rewrite sep_swap4 in SEP.
+  (* Store of parent *)
+  rewrite sep_swap3 in SEP.
+  apply (range_contains Mptr) in SEP; [|tauto].
+  exploit (contains_set_stack (fun v' => v' = parent) parent (fun _ => True) m4' Tptr).
+  rewrite chunk_of_Tptr; eexact SEP. apply Val.load_result_same; auto.
+  clear SEP; intros (m5' & STORE_PARENT & SEP).
+  rewrite sep_swap3 in SEP.
   (* Saving callee-save registers *)
   rewrite sep_swap5 in SEP.
   exploit (save_callee_save_correct j' ls ls0 rs); eauto.
@@ -1269,8 +1269,8 @@ Local Opaque b fe.
   split. auto.
   split. auto.
   split. auto.
-  split. exact STORE_PARENT.
   split. exact STORE_RETADDR.
+  split. exact STORE_PARENT.
   split. eexact SAVE_CS.
   split. exact AGREGS'.
   split. rewrite LS1. apply agree_locs_undef_locs; [|reflexivity].

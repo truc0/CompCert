@@ -293,9 +293,31 @@ Inductive instruction: Type :=
   | Psubq_ri (rd: ireg) (n: int64).
 
 Definition code := list instruction.
-Record function : Type := mkfunction { fn_sig: signature; fn_code: code; fn_stacksize:Z }.
+Record function : Type := mkfunction { fn_sig: signature; fn_code: code; fn_stacksize:Z; fn_ofs_link : ptrofs}.
 Definition fundef := AST.fundef function.
 Definition program := AST.program fundef unit.
+
+Definition instr_size (i:instruction) := 1%Z.
+
+Lemma instr_size_repr : forall i, 0<= instr_size i <= Ptrofs.max_unsigned.
+Proof.
+  intro. unfold instr_size. vm_compute. split; congruence.
+Qed.
+
+Lemma instr_size_positive :forall i, 0 < instr_size i.
+Proof.
+  intro. unfold instr_size. lia.
+Qed.
+Fixpoint code_size (c:code) : Z :=
+  match c with
+  |nil => 0
+  |i::c' => code_size c' + instr_size i
+  end.
+
+Lemma code_size_non_neg: forall c, 0 <= code_size c.
+Proof.
+  intros. induction c; simpl. lia. unfold instr_size. lia.
+Qed.
 
 (** * Operational semantics *)
 
@@ -331,6 +353,12 @@ Definition set_pair (p: rpair preg) (v: val) (rs: regset) : regset :=
   match p with
   | One r => rs#r <- v
   | Twolong rhi rlo => rs#rhi <- (Val.hiword v) #rlo <- (Val.loword v)
+  end.
+
+Fixpoint no_rsp_pair (b: rpair preg) :=
+  match b with
+  | One r => r <> RSP
+  | Twolong hi lo => hi <> RSP /\ lo <> RSP
   end.
 
 (** Assigning the result of a builtin *)
@@ -559,6 +587,57 @@ Fixpoint label_pos (lbl: label) (pos: Z) (c: code) {struct c} : option Z :=
   | instr :: c' =>
       if is_label lbl instr then Some (pos + 1) else label_pos lbl (pos + 1) c'
   end.
+
+Lemma label_pos_rng:
+  forall lbl c pos z,
+    label_pos lbl pos c = Some z ->
+    0 <= pos ->
+    0 <= z - pos <= code_size c.
+Proof.
+  induction c; simpl; intros; eauto. congruence. repeat destr_in H.
+  generalize (code_size_non_neg c) (instr_size_positive a); lia.
+  apply IHc in H2.
+  generalize (instr_size_positive a); lia.
+  generalize (instr_size_positive a); lia.
+Qed.
+
+Lemma label_pos_repr:
+  forall lbl c pos z,
+    code_size c + pos <= Ptrofs.max_unsigned ->
+    0 <= pos ->
+    label_pos lbl pos c = Some z ->
+    Ptrofs.unsigned (Ptrofs.repr (z - pos)) = z - pos.
+Proof.
+  intros.
+  apply Ptrofs.unsigned_repr.
+  generalize (label_pos_rng _ _ _ _ H1 H0). lia.
+Qed.
+
+Lemma find_instr_ofs_pos:
+  forall c o i,
+    find_instr o c = Some i ->
+    0 <= o.
+Proof.
+  induction c; simpl; intros; repeat destr_in H.
+  lia. apply IHc in H1. generalize (instr_size_positive a); lia.
+Qed.
+
+Lemma label_pos_spec:
+  forall lbl c pos z,
+    code_size c + pos <= Ptrofs.max_unsigned ->
+    0 <= pos ->
+    label_pos lbl pos c = Some z ->
+    find_instr ((z - pos) - instr_size (Plabel lbl)) c = Some (Plabel lbl).
+Proof.
+  unfold instr_size.
+  induction c; simpl; intros; repeat destr_in H1.
+  destruct a; simpl in Heqb; try congruence. repeat destr_in Heqb.
+  apply pred_dec_true. unfold instr_size. lia.
+  eapply IHc in H3. 3: lia. 2: generalize (instr_size_positive a); lia.
+  generalize (find_instr_ofs_pos _ _ _ H3). intro.
+  rewrite pred_dec_false. 2: generalize (instr_size_positive a); lia.
+  rewrite <- H3. f_equal. lia.
+Qed.
 
 Variable ge: genv.
 
@@ -794,6 +873,80 @@ Definition exec_store (chunk: memory_chunk) (m: mem)
     the fact that the processor updates some or all of those flags,
     but we do not need to model this precisely.
 *)
+
+Inductive is_call: instruction -> Prop :=
+| is_calls_intro:
+    forall i sg,
+      is_call (Pcall_s i sg)
+| is_callr_intro:
+    forall r sg,
+      is_call (Pcall_r r sg).
+
+Lemma is_call_dec:
+  forall i,
+    {is_call i} + {~ is_call i}.
+Proof.
+  destruct i; try now (right; intro A; inv A).
+  left; econstructor; eauto.
+  left; econstructor; eauto.
+Qed.
+
+Fixpoint offsets_after_call (c: code) (p: Z) : list Z :=
+  match c with
+    nil => nil
+  | i::c => let r := offsets_after_call c (p + instr_size i) in
+           if is_call_dec i then (p+instr_size i)::r
+           else r
+  end.
+
+Definition is_after_call (f: fundef) (o: Z) : Prop :=
+  match f with
+    Internal f => In o (offsets_after_call (fn_code f) 0)
+  | External ef => False
+  end.
+
+Definition check_is_after_call f o : {is_after_call f o} + {~ is_after_call f o}.
+Proof.
+  unfold is_after_call.
+  destruct f; auto.
+  apply In_dec. apply zeq.
+Qed.
+
+Definition ra_after_call (ge: Genv.t fundef unit) v:=
+  v <> Vundef /\ forall b o,
+    v = Vptr b o ->
+    forall f,
+      Genv.find_funct_ptr ge b = Some f ->
+      is_after_call f (Ptrofs.unsigned o).
+
+Definition check_ra_after_call (ge': Genv.t fundef unit) v:
+  {ra_after_call ge' v} + { ~ ra_after_call ge' v}.
+Proof.
+  unfold ra_after_call.
+  destruct v; try now (left; split; intros; congruence).
+  right; intuition congruence.
+  destruct (Genv.find_funct_ptr ge' b) eqn:FFP.
+  2: left; split; [congruence|]; intros b0 o A; inv A; rewrite FFP; congruence.
+  destruct (check_is_after_call f (Ptrofs.unsigned i)).
+  left. split. congruence. intros b0 o A; inv A; rewrite FFP; congruence.
+  right; intros (B & A); specialize (A _ _ eq_refl _ FFP). congruence.
+Defined.
+
+(*ra from mem shound not be Vundef*)
+Definition loadvv chunk m v : option val:=
+  match Mem.loadv chunk m v with
+  | None | Some Vundef => None
+  | Some v => Some v
+  end.
+
+Lemma loadv_loadvv :
+  forall chunk m vp v,
+    Mem.loadv chunk m vp = Some v -> v <> Vundef ->
+    loadvv chunk m vp = Some v.
+Proof.
+  intros.
+  unfold loadvv. rewrite H. destruct v; eauto. congruence.
+Qed.
 
 Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : outcome :=
   match i with
@@ -1087,9 +1240,19 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
   | Pjmp_l lbl =>
       goto_label f lbl rs m
   | Pjmp_s id sg =>
-      Next (rs#PC <- (Genv.symbol_address ge id Ptrofs.zero)) m
+    let addr := Genv.symbol_address ge id Ptrofs.zero in
+    match Genv.find_funct ge addr with
+    | Some _ =>
+      Next (rs#PC <- addr) m
+    | _ => Stuck
+    end
   | Pjmp_r r sg =>
-      Next (rs#PC <- (rs r)) m
+    let addr := (rs r) in
+    match Genv.find_funct ge addr with
+    | Some _ =>
+      Next (rs#PC <- addr) m
+    | _ => Stuck
+    end
   | Pjcc cond lbl =>
       match eval_testcond cond rs with
       | Some true => goto_label f lbl rs m
@@ -1112,11 +1275,21 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
       | _ => Stuck
       end
   | Pcall_s id sg =>
-      Next (rs#RA <- (Val.offset_ptr rs#PC Ptrofs.one) #PC <- (Genv.symbol_address ge id Ptrofs.zero)) m
+    let addr := Genv.symbol_address ge id Ptrofs.zero in
+    match Genv.find_funct ge addr with
+    | Some _ =>
+      Next (rs#RA <- (Val.offset_ptr rs#PC Ptrofs.one) #PC <- addr) m
+    | _ => Stuck
+    end
   | Pcall_r r sg =>
-      Next (rs#RA <- (Val.offset_ptr rs#PC Ptrofs.one) #PC <- (rs r)) m
+    let addr := (rs r) in
+    match Genv.find_funct ge addr with
+    | Some _ =>
+      Next (rs#RA <- (Val.offset_ptr rs#PC Ptrofs.one) #PC <- addr) m
+    | _ => Stuck
+    end
   | Pret =>
-      Next (rs#PC <- (rs#RA)) m
+    if check_ra_after_call ge (rs#RA) then Next (rs#PC <- (rs#RA) #RA <- Vundef) m else Stuck
   (** Saving and restoring registers *)
   | Pmov_rm_a rd a =>
       exec_load (if Archi.ptr64 then Many64 else Many32) m a rs rd
@@ -1140,10 +1313,10 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
      |None => Stuck
      |Some m2 =>
       let sp := Vptr stk Ptrofs.zero in
-      match Mem.storev Mptr m2 (Val.offset_ptr sp ofs_link) rs#RSP with
+      match Mem.storev Mptr m2 (Val.offset_ptr sp ofs_ra) rs#RA with
       | None => Stuck
       | Some m3 =>
-        match Mem.storev Mptr m3 (Val.offset_ptr sp ofs_ra) rs#RA with
+        match Mem.storev Mptr m3 (Val.offset_ptr sp ofs_link) rs#RSP with
         | None => Stuck
         | Some m4 => Next (nextinstr (rs #RAX <- (rs#RSP) #RSP <- sp)) m4
         end
@@ -1153,7 +1326,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
     end else Stuck
   | Pfreeframe sz ofs_ra ofs_link =>
     if zle 0 sz then
-      match Mem.loadv Mptr m (Val.offset_ptr rs#RSP ofs_ra) with
+      match loadvv Mptr m (Val.offset_ptr rs#RSP ofs_ra) with
       | None => Stuck
       | Some ra =>
           match Mem.loadv Mptr m (Val.offset_ptr rs#RSP ofs_link) with
@@ -1308,6 +1481,13 @@ Definition loc_external_result (sg: signature) : rpair preg :=
 Inductive state: Type :=
   | State: regset -> mem -> state.
 
+Fixpoint in_builtin_res (b:builtin_res preg) (r:preg) :=
+  match b with
+    |BR b => b =r
+    |BR_none => False
+    |BR_splitlong hi lo => in_builtin_res hi r \/ in_builtin_res lo r
+  end.
+
 Inductive step: state -> trace -> state -> Prop :=
   | exec_step_internal:
       forall b ofs f i rs m rs' m',
@@ -1323,6 +1503,7 @@ Inductive step: state -> trace -> state -> Prop :=
       find_instr (Ptrofs.unsigned ofs) f.(fn_code) = Some (Pbuiltin ef args res) ->
       eval_builtin_args ge rs (rs RSP) m args vargs ->
       external_call ef ge vargs m t vres m' ->
+      ~ in_builtin_res res RSP ->
       rs' = nextinstr_nf
              (set_res res vres
                (undef_regs (map preg_of (destroyed_by_builtin ef)) rs)) ->
@@ -1332,8 +1513,17 @@ Inductive step: state -> trace -> state -> Prop :=
       rs PC = Vptr b Ptrofs.zero ->
       Genv.find_funct_ptr ge b = Some (External ef) ->
       extcall_arguments rs m (ef_sig ef) args ->
+      forall (SP_TYPE: Val.has_type (rs RSP) Tptr)
+        (RA_TYPE: Val.has_type (rs RA) Tptr)
+        (SP_NOT_VUNDEF: rs RSP <> Vundef)
+        (RA_NOT_VUNDEF: rs RA <> Vundef),
       external_call ef ge args m t res m' ->
-      rs' = (set_pair (loc_external_result (ef_sig ef)) res (undef_caller_save_regs rs)) #PC <- (rs RA) ->
+      no_rsp_pair (loc_external_result (ef_sig ef)) ->
+      ra_after_call ge (rs#RA)->
+      rs' = (set_pair (loc_external_result (ef_sig ef)) res (undef_caller_save_regs rs))
+              #PC <- (rs RA)
+              #RA <- Vundef
+      ->
       step (State rs m) t (State rs' m').
 
 End RELSEM.
@@ -1341,13 +1531,14 @@ End RELSEM.
 (** Execution of whole programs. *)
 
 Inductive initial_state (p: program): state -> Prop :=
-  | initial_state_intro: forall m0 m1 b0,
+  | initial_state_intro: forall m0 m1 b0 bmain,
       Genv.init_mem p = Some m0 ->
       Mem.alloc m0 0 0 = (m1,b0) ->
       let ge := Genv.globalenv p in
+      Genv.find_symbol ge p.(prog_main) = Some bmain ->
       let rs0 :=
         (Pregmap.init Vundef)
-        # PC <- (Genv.symbol_address ge p.(prog_main) Ptrofs.zero)
+        # PC <- (Vptr bmain Ptrofs.zero)
         # RA <- Vnullptr
         # RSP <- (Vptr (Stack 0 None nil 1) Ptrofs.zero) in
       initial_state p (State rs0 m1).
@@ -1400,10 +1591,10 @@ Ltac Equalities :=
 + discriminate.
 + discriminate.
 + assert (vargs0 = vargs) by (eapply eval_builtin_args_determ; eauto). subst vargs0.
-  exploit external_call_determ. eexact H5. eexact H11. intros [A B].
+  exploit external_call_determ. eexact H5. eexact H12. intros [A B].
   split. auto. intros. destruct B; auto. subst. auto.
 + assert (args0 = args) by (eapply extcall_arguments_determ; eauto). subst args0.
-  exploit external_call_determ. eexact H4. eexact H9. intros [A B].
+  exploit external_call_determ. eexact H4. eexact H11. intros [A B].
   split. auto. intros. destruct B; auto. subst. auto.
 - (* trace length *)
   red; intros; inv H; simpl.
@@ -1411,7 +1602,8 @@ Ltac Equalities :=
   eapply external_call_trace_length; eauto.
   eapply external_call_trace_length; eauto.
 - (* initial states *)
-  inv H; inv H0. f_equal. congruence.
+  inv H; inv H0. f_equal. subst ge. subst ge0. rewrite H3 in H5. inv H5. reflexivity.
+  congruence.
 - (* final no step *)
   assert (NOTNULL: forall b ofs, Vnullptr <> Vptr b ofs).
   { intros; unfold Vnullptr; destruct Archi.ptr64; congruence. }
@@ -1432,3 +1624,49 @@ Definition data_preg (r: preg) : bool :=
   | RA => false
   end.
 
+
+Definition instr_invalid (i: instruction) :=
+  match i with
+  | Pjmp_l _
+  | Pjcc _ _
+  | Pjcc2 _ _ _
+  | Pjmptbl _ _
+  | Pallocframe _ _ _
+  | Pfreeframe _ _ _ => True
+  | _ => False
+  end.
+
+Definition instr_valid i := ~instr_invalid i.
+
+Lemma instr_invalid_dec: forall i, {instr_invalid i} + {~instr_invalid i}.
+Proof.
+  destruct i; cbn; auto.
+Qed.
+
+Lemma instr_valid_dec: forall i, {instr_valid i} + {~instr_valid i}.
+Proof.
+  unfold instr_valid.
+  destruct i; cbn; auto.
+Qed.
+
+Definition def_instrs_valid (def: option (globdef fundef unit)) :=
+  match def with
+  | None => True
+  | Some (Gvar v) => True
+  | Some (Gfun f) =>
+    match f with
+    | External _ => True
+    | Internal f =>  Forall instr_valid (fn_code f)
+    end
+  end.
+
+Lemma def_instrs_valid_dec:
+  forall def, {def_instrs_valid def} + {~def_instrs_valid def}.
+Proof.
+  destruct def. destruct g.
+  - destruct f.
+    + simpl. apply Forall_dec. apply instr_valid_dec.
+    + simpl. auto.
+  - simpl. auto.
+  - simpl. auto.
+Qed.

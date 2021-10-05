@@ -12,20 +12,20 @@ Variable ge: genv.
 Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : outcome :=
   match i with
   | Pallocframe sz ofs_ra ofs_link =>
-    let aligned_sz := align (Z.max 0 sz) 8 in
+    let aligned_sz := align sz 8 in
     let sp := Val.offset_ptr (rs#RSP) (Ptrofs.neg (Ptrofs.repr aligned_sz)) in
-    match Mem.storev Mptr m (Val.offset_ptr sp ofs_link) (rs#RSP) with
+    match Mem.storev Mptr m (Val.offset_ptr sp ofs_ra) (rs#RA) with
     | None => Stuck
     | Some m1 =>
-      match Mem.storev Mptr m1 (Val.offset_ptr sp ofs_ra) rs#RA with
+      match Mem.storev Mptr m1 (Val.offset_ptr sp ofs_link) rs#RSP with
       | None => Stuck
       | Some m2 => Next (nextinstr (rs #RAX <- (rs#RSP) #RSP <- sp)) m2
       end
     end
   | Pfreeframe sz ofs_ra ofs_link =>
-    let aligned_sz := align (Z.max 0 sz) 8 in
+    let aligned_sz := align sz 8 in
     let sp := Val.offset_ptr rs#RSP (Ptrofs.repr aligned_sz) in
-    match Mem.loadv Mptr m (Val.offset_ptr rs#RSP ofs_ra) with
+    match loadvv Mptr m (Val.offset_ptr rs#RSP ofs_ra) with
     | None => Stuck
     | Some ra => Next (nextinstr (rs#RSP <- sp #RA <- ra)) m
     end
@@ -52,12 +52,22 @@ Inductive step  : state -> trace -> state -> Prop :=
                        (undef_regs (map preg_of (destroyed_by_builtin ef)) rs)) ->
       step (State rs m) t (State rs' m')
 | exec_step_external:
-    forall b ef args res rs m t rs' m',
+    forall b ef args res rs m t rs' m' m1,
       rs PC = Vptr b Ptrofs.zero ->
       Genv.find_funct_ptr ge b = Some (External ef) ->
-      extcall_arguments rs m (ef_sig ef) args ->
-      external_call ef ge args m t res m' ->
-      rs' = (set_pair (loc_external_result (ef_sig ef)) res (undef_caller_save_regs rs)) #PC <- (rs RA) ->
+      Mem.storev Mptr m (Val.offset_ptr (rs RSP) (Ptrofs.neg (Ptrofs.repr (size_chunk Mptr))))
+                 (rs RA) = Some m1 -> (* Act as a x86 function, push RA for the callee function *)
+      extcall_arguments rs m1 (ef_sig ef) args ->
+      forall (SP_TYPE: Val.has_type (rs RSP) Tptr)
+        (RA_TYPE: Val.has_type (rs RA) Tptr)
+        (SP_NOT_VUNDEF: rs RSP <> Vundef)
+        (RA_NOT_VUNDEF: rs RA <> Vundef),
+      external_call ef ge args m1 t res m' ->
+      ra_after_call ge (rs # RA) ->
+      rs' = (set_pair (loc_external_result (ef_sig ef)) res (undef_caller_save_regs rs))
+              #PC <- (rs RA)
+              #RA <- Vundef
+      ->
       step (State rs m) t (State rs' m').
 
 End SSASM.
@@ -65,15 +75,16 @@ End SSASM.
 (** Execution of whole programs. *)
 
 Inductive initial_state (p: program): state -> Prop :=
-  | initial_state_intro: forall m0 m1 stk,
+  | initial_state_intro: forall m0 m1 stk bmain,
       Genv.init_mem p = Some m0 ->
-      Mem.alloc m0 0 (Memory.max_stacksize) = (m1, stk) ->
+      Mem.alloc m0 0 (max_stacksize + align(size_chunk Mptr) 8) = (m1, stk) ->
       let ge := Genv.globalenv p in
+      Genv.find_symbol ge p.(prog_main) = Some bmain ->
       let rs0 :=
         (Pregmap.init Vundef)
-        # PC <- (Genv.symbol_address ge p.(prog_main) Ptrofs.zero)
+        # PC <- (Vptr bmain Ptrofs.zero)
         # RA <- Vnullptr
-        # RSP <- (Vptr (stkblock 0) (Ptrofs.repr max_stacksize)) in
+        # RSP <- (Vptr (stkblock 0) (Ptrofs.repr (max_stacksize + align (size_chunk Mptr) 8))) in
       initial_state p (State rs0 m1).
 
 (** The same final_state as defined in the Asm.v *)
@@ -109,7 +120,7 @@ Ltac Equalities :=
   exploit external_call_determ. eexact H5. eexact H11. intros [A B].
   split. auto. intros. destruct B; auto. subst. auto.
 + assert (args0 = args) by (eapply extcall_arguments_determ; eauto). subst args0.
-  exploit external_call_determ. eexact H4. eexact H9. intros [A B].
+  exploit external_call_determ. eexact H5. eexact H12. intros [A B].
   split. auto. intros. destruct B; auto. subst. auto.
 - (* trace length *)
   red; intros; inv H; simpl.
