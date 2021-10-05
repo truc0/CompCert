@@ -124,6 +124,7 @@ Require Import Linking.
     exists s1; split; auto. inv IS1; inv IS2.
     unfold ge, ge0, ge1, rs0, rs1 in *. rewrite_hyps.
     apply Genv.init_mem_stack in H as STK.
+    apply Genv.init_mem_sid in H as SID.
     apply Mem.alloc_result in H0 as X. unfold Mem.nextblock in X. unfold fresh_block in X. rewrite STK in X.
     simpl in X. subst.
     destruct (Genv.find_funct_ptr ge bmain0) eqn:Fmain.
@@ -813,13 +814,6 @@ Require Import Linking.
       generalize (instr_size_positive a) (find_instr_ofs_pos _ _ _ INSTR). lia.
   Qed.
 
-  Axiom loadv_val_storev:
-    forall m ofs v b,
-      Mem.loadv Mptr m (Vptr b ofs) = Some v ->
-      v <> Vundef -> (align_chunk Mptr | Ptrofs.unsigned ofs) ->
-      (forall o k p, Mem.perm m b o k p -> Mem.perm m b o k Writable) ->
-      Mem.storev Mptr m (Vptr b ofs) v = Some m.
-
   Lemma loadvv_bastck_storev:
     forall rs m v ,
       rsp_ptr (State rs m) -> bstack_perm (State rs m) ->
@@ -829,7 +823,7 @@ Require Import Linking.
     intros. destruct H as (ofs & SP & ALIGN).
     simpl in SP. rewrite SP in *. unfold loadvv in H1. destr_in H1.
     assert (v0 = v). destr_in H1. subst.
-    eapply loadv_val_storev; eauto. destr_in H1.
+    eapply Mem.loadv_val_storev; eauto. destr_in H1.
   Qed.
 
   Lemma real_asm_step:
@@ -1249,6 +1243,7 @@ Require Import Linking.
     - reflexivity.
     - simpl; intros s1 IS1. inv IS1.
       apply Genv.init_mem_stack in H as STK. apply Mem.alloc_result in H0 as STK'.
+      apply Genv.init_mem_sid in H as SID.
       unfold Mem.nextblock in STK'. unfold fresh_block in STK'. rewrite STK in STK'.
       simpl in STK'. subst.
       edestruct (Mem.valid_access_store m1 Mptr stkblock (max_stacksize + align (size_chunk Mptr) 8 - size_chunk Mptr) Vnullptr).
@@ -1259,14 +1254,14 @@ Require Import Linking.
       intro.
       assert (0 <= align (size_chunk Mptr) 8). unfold Mptr. destr.
       lia. unfold Mptr. destr; vm_compute; congruence.
-      lia. intro. eapply Mem.perm_implies; eauto. apply perm_F_any.
+      lia. intro. rewrite SID in H3. eapply Mem.perm_implies; eauto. apply perm_F_any.
       apply Z.divide_sub_r.
       apply Z.divide_add_r.
       apply align_Mptr_stack_limit.
       apply align_Mptr_align8.
       apply align_size_chunk_divides.
       eexists; econstructor. eauto. eauto.
-      simpl.
+      simpl. rewrite SID in *.
       rewrite Ptrofs.unsigned_repr. eauto.
       generalize max_stacksize_range. generalize max_stacksize'_range. generalize (size_chunk_pos Mptr).
       generalize (align_le (size_chunk Mptr) 8).

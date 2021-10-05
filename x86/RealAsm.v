@@ -755,7 +755,7 @@ Inductive initial_state (p: Asm.program): state -> Prop :=
         # PC <- (Vptr bmain Ptrofs.zero)
         # RA <- Vnullptr
         # RSP <- (Val.offset_ptr
-                   (Vptr stkblock (Ptrofs.repr (max_stacksize + align (size_chunk Mptr) 8)))
+                   (Vptr stkblock ((Ptrofs.repr (max_stacksize + align (size_chunk Mptr) 8))))
                    (Ptrofs.neg (Ptrofs.repr (size_chunk Mptr)))) in
       initial_state p (State rs0 m2).
 
@@ -772,25 +772,27 @@ Definition m_state s :=
     Variable prog: Asm.program.
     Let ge := Genv.globalenv prog.
 
-    Definition bstack := stkblock.
-
     Definition rsp_ptr (s: state) : Prop :=
-      exists o, rs_state s RSP = Vptr bstack o /\ (align_chunk Mptr | Ptrofs.unsigned o).
+      exists o, rs_state s RSP = Vptr stkblock  o /\ (align_chunk Mptr | Ptrofs.unsigned o).
 
     Definition bstack_perm (s: state) : Prop :=
       forall o k p,
-        Mem.perm (m_state s) bstack o k p ->
-        Mem.perm (m_state s) bstack o k Writable.
+        Mem.perm (m_state s) stkblock o k p ->
+        Mem.perm (m_state s) stkblock o k Writable.
 
     Definition stack_top_state (s: state) : Prop :=
       exists tl st, Mem.stack(Mem.support (m_state s))= Node None (1%positive::nil) tl st.
+
+    Definition fix_sid (s:state) : Prop :=
+      Mem.sid (Mem.support (m_state s)) = Mem.pid.
 
     Inductive real_asm_inv : state -> Prop :=
     | real_asm_inv_intro:
         forall s
           (RSPPTR: rsp_ptr s)
           (BSTACKPERM: bstack_perm s)
-          (STOP: stack_top_state s),
+          (STOP: stack_top_state s)
+          (SID: fix_sid s),
           real_asm_inv s.
 
     Lemma storev_perm :
@@ -807,19 +809,22 @@ Definition m_state s :=
     Proof.
       intros. inv H.
       apply Genv.init_mem_stack in H0 as STK.
+      apply Genv.init_mem_sid in H0 as SID.
       constructor.
-      - red. simpl; unfold rs0; simpl_regs; simpl. eexists. split. reflexivity.
+      - red.
+        simpl; unfold rs0; simpl_regs; simpl. eexists. split. reflexivity.
         apply align_Mptr_stack_limit.
       - exploit Mem.alloc_result; eauto. intro. subst.
         unfold Mem.nextblock in H1. unfold Mem.fresh_block in H1.
         rewrite STK in H1. destr_in H1. simpl in Heqp. inv Heqp.
-        red. unfold bstack. unfold stkblock. intros o k p.
+        red. unfold stkblock. intros o k p. rewrite SID in *.
         repeat erewrite (storev_perm _ _ _ _ _ H2). eauto.
         intro. exploit Mem.perm_alloc_3; eauto.
         intro. exploit Mem.perm_alloc_2; eauto. simpl. intro. eapply Mem.perm_implies; eauto.
         apply perm_F_any.
       - red. simpl. apply Mem.stack_alloc in H1. rewrite STK in H1.
         exists nil, None. simpl in H1. erewrite <- Mem.support_storev; eauto.
+      - red. simpl. erewrite <- Mem.support_storev. 2: eauto. erewrite Mem.sid_alloc; eauto.
     Qed.
 
     Lemma exec_instr_invar_same:
@@ -857,26 +862,6 @@ Definition m_state s :=
         real_asm_inv (State rs2 m2).
     Proof.
       intros f i rs1 m1 rs2 m2 NORSP INVAR EI RAI; inv RAI.
-     (* - constructor.
-        + red in RSPPTR; red.
-          simpl in *.
-          destruct RSPPTR as (o & EQ & AL).
-          red in NORSP.
-          exists o. split. exploit NORSP; eauto.
-          simpl_regs.
-          setoid_rewrite Pregmap.gsspec. destr. inv e. rewrite EQ.
-          simpl.
-          eexists; split; eauto. apply div_ptr_add. auto. apply div_unsigned_repr.
-          transitivity 8.
-          unfold Mptr. destr; simpl. exists 1; lia. exists 2; lia.
-          apply align_divides. lia.
-          apply align_Mptr_modulus.
-          apply align_Mptr_modulus.
-          eauto.
-        + red in BSTACKPERM; red. simpl in *. intros.
-          inv i0; simpl in EI; inv EI. eauto.
-        + red in STOP; red. simpl in *.
-          inv i0; simpl in EI; inv EI. eauto. *)
       erewrite exec_instr_invar_same in EI; eauto.
       erewrite <- exec_instr_invar_same' in EI; eauto.
       exploit NORSP; eauto. intro EQ.
@@ -885,6 +870,7 @@ Definition m_state s :=
       + red in RSPPTR; red. simpl in *; rewrite <- EQ. eauto.
       + red in BSTACKPERM; red. simpl in *. setoid_rewrite <- B. eauto.
       + red in STOP; red; simpl in *. rewrite <- A; eauto.
+      + red in SID; red; simpl in *. rewrite <- A; eauto.
     Qed.
 
     Lemma align_Mptr_sub:
@@ -955,6 +941,7 @@ Definition m_state s :=
           * red in BSTACKPERM; red; simpl in *.
             intros o k p. erewrite storev_perm; eauto. intro. erewrite storev_perm; eauto.
           * red in STOP; red; simpl in *. erewrite <- Mem.support_storev; eauto.
+          * red in SID; red; simpl in *. erewrite <- Mem.support_storev; eauto.
         + (* call_r *)
           simpl in H2. destr_in H2. inv H2. inv INV; constructor; simpl.
           * red. simpl. simpl_regs. destruct RSPPTR as (o & EQ & AL); simpl in *; rewrite EQ.
@@ -962,12 +949,14 @@ Definition m_state s :=
           * red in BSTACKPERM; red; simpl in *.
             intros o k p. erewrite storev_perm; eauto. intro. erewrite storev_perm; eauto.
           * red in STOP; red; simpl in *. erewrite <- Mem.support_storev; eauto.
+          * red in SID; red; simpl in *. erewrite <- Mem.support_storev; eauto.
         + (* ret *)
           simpl in H2; repeat destr_in H2; inv INV; constructor; simpl.
           * red. simpl. simpl_regs. destruct RSPPTR as (o & EQ & AL); simpl in *; rewrite EQ.
             simpl. eexists; split; eauto. apply align_Mptr_add; auto.
           * red in BSTACKPERM; red; simpl in *.
             intros o k p. eauto.
+          * red in STOP; red; simpl in *. eauto.
           * red in STOP; red; simpl in *. eauto.
         + (* allocframe *)
           simpl in H2; repeat destr_in H2; inv INV; constructor; simpl.
@@ -987,6 +976,7 @@ Definition m_state s :=
           * red in BSTACKPERM; red; simpl in *.
             intros o k p. erewrite storev_perm; eauto. intro. erewrite storev_perm; eauto.
           * red in STOP; red; simpl in *. erewrite <- Mem.support_storev; eauto.
+          * red in STOP; red; simpl in *. erewrite <- Mem.support_storev; eauto.
         + (* freeframe *)
           simpl in H2; repeat destr_in H2; inv INV; constructor; simpl.
           * red. simpl. simpl_regs. destruct RSPPTR as (o & EQ & AL); simpl in *; rewrite EQ.
@@ -1002,6 +992,7 @@ Definition m_state s :=
             apply align_Mptr_modulus.
           * red in BSTACKPERM; red; eauto.
           * red in STOP; red; eauto.
+          * red; eauto.
       - inv INV; constructor.
         + red in RSPPTR; red; simpl in *. unfold nextinstr_nf. repeat simpl_regs.
           rewrite Asmgenproof0.undef_regs_other.
@@ -1014,14 +1005,18 @@ Definition m_state s :=
           intro EQ. symmetry in EQ. apply preg_of_not_rsp in EQ. congruence.
         + red in BSTACKPERM; red. simpl in *. intros o k p.
           repeat erewrite (external_perm_stack _ _ _ _ _ _ _ _ _ _ _ H3); eauto.
-           simpl. auto. red in STOP; simpl in STOP. unfold bstack. unfold stkblock.
-           simpl. destruct STOP as (tl & st & STOP). rewrite STOP. split. auto. left. auto.
-           simpl. auto. red in STOP; simpl in STOP. unfold bstack. unfold stkblock.
-           simpl. destruct STOP as (tl & st & STOP). rewrite STOP. split. auto. left. auto.
+           simpl. auto. red in STOP; simpl in STOP.  unfold stkblock.
+           simpl. destruct STOP as (tl & st & STOP). red in SID. simpl in SID. destr.
+           rewrite STOP. split. auto. left. auto. rewrite SID in Heqb0. unfold Mem.pid in Heqb0. congruence.
+           simpl. auto. red in STOP; simpl in STOP.  unfold stkblock.
+           simpl. destruct STOP as (tl & st & STOP). rewrite STOP. destr.
+           split. auto. left. auto. red in SID; simpl in SID. rewrite SID in Heqb0. unfold Mem.pid in Heqb0.
+           congruence.
         + red in STOP; red; simpl in *. destruct STOP as (tl & st & STOP).
           exploit external_call_stack; eauto. destr. intros.
           rewrite STOP in H4. simpl in H4. destruct st. eauto. eauto.
           intros. rewrite H4. eauto.
+        + red; eauto. simpl. erewrite <- external_call_mem_sid; eauto.
       - inv INV; constructor.
         + Opaque destroyed_at_call.
           red in RSPPTR; red; simpl in *. repeat simpl_regs.
@@ -1029,14 +1024,17 @@ Definition m_state s :=
           simpl. eexists; split; eauto. apply align_Mptr_add; auto.
         + red in BSTACKPERM; red. simpl in *. intros o k p.
           repeat erewrite (external_perm_stack _ _ _ _ _ _ _ _ _ _ _ H2); eauto.
-           simpl. auto. red in STOP; simpl in STOP. unfold bstack. unfold stkblock.
-           simpl. destruct STOP as (tl & st & STOP). rewrite STOP. split. auto. left. auto.
-           simpl. auto. red in STOP; simpl in STOP. unfold bstack. unfold stkblock.
-           simpl. destruct STOP as (tl & st & STOP). rewrite STOP. split. auto. left. auto.
+           simpl. auto. red in STOP; simpl in STOP.  unfold stkblock.
+           simpl. destruct STOP as (tl & st & STOP). rewrite STOP. destr.
+           split. auto. left. auto. red in SID; simpl in *. rewrite SID in Heqb0. simpl in *.  congruence.
+           simpl. auto. red in STOP; simpl in STOP.  unfold stkblock.
+           simpl. destruct STOP as (tl & st & STOP). rewrite STOP. destr.
+           split. auto. left. auto. red in SID. simpl in *. rewrite SID in Heqb0. simpl in *. congruence.
         + red in STOP; red; simpl in *. destruct STOP as (tl & st & STOP).
           exploit external_call_stack; eauto. destr. intros.
           rewrite STOP in H3. simpl in H3. destruct st. eauto. eauto.
           intros. rewrite H3. eauto.
+        + red. simpl. eauto. erewrite <- external_call_mem_sid; eauto.
     Qed.
 
 End INVARIANT.

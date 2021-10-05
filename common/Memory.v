@@ -769,7 +769,9 @@ Record sup' : Type := mksup {
 
 Definition sup := sup'.
 
-Program Definition sup_empty : sup :=
+Definition pid := 0%nat.
+
+Program Definition sup_init : sup :=
   mksup (empty_stree::nil) ((nil)::nil) nil O _ _.
 
 Lemma mksup_ext : forall ss1 ss2 as1 as2 g1 g2 id1 id2 a1 a2 b1 b2,
@@ -844,6 +846,15 @@ Proof.
   - destruct l; simpl in *. extlia. apply IHn. lia.
 Qed.
 
+Theorem  sup_init_sid : sid sup_init = pid.
+Proof. reflexivity. Qed.
+Theorem sup_init_stack: stack sup_init = empty_stree.
+Proof. reflexivity. Qed.
+Theorem sup_init_astack: astack sup_init = nil.
+Proof. reflexivity. Qed.
+Theorem sup_init_global: global sup_init = nil.
+Proof. reflexivity. Qed.
+
 Definition sup_cpath (s:sup) := cpath (stack s).
 
 Definition sup_npath (s:sup) := npath (stack s).
@@ -856,12 +867,11 @@ Definition sup_In(b:block)(s:sup) : Prop :=
   | Global id => In id (global s)
   end.
 
-Definition empty_in: forall b, ~ sup_In b sup_empty.
+Definition empty_in: forall b, ~ sup_In b sup_init.
 Proof.
   intros. destruct b; simpl in *; try congruence.
-  destruct n; simpl; auto.
-  destruct p; unfold stree_In; simpl; auto. intro. inv H. auto.
-  destruct n; auto.
+  destr. rewrite sup_init_stack. intro. destruct p; simpl in H.
+  inv H. inv H1. destruct n0; simpl in H. inv H. inv H.
 Qed.
 
 Definition sup_dec : forall b s, {sup_In b s}+{~sup_In b s}.
@@ -990,7 +1000,7 @@ Qed.
 Definition sup_return_frame' (s:sup) : sup :=
   match sup_return_frame s with
     |Some s' => s'
-    |None => sup_empty
+    |None => sup_init
   end.
 
 Lemma sup_return_refl : forall s s', is_active (stack s) ->
@@ -1463,7 +1473,7 @@ Qed.
 Program Definition empty: mem :=
   mkmem (NMap.init _ (ZMap.init Undef))
         (NMap.init _ (fun ofs k => None))
-        sup_empty  _ _ _.
+        sup_init  _ _ _.
 
 (** Allocation of a fresh block with the given bounds.  Return an updated
   memory state and the address of the fresh block, which initially contains
@@ -1924,7 +1934,7 @@ Qed.
 (** * Properties of the memory operations *)
 
 (** Properties of the empty store. *)
-Theorem support_empty : support empty = sup_empty.
+Theorem support_empty : support empty = sup_init.
 Proof.
   reflexivity.
 Qed.
@@ -2991,6 +3001,13 @@ Proof.
   rewrite addressing_int64_split; auto.
   exploit store_valid_access_3. eexact H2. intros [P Q]. exact Q.
 Qed.
+
+Axiom loadv_val_storev:
+  forall m ofs v b,
+    loadv Mptr m (Vptr b ofs) = Some v ->
+    v <> Vundef -> (align_chunk Mptr | Ptrofs.unsigned ofs) ->
+    (forall o k p, perm m b o k p -> perm m b o k Writable) ->
+    storev Mptr m (Vptr b ofs) v = Some m.
 
 (** ** Properties related to [alloc_frame]. *)
 
@@ -7972,7 +7989,7 @@ Notation sup := Mem.sup.
 Notation sup_In := Mem.sup_In.
 Notation sup_incr := Mem.sup_incr.
 Notation sup_incr_glob := Mem.sup_incr_glob.
-Notation sup_empty := Mem.sup_empty.
+Notation sup_init := Mem.sup_init.
 Notation fresh_block := Mem.fresh_block.
 Notation freshness := Mem.freshness.
 Global Opaque Mem.alloc Mem.alloc_glob Mem.free Mem.store Mem.load Mem.storebytes Mem.loadbytes.

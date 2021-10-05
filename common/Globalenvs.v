@@ -274,7 +274,7 @@ Proof.
 Qed.
 
 Program Definition empty_genv (pub: list ident): t :=
-  @mkgenv pub (PTree.empty _) (NMap.init _ None) sup_empty _ _ _ _ _.
+  @mkgenv pub (PTree.empty _) (NMap.init _ None) sup_init _ _ _ _ _.
 Next Obligation.
   apply Mem.empty_in in H. inv H.
 Qed.
@@ -1445,7 +1445,7 @@ Lemma init_mem_stack:
 Proof.
   unfold init_mem. intros.
   exploit alloc_globals_stack; eauto. intros [[A B] C].
-  rewrite A. reflexivity.
+  rewrite A. simpl. rewrite Mem.sup_init_stack. reflexivity.
 Qed.
 
 Lemma init_mem_astack:
@@ -1455,17 +1455,17 @@ Lemma init_mem_astack:
 Proof.
   unfold init_mem. intros.
   exploit alloc_globals_stack; eauto. intros [[A B] C].
-  rewrite C. reflexivity.
+  rewrite C. simpl. rewrite Mem.sup_init_astack. reflexivity.
 Qed.
 
 Lemma init_mem_sid:
   forall (p:AST.program F V) m,
     init_mem p = Some m ->
-    Mem.sid (Mem.support m) = O.
+    Mem.sid (Mem.support m) = Mem.pid.
 Proof.
   unfold init_mem. intros.
   exploit alloc_globals_stack; eauto. intros [[A B] C].
-  rewrite B. reflexivity.
+  rewrite B. simpl. reflexivity.
 Qed.
 
 Lemma init_mem_genv_sup: forall p m,

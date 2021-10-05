@@ -83,14 +83,17 @@ Inductive perm_kind: Type :=
   | Max: perm_kind
   | Cur: perm_kind.
 
+
 Module Type SUP.
 
 Parameter sup: Type.
 
-Parameter sup_empty : sup.
+Parameter pid : nat.
+
+Parameter sup_init : sup.
 
 Parameter sup_In : block -> sup -> Prop.
-Parameter empty_in: forall b, ~ sup_In b sup_empty.
+Parameter empty_in: forall b, ~ sup_In b sup_init.
 Parameter sup_dec : forall b s, {sup_In b s}+{~sup_In b s}.
 
 Parameter fresh_block : sup -> block.
@@ -318,7 +321,7 @@ Axiom valid_pointer_implies:
 (** * Properties of the memory operations *)
 
 (** ** Properties of the initial memory state. *)
-Axiom support_empty : support empty = sup_empty.
+Axiom support_empty : support empty = sup_init.
 Axiom perm_empty: forall b ofs k p, ~perm empty b ofs k p.
 Axiom valid_access_empty:
   forall chunk b ofs p, ~valid_access empty chunk b ofs p.
