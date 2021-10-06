@@ -752,6 +752,7 @@ Qed.
 Definition max_stacksize : Z := 4096.
 End STACKADT.
 
+Parameter thread_id : nat.
 (* Declare Module Sup: SUP. *)
 
 Module Sup <: SUP.
@@ -769,10 +770,16 @@ Record sup' : Type := mksup {
 
 Definition sup := sup'.
 
-Definition pid := 0%nat.
+Definition tid := thread_id.
 
 Program Definition sup_init : sup :=
-  mksup (empty_stree::nil) ((nil)::nil) nil O _ _.
+  mksup (list_repeat (S tid) empty_stree) (list_repeat (S tid) nil) nil tid _ _.
+Next Obligation.
+  rewrite length_list_repeat. lia.
+Qed.
+Next Obligation.
+  repeat rewrite length_list_repeat. lia.
+Qed.
 
 Lemma mksup_ext : forall ss1 ss2 as1 as2 g1 g2 id1 id2 a1 a2 b1 b2,
     ss1 = ss2 -> as1 = as2 -> g1 = g2 -> id1 = id2 ->
@@ -846,12 +853,28 @@ Proof.
   - destruct l; simpl in *. extlia. apply IHn. lia.
 Qed.
 
-Theorem  sup_init_sid : sid sup_init = pid.
+Lemma list_repeat_in {A:Type} (n:nat)(a b:A):
+  nth n (list_repeat (S n) a) b = a.
+Proof.
+  induction n. simpl. auto.
+  simpl. destruct n. auto.  eauto.
+Qed.
+
+Theorem  sup_init_sid : sid sup_init = tid.
 Proof. reflexivity. Qed.
+
 Theorem sup_init_stack: stack sup_init = empty_stree.
-Proof. reflexivity. Qed.
+Proof.
+  unfold stack. rewrite sup_init_sid. unfold sup_init.
+  Opaque list_repeat. simpl. rewrite list_repeat_in. auto.
+Qed.
+
 Theorem sup_init_astack: astack sup_init = nil.
-Proof. reflexivity. Qed.
+Proof.
+  unfold astack. rewrite sup_init_sid. unfold sup_init.
+  Opaque list_repeat. simpl. rewrite list_repeat_in. auto.
+Qed.
+
 Theorem sup_init_global: global sup_init = nil.
 Proof. reflexivity. Qed.
 

@@ -58,7 +58,7 @@ Extraction Inline Wfsimpl.Fix Wfsimpl.Fixm.
 
 (* Memory - work around an extraction bug. *)
 Extraction NoInline Memory.Mem.valid_pointer.
-
+Extract Constant Memory.thread_id => "O".
 (* Errors *)
 Extraction Inline Errors.bind Errors.bind2.
 

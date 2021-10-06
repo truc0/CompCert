@@ -784,7 +784,7 @@ Definition m_state s :=
       exists tl st, Mem.stack(Mem.support (m_state s))= Node None (1%positive::nil) tl st.
 
     Definition fix_sid (s:state) : Prop :=
-      Mem.sid (Mem.support (m_state s)) = Mem.pid.
+      Mem.sid (Mem.support (m_state s)) = Mem.tid.
 
     Inductive real_asm_inv : state -> Prop :=
     | real_asm_inv_intro:
@@ -1007,11 +1007,12 @@ Definition m_state s :=
           repeat erewrite (external_perm_stack _ _ _ _ _ _ _ _ _ _ _ H3); eauto.
            simpl. auto. red in STOP; simpl in STOP.  unfold stkblock.
            simpl. destruct STOP as (tl & st & STOP). red in SID. simpl in SID. destr.
-           rewrite STOP. split. auto. left. auto. rewrite SID in Heqb0. unfold Mem.pid in Heqb0. congruence.
+           rewrite STOP. split. auto. left. auto. rewrite SID in Heqb0.
+           apply Nat.eqb_neq in Heqb0. congruence.
            simpl. auto. red in STOP; simpl in STOP.  unfold stkblock.
            simpl. destruct STOP as (tl & st & STOP). rewrite STOP. destr.
-           split. auto. left. auto. red in SID; simpl in SID. rewrite SID in Heqb0. unfold Mem.pid in Heqb0.
-           congruence.
+           split. auto. left. auto. red in SID; simpl in SID. rewrite SID in Heqb0.
+           apply Nat.eqb_neq in Heqb0. congruence.
         + red in STOP; red; simpl in *. destruct STOP as (tl & st & STOP).
           exploit external_call_stack; eauto. destr. intros.
           rewrite STOP in H4. simpl in H4. destruct st. eauto. eauto.
@@ -1026,10 +1027,12 @@ Definition m_state s :=
           repeat erewrite (external_perm_stack _ _ _ _ _ _ _ _ _ _ _ H2); eauto.
            simpl. auto. red in STOP; simpl in STOP.  unfold stkblock.
            simpl. destruct STOP as (tl & st & STOP). rewrite STOP. destr.
-           split. auto. left. auto. red in SID; simpl in *. rewrite SID in Heqb0. simpl in *.  congruence.
+           split. auto. left. auto. red in SID; simpl in *. rewrite SID in Heqb0.
+           apply Nat.eqb_neq in Heqb0. congruence.
            simpl. auto. red in STOP; simpl in STOP.  unfold stkblock.
            simpl. destruct STOP as (tl & st & STOP). rewrite STOP. destr.
-           split. auto. left. auto. red in SID. simpl in *. rewrite SID in Heqb0. simpl in *. congruence.
+           split. auto. left. auto. red in SID. simpl in *. rewrite SID in Heqb0.
+           apply Nat.eqb_neq in Heqb0. congruence.
         + red in STOP; red; simpl in *. destruct STOP as (tl & st & STOP).
           exploit external_call_stack; eauto. destr. intros.
           rewrite STOP in H3. simpl in H3. destruct st. eauto. eauto.

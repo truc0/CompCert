@@ -209,7 +209,7 @@ Qed.
 Definition current_in_stack' (b:block) (lfp : list fid * path) : Prop :=
   let (lf,pall) := lfp in
   match b with
-    |Stack si fid path i => Mem.pid = si /\ i = 1%positive /\ in_stack' fid path lf pall
+    |Stack si fid path i => Mem.tid = si /\ i = 1%positive /\ in_stack' fid path lf pall
     |_ => False
   end.
 
@@ -229,7 +229,7 @@ Inductive inject_stack (j:meminj) (P:perm_type): (list fid * path) -> stackadt -
   |inject_stack_cons : forall b astk fr lf p id idx
       (IS_REC: inject_stack j P (lf,p) astk),
       j b = Some (stkblock, max_stacksize' - stack_size astk - frame_size_a fr) ->
-      b = Stack Mem.pid (Some id) (p++(idx::nil)) 1%positive ->
+      b = Stack Mem.tid (Some id) (p++(idx::nil)) 1%positive ->
      (forall o k p, 0 <= o < frame_size fr <-> P b o k p) ->
      inject_stack j P ((Some id)::lf,p++(idx::nil)) ((fr::nil)::astk).
 
@@ -277,8 +277,8 @@ Inductive match_states: meminj -> state -> state -> Prop :=
       (RSPzero: forall b i, rs # RSP = Vptr b i -> i = Ptrofs.zero )
       (RINJ: forall r, Val.inject j (rs # r) (rs' # r))
    (** Stack Properties **)
-      (SID: Mem.sid (Mem.support m) = Mem.pid)
-      (SID': Mem.sid (Mem.support m') = Mem.pid)
+      (SID: Mem.sid (Mem.support m) = Mem.tid)
+      (SID': Mem.sid (Mem.support m') = Mem.tid)
       (STKLIMIT: stack_size (Mem.astack (Mem.support m)) <= max_stacksize)
       (STKCIN: forall b, current_in_stack b m -> is_stack b /\ sup_In b (Mem.support m))
       (STKVB: Mem.valid_block m stkblock)
@@ -1962,7 +1962,7 @@ Proof.
         apply RSPzero in RSRSP as Z. subst.
         rewrite RSRSP in H2. rewrite Y in H2. inv H2.
         inv RSPINJ.
-        assert (BEQ: b = Stack Mem.pid (Some id) (p0++idx::nil) 1).
+        assert (BEQ: b = Stack Mem.tid (Some id) (p0++idx::nil) 1).
         exploit sp_of_stack_tspsome; eauto. intro.
         rewrite <- RSPTOP in H3. inv H3. rewrite SID. auto.
         try (rewrite <- BEQ in *).

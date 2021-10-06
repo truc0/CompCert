@@ -1546,10 +1546,10 @@ Proof.
   constructor. auto.
   erewrite <- Genv.init_mem_genv_sup by eauto. apply Mem.sup_include_refl.
   erewrite <- Genv.init_mem_genv_sup by eauto. apply Mem.sup_include_refl.
-  intros. destruct (eq_block b1 (Stack Mem.pid None nil 1)). subst. rewrite SID in X. rewrite SID1 in X.
+  intros. destruct (eq_block b1 (Stack Mem.tid None nil 1)). subst. rewrite SID in X. rewrite SID1 in X.
   rewrite X in H5. inv H5.
   simpl. rewrite STK1. rewrite STK2. rewrite SID. rewrite SID1. simpl.
-  split. intro. inv H5. inv H8. intro. inv H5. inv H8. rewrite Y in H5. congruence. auto.
+  split. intro. destr_in H5. intro. destr_in H5. rewrite Y in H5. congruence. auto.
   congruence.
   unfold Mem.stackeq.
   split. congruence.

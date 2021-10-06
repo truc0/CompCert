@@ -1461,7 +1461,7 @@ Qed.
 Lemma init_mem_sid:
   forall (p:AST.program F V) m,
     init_mem p = Some m ->
-    Mem.sid (Mem.support m) = Mem.pid.
+    Mem.sid (Mem.support m) = Mem.tid.
 Proof.
   unfold init_mem. intros.
   exploit alloc_globals_stack; eauto. intros [[A B] C].

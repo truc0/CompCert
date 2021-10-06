@@ -1540,7 +1540,7 @@ Inductive initial_state (p: program): state -> Prop :=
         (Pregmap.init Vundef)
         # PC <- (Vptr bmain Ptrofs.zero)
         # RA <- Vnullptr
-        # RSP <- (Vptr (Stack Mem.pid None nil 1) Ptrofs.zero) in
+        # RSP <- (Vptr (Stack Mem.tid None nil 1) Ptrofs.zero) in
       initial_state p (State rs0 m1).
 
 Inductive final_state: state -> int -> Prop :=

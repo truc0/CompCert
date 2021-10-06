@@ -88,7 +88,7 @@ Module Type SUP.
 
 Parameter sup: Type.
 
-Parameter pid : nat.
+Parameter tid : nat.
 
 Parameter sup_init : sup.
 
