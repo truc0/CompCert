@@ -331,6 +331,20 @@ Qed.
 
 End LINKER_PROG.
 
+(* static variable renaming *)
+Section LINKER_PROG_RENAME.
+
+Context {F V: Type} {LF: Linker F} {LV: Linker V} (p1 p2: program F V).
+
+Definition RLink (p : program F V) :=
+  exists p1' p2', AST.alpha_euqiv p1 p1' -> AST.alpha_euqiv p2 p2' -> link_prog p1 p2 = Some p.                                  
+
+End LINKER_PROG_RENAME.
+
+(* use rename to define alpha-equiv? *)
+(* Definition Alpha_euqiv {F V: Type} :program F V -> program F V -> Prop:= *)
+(*   forall (p1 p2 : program F V),  *)
+
 Program Instance Linker_prog (F V: Type) {LF: Linker F} {LV: Linker V} : Linker (program F V) := {
   link := link_prog;
   linkorder := fun p1 p2 =>

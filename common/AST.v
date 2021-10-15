@@ -308,6 +308,34 @@ Record program (F V: Type) : Type := mkprogram {
   prog_main: ident
 }.
 
+Require Import FinFun.
+Require Import Fin.
+
+Definition bAlpha_fun (n: ident) (f: ident -> ident) :=
+  forall x, Plt x n -> Plt (f x) n.
+
+Definition bAlpha_Injective (n: ident) (f: ident -> ident) :=
+  Injective f.
+
+Definition bAlpha_surjective (n: ident) (f: ident -> ident) :=
+  Surjective f.
+
+  
+Record alpha_rename (n:ident) :=
+  alpha_rename_gen{
+      permu : ident -> ident;
+      bound : bAlpha_fun n permu;
+      injective : bAlpha_Injective n permu;
+      surjective : bAlpha_surjective n permu
+}.
+
+Definition alpha_prog {F V: Type} {n: ident} (alpha: alpha_rename n) (prog: program F V) :=
+  mkprogram (map (fun igd => (alpha.(permu) (fst igd), snd igd)) prog.(prog_defs)) prog.(prog_public) prog.(prog_main).
+
+
+Definition alpha_equiv {F V : Type} (p1 p1' : program F V) :=
+  forall n pid, exists (a: alpha_rename n), In pid p1.(prog_public) -> a.(permu) pid = pid /\ alpha_prog a p1 = p1'.
+
 Definition prog_defs_names (F V: Type) (p: program F V) : list ident :=
   List.map fst p.(prog_defs).
 
