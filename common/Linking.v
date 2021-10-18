@@ -55,6 +55,7 @@ Definition link_fundef {F: Type} (fd1 fd2: fundef F) :=
       match ef with EF_external id sg => Some (Internal f) | _ => None end
   end.
 
+
 Inductive linkorder_fundef {F: Type}: fundef F -> fundef F -> Prop :=
   | linkorder_fundef_refl: forall fd, linkorder_fundef fd fd
   | linkorder_fundef_ext_int: forall f id sg, linkorder_fundef (External (EF_external id sg)) (Internal f).
@@ -331,19 +332,13 @@ Qed.
 
 End LINKER_PROG.
 
+
 (* static variable renaming *)
-Section LINKER_PROG_RENAME.
 
-Context {F V: Type} {LF: Linker F} {LV: Linker V} (p1 p2: program F V).
 
-Definition RLink (p : program F V) :=
-  exists p1' p2', AST.alpha_euqiv p1 p1' -> AST.alpha_euqiv p2 p2' -> link_prog p1 p2 = Some p.                                  
+Definition rlink_program {F V : Type} {LF: Linker F} {LV: Linker V} {AF: Alpha F} {AV : Alpha V} (p1 p2 p : program F V) :=
+  exists p1' p2', alpha_equiv p1 p1' /\  alpha_equiv p2 p2' /\ link_prog p1 p2 = Some p.                                  
 
-End LINKER_PROG_RENAME.
-
-(* use rename to define alpha-equiv? *)
-(* Definition Alpha_euqiv {F V: Type} :program F V -> program F V -> Prop:= *)
-(*   forall (p1 p2 : program F V),  *)
 
 Program Instance Linker_prog (F V: Type) {LF: Linker F} {LV: Linker V} : Linker (program F V) := {
   link := link_prog;
@@ -438,6 +433,8 @@ Definition match_program_gen (ctx: C) (p1: program F1 V1) (p2: program F2 V2) : 
   list_forall2 (match_ident_globdef ctx) p1.(prog_defs) p2.(prog_defs)
   /\ p2.(prog_main) = p1.(prog_main)
   /\ p2.(prog_public) = p1.(prog_public).
+
+
 
 Theorem match_program_defmap:
   forall ctx p1 p2, match_program_gen ctx p1 p2 ->

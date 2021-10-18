@@ -1484,6 +1484,7 @@ Definition link_program {F:Type} (p1 p2: program F): option (program F) :=
       end
   end.
 
+
 Definition linkorder_program {F: Type} (p1 p2: program F) : Prop :=
      linkorder (program_of_program p1) (program_of_program p2)
   /\ (forall id co, p1.(prog_comp_env)!id = Some co -> p2.(prog_comp_env)!id = Some co).
@@ -1569,4 +1570,111 @@ Local Transparent Linker_program.
   unfold program_of_program; simpl. destruct pp, tpp; exact MP.
 Qed.
 
+(* Hypothesis TRANSL_ALPHA : forall p p' tp, *)
+(*     alpha_equiv p p' -> match_program p tp -> exists tp', match_program p' tp' /\ alpha_equiv tp tp'. *)
+
+(* Theorem rlink_match_program: *)
+(*   forall p1 p2 tp1 tp2 p, *)
+(*   rlink_program p1 p2 p -> match_program p1 tp1 -> match_program p2 tp2 -> *)
+(*   exists tp, rlink_program tp1 tp2 tp /\ match_program p tp. *)
+(* Proof. *)
+(*   intros. *)
+(*   unfold rlink_program in *. *)
+(*   destruct H as [p1'[p2' [Alpha_p1 [Alpha_p2 Alpha_link]]]]. *)
+(*   destruct (TRANSL_ALPHA _ _ _ Alpha_p1 H0) as [tp1' [Alpha_match1 Alpha_tp1']]. *)
+(*   destruct (TRANSL_ALPHA _ _ _ Alpha_p2 H1) as [tp2' [Alpha_match2 Alpha_tp2']]. *)
+(*   destruct (link_match_program _ _ _ _ _ Alpha_link Alpha_match1 Alpha_match2) as [? [? ?]]. *)
+(*   eexists. *)
+(*   split. *)
+(*   do 2 eexists.  *)
+(*   eauto. *)
+(*   auto. *)
+(* Qed. *)
+
 End LINK_MATCH_PROGRAM.
+
+
+(* static variable renaming *)
+
+(* composite definition renaming *)
+Definition alpha_composite (a:permutation) (comp : composite_definition) : composite_definition :=
+  match comp with
+  | Composite id us mems attr =>
+    let mems' := combine (map (alpha_rename a) (fst (split mems))) (snd (split mems)) in
+    Composite (alpha_rename a id) us mems' attr
+  end.
+
+Instance Alpha_composite : Alpha composite_definition :=
+  { alpha_rename := alpha_composite }.
+
+Global Opaque Alpha_composite.
+
+Definition alpha_fundef {F: Type} {AF: Alpha F} (a: permutation) (fd: fundef F) :=
+  match fd with
+  | Internal f => Internal (alpha_rename a f)
+  | _ => fd
+  end.
+
+Instance Alpha_fundef {F: Type} {AF: Alpha F} : Alpha (fundef F) :=
+  { alpha_rename:= alpha_fundef }.
+
+Global Opaque Alpha_fundef.
+
+Definition alpha_def {F: Type} {AF: Alpha F} (a: permutation) (g: globdef (fundef F) type) :=
+  match g with
+  | Gfun f => Gfun (alpha_rename a f) 
+  | Gvar v => Gvar v
+  end.
+
+Instance Alpha_def {F: Type} {AF: Alpha F} :Alpha (globdef (fundef F) type) :=
+  { alpha_rename:= alpha_def }.
+
+Global Opaque Alpha_def.
+
+(* Lemma alpha_composite_correct : forall (F:Type) (p:program F) a, exists comp_env, *)
+(*       build_composite_env (map (alpha_rename a) p.(prog_types)) = OK comp_env. *)
+(* intros. *)
+(* destruct p. *)
+(* destruct a. simpl. *)
+(* unfold build_composite_env in *. *)
+(* Admitted. *)
+
+(* here we do not rename composite because it demand that we should 
+   define rename for PTree
+ *)
+
+Program Definition  alpha_prog {F: Type} {AF: Alpha F} (a: permutation) (p: program F) : (program F) :=
+  let ids := map (alpha_rename a) (fst (split p.(prog_defs))) in
+  let defs := map (alpha_rename a) (snd (split p.(prog_defs))) in
+  (* let types := map (alpha_rename a) p.(prog_types) in *)
+  {| prog_defs := combine ids defs;
+     prog_public := p.(prog_public);
+     prog_main := p.(prog_main);
+     prog_types := p.(prog_types);
+     prog_comp_env := _;
+     prog_comp_env_eq := _ |}.
+Next Obligation.
+  destruct p.
+  auto.
+Defined.
+Next Obligation.
+  destruct p.
+  auto.
+Defined.
+
+Instance Alpha_prog {F: Type} {AF: Alpha F} : Alpha (program F):=
+  { alpha_rename := alpha_prog }.
+
+Global Opaque Alpha_prog.
+
+Definition max_program_ident {F : Type} (p: program F):=
+  fold_left Pos.max (map fst p.(prog_defs)) 1%positive.
+
+
+Definition alpha_equiv {F : Type} {AF : Alpha F} (p1 p1' : program F) :=
+  exists (a : permutation) , forall pid, In pid p1.(prog_public) -> a.(permu) pid = pid /\ alpha_rename a p1 = p1'.
+
+  
+Definition rlink_program {F: Type} {AF : Alpha F} (p1 p2 p: program F) : Prop :=
+  exists p1' p2', alpha_equiv p1 p1' /\ alpha_equiv p2 p2' /\ link p1' p2' = Some p. 
+  

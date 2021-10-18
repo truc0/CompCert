@@ -2341,3 +2341,123 @@ Local Transparent Linker_fundef.
             type_eq tres tres0 && calling_convention_eq cconv cconv0); inv H2.
   exists (External ef targs tres cconv); split; auto. constructor.
 Qed.
+
+(* Lemma transl_alpha_irrelvant : forall (p p': Csyntax.program) (tp: Clight.program), *)
+(*     alpha_equiv p p' -> transl_program p = OK tp -> exists tp', transl_program p' = OK tp' /\ alpha_equiv tp tp'. *)
+(* Admitted. *)
+
+
+Lemma transl_max_ident_eq : forall (p : Csyntax.program) (tp: Clight.program),
+    match_prog p tp -> max_program_ident p = max_program_ident tp.
+  Admitted.
+
+Lemma transl_public_eq : forall (p : Csyntax.program) (tp: Clight.program),
+    match_prog p tp -> p.(prog_public) = tp.(prog_public).
+Proof.
+  intros.
+  unfold match_prog in *.
+  unfold match_program in *.
+  unfold match_program_gen in *.
+  destruct H as [[All [Main Public]] Ty].
+  auto.
+Qed.
+
+
+Lemma transl_alpha_irrelvant : forall (p p': Csyntax.program) (tp: Clight.program),
+    alpha_equiv p p' -> match_prog p tp -> exists tp', match_prog p' tp' /\ alpha_equiv tp tp'. 
+
+Proof.
+  unfold alpha_equiv in *.
+  unfold match_prog in *.
+  unfold alpha_prog in *.
+  intros.
+  
+ 
+  generalize (transl_max_ident_eq p tp H0).
+  intros Max.
+  rewrite <- Max in *.
+  destruct H0 as [Match Ty].
+  destruct p;simpl in *.
+  destruct tp;simpl in *.
+
+  (* composite env *)
+  assert (prog_comp_env = prog_comp_env0).
+  { subst prog_types0.
+  generalize prog_comp_env_eq0.
+  intros Neweq.
+  rewrite prog_comp_env_eq in Neweq.
+  monadInv Neweq.
+  auto. }
+  symmetry in H0.
+  subst.
+  
+  (* main equal *)
+  unfold match_program in *.
+  unfold match_program_gen in *.
+  simpl in *.
+  destruct Match as [Forall [Main Public]].
+  subst.
+
+  unfold max_program_ident in *.
+  simpl in *.
+
+  destruct p';simpl in *.
+  
+
+  exists {|
+  prog_defs := combine (fst (split prog_defs1))
+                 (snd (split prog_defs0));
+  prog_public := prog_public;
+  prog_main := prog_main;
+  prog_types := prog_types;
+  prog_comp_env := prog_comp_env;
+  prog_comp_env_eq := prog_comp_env_eq0 |}.
+  apply and_comm.
+  split.
+  intros.
+
+  
+  apply H in H0.
+  destruct H0.
+  exists x. intros.
+  
+  apply H0 in H1.
+
+  clear H0 H .
+  destruct H1.
+  split. auto.
+  
+  
+
+  
+  assert ( map
+                 (fun
+                    igd : ident *
+                          globdef (Ctypes.fundef function) type =>
+                     (permu x (fst igd), snd igd)) prog_defs0 =
+          combine (fst (split prog_defs1)) (snd (split prog_defs0))
+         ).
+  admit.
+  rewrite H1.
+  auto.
+
+  simpl. 
+  
+
+Admitted.
+Theorem TransfSimplExprRLink : forall (p1 p2: Csyntax.program) (tp1 tp2: Clight.program) (p: Csyntax.program),
+    rlink_program p1 p2 p ->
+    match_prog p1 tp1 -> match_prog p2 tp2 ->
+    exists tp, rlink_program tp1 tp2 tp /\ match_prog p tp.
+Proof.
+  intros. eapply rlink_match_program;eauto.
+  - intros.
+Local Transparent Linker_fundef.
+  simpl in *; unfold link_fundef in *. inv H3; inv H4; try discriminate.
+  destruct ef; inv H2. exists (Internal tf); split; auto. constructor; auto.
+  destruct ef; inv H2. exists (Internal tf); split; auto. constructor; auto.
+  destruct (external_function_eq ef ef0 && typelist_eq targs targs0 &&
+            type_eq tres tres0 && calling_convention_eq cconv cconv0); inv H2.
+  exists (External ef targs tres cconv); split; auto. constructor.
+  - eapply transl_alpha_irrelvant.
+Qed.

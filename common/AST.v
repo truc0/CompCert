@@ -308,33 +308,6 @@ Record program (F V: Type) : Type := mkprogram {
   prog_main: ident
 }.
 
-Require Import FinFun.
-Require Import Fin.
-
-Definition bAlpha_fun (n: ident) (f: ident -> ident) :=
-  forall x, Plt x n -> Plt (f x) n.
-
-Definition bAlpha_Injective (n: ident) (f: ident -> ident) :=
-  Injective f.
-
-Definition bAlpha_surjective (n: ident) (f: ident -> ident) :=
-  Surjective f.
-
-  
-Record alpha_rename (n:ident) :=
-  alpha_rename_gen{
-      permu : ident -> ident;
-      bound : bAlpha_fun n permu;
-      injective : bAlpha_Injective n permu;
-      surjective : bAlpha_surjective n permu
-}.
-
-Definition alpha_prog {F V: Type} {n: ident} (alpha: alpha_rename n) (prog: program F V) :=
-  mkprogram (map (fun igd => (alpha.(permu) (fst igd), snd igd)) prog.(prog_defs)) prog.(prog_public) prog.(prog_main).
-
-
-Definition alpha_equiv {F V : Type} (p1 p1' : program F V) :=
-  forall n pid, exists (a: alpha_rename n), In pid p1.(prog_public) -> a.(permu) pid = pid /\ alpha_prog a p1 = p1'.
 
 Definition prog_defs_names (F V: Type) (p: program F V) : list ident :=
   List.map fst p.(prog_defs).
@@ -765,3 +738,107 @@ Inductive builtin_arg_constraint : Type :=
   | OK_addrstack
   | OK_addressing
   | OK_all.
+
+(* static variable rename : Alpha renaming*)
+
+Require Import FinFun.
+Require Import Fin.
+
+Definition bAlpha_fun (n: ident) (f: ident -> ident) :=
+  forall x, Plt x n -> Plt (f x) n.
+
+Record permutation :=
+  mkpermu{
+      permu : ident -> ident;
+      finite : exists n, forall x, Plt n x -> permu x = x;
+      injective : Injective permu;
+      surjective : Surjective permu
+}.
+  
+(* Record permutation (n:ident) := *)
+(*   mk_permutation{ *)
+(*       permu : ident -> ident; *)
+(*       bound : bAlpha_fun n permu; *)
+(*       injective : Injective permu; *)
+(*       surjective : Surjective permu *)
+(* }. *)
+
+Class Alpha (P : Type) := {
+  alpha_rename : permutation -> P -> P;
+  }.
+
+(* Definition alpha_prog {F V: Type} {n: ident} {AP : Alpha (program F V)}(alpha: permutation n) (prog: program F V) := *)
+(*   mkprogram (map (fun igd => (alpha.(permu) (fst igd), snd igd)) prog.(prog_defs)) prog.(prog_public) prog.(prog_main). *)
+
+Definition max_program_ident {F V : Type} (p: program F V):=
+  fold_left Pos.max (map fst p.(prog_defs)) 1%positive.
+
+(* Definition alpha_equiv {F V : Type} {AP : Alpha (program F V)} (p1 p1' : program F V) := *)
+(*   forall n , Pos.gt n (max_program_ident p1) -> exists (a: alpha_rename n),forall pid, In pid p1.(prog_public) -> a.(permu) pid = pid /\ alpha_prog a p1 = p1'. *)
+
+(* rename ident *)
+Instance Alpha_ident : Alpha ident :={
+  alpha_rename := fun (a:permutation) (x :ident) => a.(permu) x}.
+
+Global Opaque Alpha_ident.
+
+(* rename function definition *)
+Definition alpha_rename_fundef {F: Type} {AF : Alpha F} (a: permutation) (fd: fundef F):=
+  match fd with
+  | Internal f => Internal (alpha_rename a f)
+  | _ => fd
+  end.
+
+Instance Alpha_fundef (F: Type) {AF : Alpha F}: Alpha (fundef F) := {
+  alpha_rename := alpha_rename_fundef
+                                                                   }.
+
+Global Opaque Alpha_fundef.
+
+(* variable renaming *)
+
+Definition alpha_rename_vardef {V: Type} {AV: Alpha V} (a: permutation) (v: globvar V) :=
+  {| gvar_info := alpha_rename a v.(gvar_info);
+     gvar_init := v.(gvar_init);
+     gvar_readonly := v.(gvar_readonly);
+     gvar_volatile := v.(gvar_volatile) |}.
+
+Instance Alpha_vardef (V: Type) {AV: Alpha V} : Alpha (globvar V) :={
+  alpha_rename := alpha_rename_vardef }.
+
+Global Opaque Alpha_vardef.
+
+Instance Alpha_unit : Alpha unit :={
+  alpha_rename := fun a x => x}.
+
+Global Opaque Alpha_unit.
+
+(* renaming global definition *)
+
+Definition alpha_rename_def {F V: Type} {AF: Alpha F} {AV: Alpha V} (a: permutation) (gd: globdef F V) :=
+  match gd with
+  | Gfun f => Gfun (alpha_rename a f)
+  | Gvar v => Gvar (alpha_rename a v)
+  end.
+
+Instance Alpha_def (F V: Type) {AF: Alpha F} {AV: Alpha V} :Alpha (globdef F V) := {
+  alpha_rename := alpha_rename_def }.
+
+Global Opaque Alpha_def.
+
+Definition alpha_rename_prog {F V: Type} {AF: Alpha F} {AV: Alpha V} (a: permutation) (p: program F V) :=
+  let ids := map (alpha_rename a) (fst (split p.(prog_defs))) in
+  let defs := map (alpha_rename a) (snd (split p.(prog_defs))) in
+  {| prog_defs := combine ids defs;
+     prog_public := p.(prog_public);
+     prog_main := p.(prog_main)
+ |}.
+
+Instance Alpha_prog (F V: Type) {AF: Alpha F} {AV: Alpha V} : Alpha (program F V) :=
+  { alpha_rename:= alpha_rename_prog }.
+
+Global Opaque Alpha_prog.
+
+
+Definition alpha_equiv {F V : Type} {AF : Alpha F} {AV : Alpha V} (p1 p1' : program F V) :=
+  exists (a : permutation) , forall pid, In pid p1.(prog_public) -> a.(permu) pid = pid /\ alpha_rename a p1 = p1'.
