@@ -223,3 +223,88 @@ Definition type_of_fundef (f: fundef) : type :=
 - a proof that this environment is consistent with the definitions. *)
 
 Definition program := Ctypes.program function.
+
+(* static variable rename *)
+
+Fixpoint alpha_expr (a: permutation) (e: expr) :=
+  match e with
+  | Evar id ty => Evar (alpha_rename a id) ty
+  | Efield l f ty => Efield (alpha_expr a l) f ty
+  | Evalof l ty => Evalof (alpha_expr a l) ty            (**r l-value used as a r-value *)
+  | Ederef r ty => Ederef (alpha_expr a r) ty        (**r pointer dereference (unary [*]) *)
+  | Eaddrof l ty => Eaddrof (alpha_expr a l) ty            (**r address-of operators ([&]) *)
+  | Eunop op r ty => Eunop op (alpha_expr a r) ty
+                                            (**r unary arithmetic operation *)
+  | Ebinop op r1 r2 ty => Ebinop op (alpha_expr a r1) (alpha_expr a r2) ty
+                                           (**r binary arithmetic operation *)
+  | Ecast r ty => Ecast (alpha_expr a r) ty                    (**r type cast [(ty)r] *)
+  | Eseqand r1 r2 ty => Eseqand (alpha_expr a r1) (alpha_expr a r2) ty      (**r sequential "and" [r1 && r2] *)
+  | Eseqor r1 r2 ty => Eseqor (alpha_expr a r1) (alpha_expr a r2) ty        (**r sequential "or" [r1 || r2] *)
+  | Econdition r1 r2 r3 ty => Econdition (alpha_expr a r1) (alpha_expr a r2) (alpha_expr a r3) ty  (**r conditional [r1 ? r2 : r3] *)
+  | Eassign l r ty => Eassign (alpha_expr a l) (alpha_expr a r) ty         (**r assignment [l = r] *)
+  | Eassignop op l r tyres ty => Eassignop op (alpha_expr a l) (alpha_expr a r) tyres ty
+                                  (**r assignment with arithmetic [l op= r] *)
+  | Epostincr id l ty => Epostincr id (alpha_expr a l) ty
+                         (**r post-increment [l++] and post-decrement [l--] *)
+  | Ecomma r1 r2 ty => Ecomma (alpha_expr a r1) (alpha_expr a r2) ty       (**r sequence expression [r1, r2] *)
+  | Ecall r1 rargs ty => Ecall (alpha_expr a r1) ((alpha_exprlist a) rargs) ty
+                                             (**r function call [r1(rargs)] *)
+  | Ebuiltin ef tyargs rargs ty => Ebuiltin ef tyargs ((alpha_exprlist a) rargs) ty
+                                                 (**r builtin function call *)
+  | Eparen r tycast ty => Eparen (alpha_expr a r) tycast ty  (**r marked subexpression *)
+  | _ => e
+end
+  with alpha_exprlist (a: permutation) (el : exprlist) :=
+         match el with
+         | Econs r1 rl => Econs (alpha_expr a r1) (alpha_exprlist a rl)
+         | Enil => Enil
+         end.
+
+Instance Alpha_expr :Alpha expr:=
+  {alpha_rename:= alpha_expr}.
+
+Global Opaque Alpha_expr.
+ 
+Fixpoint alpha_statement (a: permutation) (stmt: statement) :=
+  match stmt with
+  | Sskip => stmt               (**r do nothing *)
+  | Sdo e => Sdo (alpha_rename a e)            (**r evaluate expression for side effects *)
+  | Ssequence s1 s2 => Ssequence (alpha_statement a s1) (alpha_statement a s2)  (**r sequence *)
+  | Sifthenelse e s1 s2 => Sifthenelse (alpha_rename a e) (alpha_statement a s1) (alpha_statement a s2) (**r conditional *)
+  | Swhile e s => Swhile (alpha_rename a e) (alpha_statement a s)   (**r [while] loop *)
+  | Sdowhile e s => Sdowhile (alpha_rename a e) (alpha_statement a s) (**r [do] loop *)
+  | Sfor s1 e s2 s3 => Sfor (alpha_statement a s1) (alpha_rename a e) (alpha_statement a s2) (alpha_statement a s3) (**r [for] loop *)
+  | Sbreak => stmt                    (**r [break] statement *)
+  | Scontinue => stmt                 (**r [continue] statement *)
+  | Sreturn oe =>
+    match oe with
+    |Some e => Sreturn (Some (alpha_rename a e))
+    |None => Sreturn None
+    end(**r [return] statement *)
+  | Sswitch e ls => Sswitch (alpha_rename a e) (alpha_labeled_statements a ls)  (**r [switch] statement *)
+  | Slabel lb s => Slabel lb (alpha_statement a s) 
+  | Sgoto lb => stmt
+                 end
+with alpha_labeled_statements (a: permutation) (ls: labeled_statements) :=            (**r cases of a [switch] *)
+       match ls with
+   | LSnil => LSnil
+   | LScons z stmt ls' => LScons z (alpha_statement a stmt) (alpha_labeled_statements a ls')
+       end. 
+
+Instance Alpha_statement : Alpha statement :=
+  {| alpha_rename := alpha_statement |}.
+
+Global Opaque  Alpha_statement.
+
+Definition alpha_function (a: permutation) (f: function) :=
+  {| fn_return := f.(fn_return);
+     fn_callconv := f.(fn_callconv);
+     fn_params := map (fun p => ((alpha_rename a (fst p)), snd p)) f.(fn_params);
+     fn_vars := map (fun v => ((alpha_rename a (fst v)), snd v)) f.(fn_vars);
+     fn_body := alpha_rename a f.(fn_body) |}.
+
+Instance Alpha_function : Alpha function :=
+  {| alpha_rename := alpha_function |}.
+
+Global Opaque Alpha_function.
+
