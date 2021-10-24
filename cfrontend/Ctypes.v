@@ -1570,82 +1570,145 @@ Local Transparent Linker_program.
   unfold program_of_program; simpl. destruct pp, tpp; exact MP.
 Qed.
 
-(* Hypothesis TRANSL_ALPHA : forall p p' tp, *)
-(*     alpha_equiv p p' -> match_program p tp -> exists tp', match_program p' tp' /\ alpha_equiv tp tp'. *)
 
-(* Theorem rlink_match_program: *)
-(*   forall p1 p2 tp1 tp2 p, *)
-(*   rlink_program p1 p2 p -> match_program p1 tp1 -> match_program p2 tp2 -> *)
-(*   exists tp, rlink_program tp1 tp2 tp /\ match_program p tp. *)
-(* Proof. *)
-(*   intros. *)
-(*   unfold rlink_program in *. *)
-(*   destruct H as [p1'[p2' [Alpha_p1 [Alpha_p2 Alpha_link]]]]. *)
-(*   destruct (TRANSL_ALPHA _ _ _ Alpha_p1 H0) as [tp1' [Alpha_match1 Alpha_tp1']]. *)
-(*   destruct (TRANSL_ALPHA _ _ _ Alpha_p2 H1) as [tp2' [Alpha_match2 Alpha_tp2']]. *)
-(*   destruct (link_match_program _ _ _ _ _ Alpha_link Alpha_match1 Alpha_match2) as [? [? ?]]. *)
-(*   eexists. *)
-(*   split. *)
-(*   do 2 eexists.  *)
-(*   eauto. *)
-(*   auto. *)
-(* Qed. *)
 
 End LINK_MATCH_PROGRAM.
+
+
+
+Section ALPHA_PROG.
+
+        
+  Context {F V: Type} {AF: Alpha F} {AV: Alpha V}.
+  Context {ALF: Alpha (list F)} {ALV: Alpha (list V)}.
+
+Hypothesis alpha_F_soundness : forall (f1 f2:F) sup, alpha_equiv sup f1 f2 -> exists a, (forall x, In x sup -> alpha_rename a x = x) /\ alpha_rename a f1 = f2.
+
+Hypothesis alpha_F_completeness : forall (f1 f2:F) sup, (exists a, (forall x, In x sup -> alpha_rename a x = x) /\ alpha_rename a f1 = f2) -> alpha_equiv sup f1 f2.
+
+Hypothesis alpha_list_F_soundness : forall (lf1 lf2: list F) sup, alpha_equiv sup lf1 lf2 -> exists a, (forall x, In x sup -> alpha_rename a x = x) /\ map (alpha_rename a) lf1 = lf2.
+
+Hypothesis alpha_list_F_completeness : forall (lf1 lf2: list F) sup , (exists a, (forall x, In x sup -> alpha_rename a x = x) /\ map (alpha_rename a) lf1 = lf2) -> alpha_equiv sup lf1 lf2.
 
 
 (* static variable renaming *)
 
 (* composite definition renaming *)
-Definition alpha_composite (a:permutation) (comp : composite_definition) : composite_definition :=
+Definition alpha_rename_composite (a:permutation) (comp : composite_definition) : composite_definition :=
   match comp with
   | Composite id us mems attr =>
     let mems' := combine (map (alpha_rename a) (fst (split mems))) (snd (split mems)) in
     Composite (alpha_rename a id) us mems' attr
   end.
 
-Instance Alpha_composite : Alpha composite_definition :=
-  { alpha_rename := alpha_composite }.
+(* unused *)
+Program Instance Alpha_composite : Alpha composite_definition :=
+  { alpha_rename := alpha_rename_composite;
+    alpha_equiv := fun sup comp1 comp2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_rename_composite a comp1 = comp2
+  }.
+Next Obligation.
+  Admitted.
+Next Obligation.
+  Admitted.
+Next Obligation.
+  Admitted.
 
 Global Opaque Alpha_composite.
 
-Definition alpha_fundef {F: Type} {AF: Alpha F} (a: permutation) (fd: fundef F) :=
+(* list composite type *)
+
+Definition alpha_rename_list_compiste (a:permutation) (l: list composite_definition) :=
+  map (alpha_rename a) l.
+
+Program Instance Alpha_list_composite : Alpha (list composite_definition) :=
+  { alpha_rename := alpha_rename_list_compiste;
+    alpha_equiv := fun sup l1 l2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_rename_list_compiste a l1 = l2}.
+Next Obligation.
+  Admitted.
+Next Obligation.
+  Admitted.
+Next Obligation.
+  Admitted.
+
+Global Opaque Alpha_list_composite.
+
+Definition alpha_rename_fundef (a: permutation) (fd: fundef F) :=
   match fd with
   | Internal f => Internal (alpha_rename a f)
   | _ => fd
   end.
 
-Instance Alpha_fundef {F: Type} {AF: Alpha F} : Alpha (fundef F) :=
-  { alpha_rename:= alpha_fundef }.
+Program Instance Alpha_rename_fundef : Alpha (fundef F) :=
+  { alpha_rename := alpha_rename_fundef;
+    alpha_equiv := fun sup f1 f2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_rename_fundef a f1 = f2
+  }.
+Next Obligation.
+  Admitted.
+Next Obligation.
+  Admitted.
+Next Obligation.
+  Admitted.
 
-Global Opaque Alpha_fundef.
+Global Opaque Alpha_rename_fundef.
 
-Definition alpha_def {F: Type} {AF: Alpha F} (a: permutation) (g: globdef (fundef F) type) :=
+Definition alpha_rename_list_fundef (a:permutation) (l: list (fundef F)) :=
+  map (alpha_rename a) l.
+
+Program Instance Alpha_list_fundef : Alpha (list (fundef F)) :=
+  { alpha_rename := alpha_rename_list_fundef;
+    alpha_equiv := fun sup l1 l2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_rename_list_fundef a l1 = l2}.
+Next Obligation.
+  Admitted.
+Next Obligation.
+  Admitted.
+Next Obligation.
+  Admitted.
+
+Global Opaque Alpha_list_fundef.
+
+
+Definition alpha_rename_def (a: permutation) (g: globdef (fundef F) type) :=
   match g with
   | Gfun f => Gfun (alpha_rename a f) 
   | Gvar v => Gvar v
   end.
 
-Instance Alpha_def {F: Type} {AF: Alpha F} :Alpha (globdef (fundef F) type) :=
-  { alpha_rename:= alpha_def }.
+Program Instance Alpha_def : Alpha (globdef (fundef F) type) :=
+  { alpha_rename:= alpha_rename_def;
+    alpha_equiv := fun sup d1 d2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_rename_def a d1 = d2
+  }.
+Next Obligation.
+  Admitted.
+Next Obligation.
+  Admitted.
+Next Obligation.
+  Admitted.
 
 Global Opaque Alpha_def.
 
-(* Lemma alpha_composite_correct : forall (F:Type) (p:program F) a, exists comp_env, *)
-(*       build_composite_env (map (alpha_rename a) p.(prog_types)) = OK comp_env. *)
-(* intros. *)
-(* destruct p. *)
-(* destruct a. simpl. *)
-(* unfold build_composite_env in *. *)
-(* Admitted. *)
+Definition alpha_rename_list_def (a:permutation) (l: list (globdef (fundef F) type)) :=
+  map (alpha_rename a) l.
+
+Program Instance Alpha_list_def : Alpha (list (globdef (fundef F) type)) :=
+  { alpha_rename := alpha_rename_list_def;
+    alpha_equiv := fun sup l1 l2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_rename_list_def a l1 = l2}.
+Next Obligation.
+  Admitted.
+Next Obligation.
+  Admitted.
+Next Obligation.
+  Admitted.
+
+Global Opaque Alpha_list_def.
+
 
 (* here we do not rename composite because it demand that we should 
    define rename for PTree
  *)
 
-Program Definition  alpha_prog {F: Type} {AF: Alpha F} (a: permutation) (p: program F) : (program F) :=
-  let ids := map (alpha_rename a) (fst (split p.(prog_defs))) in
-  let defs := map (alpha_rename a) (snd (split p.(prog_defs))) in
+Program Definition  alpha_rename_prog (a: permutation) (p: program F) : (program F) :=
+  let ids := alpha_rename a (fst (split p.(prog_defs))) in
+  let defs := alpha_rename a (snd (split p.(prog_defs))) in
   (* let types := map (alpha_rename a) p.(prog_types) in *)
   {| prog_defs := combine ids defs;
      prog_public := p.(prog_public);
@@ -1662,19 +1725,99 @@ Next Obligation.
   auto.
 Defined.
 
-Instance Alpha_prog {F: Type} {AF: Alpha F} : Alpha (program F):=
-  { alpha_rename := alpha_prog }.
+Program Instance Alpha_prog : Alpha (program F) :=
+  { alpha_rename := alpha_rename_prog;
+    alpha_equiv := fun sup p1 p2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_rename_prog a p1 = p2}.
+Next Obligation.
+  Admitted.
+Next Obligation.
+  Admitted.
+Next Obligation.
+Admitted.
 
 Global Opaque Alpha_prog.
 
-Definition max_program_ident {F : Type} (p: program F):=
-  fold_left Pos.max (map fst p.(prog_defs)) 1%positive.
-
-
-Definition alpha_equiv {F : Type} {AF : Alpha F} (p1 p1' : program F) :=
-  exists (a : permutation) , forall pid, In pid p1.(prog_public) -> a.(permu) pid = pid /\ alpha_rename a p1 = p1'.
-
+Lemma alpha_sup_exchange: forall p1 p2, alpha_equiv p1.(prog_public) p1 p2 <-> alpha_equiv p2.(prog_public) p1 p2.
+  Transparent Alpha_prog.
+  split;simpl.
+  intros. destruct H as [a [? ?]].
+  exists a. split;auto.
+  unfold alpha_rename_prog in H0.
+  destruct p1. destruct p2. simpl in *.
+  inversion H0.
+  subst.
+  auto.
   
-Definition rlink_program {F: Type} {AF : Alpha F} (p1 p2 p: program F) : Prop :=
-  exists p1' p2', alpha_equiv p1 p1' /\ alpha_equiv p2 p2' /\ link p1' p2' = Some p. 
+  intros. destruct H as [a [? ?]].
+  exists a. split;auto.
+  unfold alpha_rename_prog in H0.
+  destruct p1. destruct p2. simpl in *.
+  inversion H0.
+  subst.
+  auto.
+Qed.
+
+Lemma alpha_prog_public: forall p1 p2 sup, alpha_equiv sup p1 p2 -> p1.(prog_public) = p2.(prog_public).
+  Transparent Alpha_prog.
+  simpl.
+  unfold alpha_rename_prog.
+  destruct p1. destruct p2. simpl.
+  intros. destruct H as [? [? ?]].
+  inversion H0. auto.
+Qed.
+
+End ALPHA_PROG.
+
+
+Definition rlink_program  {F:Type} {AP: Alpha (program F)} (p1 p2 p: program F) : Prop :=
+  exists p1' p2', alpha_equiv p1.(prog_public) p1 p1' /\ alpha_equiv p2.(prog_public) p2 p2' /\ link p1' p2' = Some p. 
+
+
+(* Definition max_program_ident {F : Type} (p: program F):= *)
+(*   fold_left Pos.max (map fst p.(prog_defs)) 1%positive. *)
+
+Class AlphaLink {P: Type} {LP: Linker P} {AP: Alpha P} (get_sup: P -> list ident):=
+  alpha_link:
+    forall p1 p2 p1' p2' p p', alpha_equiv (get_sup p1) p1 p1' -> alpha_equiv (get_sup p2) p2 p2' -> link p1 p2 = Some p -> link p1' p2' = Some p' -> alpha_equiv (get_sup p) p p'.
+
+
+Section RLINK_MATCH_PROGRAM.
+  Context {F G: Type} {AP1: Alpha (program F)} {AP2: Alpha (program G)}.
+  Variable match_fundef: fundef F -> fundef G -> Prop.
+
+  Let match_program (p: program F) (tp: program G) : Prop :=
+    Linking.match_program (fun ctx f tf => match_fundef f tf) eq p tp
+    /\ prog_types tp = prog_types p.
+
+
+  Hypothesis link_match_fundef:
+    forall f1 tf1 f2 tf2 f,
+      link f1 f2 = Some f ->
+      match_fundef f1 tf1 -> match_fundef f2 tf2 ->
+      exists tf, link tf1 tf2 = Some tf /\ match_fundef f tf.
+
+  Hypothesis TRANSL_ALPHA : forall p p' tp,
+    alpha_equiv p.(prog_public) p p' -> match_program p tp -> exists tp', match_program p' tp' /\ alpha_equiv tp.(prog_public) tp tp'.
+
+Theorem rlink_match_program:
+  forall p1 p2 tp1 tp2 p,
+  rlink_program p1 p2 p -> match_program p1 tp1 -> match_program p2 tp2 ->
+  exists tp, rlink_program tp1 tp2 tp /\ match_program p tp.
+Proof.
+  intros.
+  unfold rlink_program in *.
+  destruct H as [p1'[p2' [Alpha_p1 [Alpha_p2 Alpha_link]]]].
+  destruct (TRANSL_ALPHA _ _ _ Alpha_p1 H0) as [tp1' [Alpha_match1 Alpha_tp1']].
+  destruct (TRANSL_ALPHA _ _ _ Alpha_p2 H1) as [tp2' [Alpha_match2 Alpha_tp2']].
+  destruct (link_match_program match_fundef link_match_fundef  _ _ _ _ _ Alpha_link Alpha_match1 Alpha_match2) as [? [? ?]].
+  eexists.
+  split.
+  do 2 eexists.
+  eauto.
+  auto.
+Qed.
+
+End RLINK_MATCH_PROGRAM.
+
+
   

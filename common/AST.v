@@ -764,6 +764,58 @@ Record permutation :=
 (*       surjective : Surjective permu *)
 (* }. *)
 
+
+(* rename ident symmetry property *)
+
+Lemma permutation_trans: forall a1 a2, exists a3, forall x y z, a1.(permu) x = y -> a2.(permu) y = z -> a3.(permu) x = z.
+Proof.
+  intros. destruct a1. destruct a2.
+  simpl.
+  assert (finite: exists n, forall x, Plt n x -> (fun x => permu1 (permu0 x)) x = x). { destruct finite0. destruct finite1.
+   exists (Pos.max x x0). 
+   intros.
+   apply Pos.max_lub_lt_iff in H1.
+   destruct H1.
+   apply H in H1. rewrite H1.
+   apply H0 in H2. auto. }
+                                                                        assert (bij: Bijective (fun x => permu1 (permu0 x))).                     { unfold Bijective in *. 
+   destruct bijective0 as [f1 [? ?]]. destruct bijective1 as [f2 [? ?]].
+   exists (fun x => f1 (f2 x)). split;intros.
+   generalize (H1 (permu0 x)). intros.
+   rewrite H3. apply H.
+   generalize (H0 (f2 y)). intros. 
+   rewrite H3.
+   apply H2. }                                                          exists {| permu:= (fun x => permu1 (permu0 x));
+      finite:= finite;                                                       bijective := bij |}.                      
+  intros.
+  simpl.
+  rewrite H. auto.
+Qed.  
+
+       
+(* special permutation: identity function *)
+
+Definition ident_identity := fun (x:ident) => x.
+
+Definition ident_identity_bijective: Bijective ident_identity.
+Proof.
+  unfold Bijective.
+  exists ident_identity.
+  auto.
+Qed.
+
+Definition ident_identity_finite : exists n, forall x, Plt n x -> ident_identity x = x.
+exists 1%positive.
+auto.
+Qed.
+
+Program Definition identity_permutation :=
+  {| permu := ident_identity;
+     finite := ident_identity_finite;
+     bijective := ident_identity_bijective |}.
+
+
+
 Definition support := list ident.
 
 Class Alpha (P : Type) := {
@@ -786,22 +838,53 @@ Definition max_program_ident {F V : Type} (p: program F V):=
 (* rename ident *)
 Program Instance Alpha_ident : Alpha ident :={
   alpha_rename := fun (a:permutation) (x :ident) => a.(permu) x;
-  alpha_equiv := fun _ => Pos.eq }.
+  alpha_equiv := fun sup i j => exists a, (forall x , In x sup -> a.(permu) x = x) /\ i = j}.
 Next Obligation.
-  apply Pos.eq_refl.
+  exists identity_permutation. split;auto.
 Defined.
 Next Obligation.
-  apply Pos.eq_sym. auto.
+  exists identity_permutation. split;auto.
 Defined.
 Next Obligation.
-  eapply Pos.eq_trans in H.
-  apply H in H0. subst.
-  apply Pos.eq_refl. 
+  exists identity_permutation. split;auto.
 Defined.
 
 Global Opaque Alpha_ident.
 
-(* rename ident symmetry property *)
+Program Instance Alpha_list_ident : Alpha (list ident) :=
+  { alpha_rename := fun (a: permutation) (l: list ident) => map (alpha_rename a) l;
+    alpha_equiv := fun sup l1  l2 =>  exists a, (forall x , In x sup -> a.(permu) x = x) /\ l1 = l2}.
+Next Obligation.
+  exists identity_permutation. split;auto.
+Defined.
+Next Obligation.
+  exists identity_permutation. split;auto.
+Defined.
+Next Obligation.
+  exists identity_permutation. split;auto.
+Defined.
+
+Global Opaque Alpha_list_ident.
+
+(* unit renaming *)
+
+Program Instance Alpha_unit : Alpha unit :=
+  { alpha_rename := fun a x => x;
+    alpha_equiv := fun sup u1 u2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ (fun a x => x) a u1 = u2
+  }.
+Next Obligation.
+  exists identity_permutation. split;auto.
+Defined.
+Next Obligation.
+  exists identity_permutation. split;auto.
+Defined.
+Next Obligation.
+  exists identity_permutation. split;auto.
+Defined.
+
+Global Opaque Alpha_unit.
+
+
 Lemma permutation_bijective : forall a, exists a', forall x y, alpha_rename a x = y -> alpha_rename a' y = x.
 Proof.
   unfold alpha_rename.
@@ -839,42 +922,57 @@ Proof.
   auto.
 Qed.
 
-(* special permutation: identity function *)
-
-Definition ident_identity := fun (x:ident) => x.
-
-Definition ident_identity_bijective: Bijective ident_identity.
-Proof.
-  unfold Bijective.
-  exists ident_identity.
-  auto.
-Qed.
-
-Definition ident_identity_finite : exists n, forall x, Plt n x -> ident_identity x = x.
-exists 1%positive.
-auto.
-Qed.
-
-Program Definition identity_permutation :=
-  {| permu := ident_identity;
-     finite := ident_identity_finite;
-     bijective := ident_identity_bijective |}.
 
 (* renaming program, we have Context AF which indicate F has alpha_equiv property *)
 Section ALPHA_PROG.
 
-Context {F: Type} {AF: Alpha F}.
+  Context {F V: Type} {AF: Alpha F} {AV: Alpha V}.
+  Context {ALF: Alpha (list F)} {ALV: Alpha (list V)}.
 
 Hypothesis alpha_F_soundness : forall (f1 f2:F) sup, alpha_equiv sup f1 f2 -> exists a, (forall x, In x sup -> alpha_rename a x = x) /\ alpha_rename a f1 = f2.
 
 Hypothesis alpha_F_completeness : forall (f1 f2:F) sup, (exists a, (forall x, In x sup -> alpha_rename a x = x) /\ alpha_rename a f1 = f2) -> alpha_equiv sup f1 f2.
 
+Hypothesis alpha_V_soundness : forall (f1 f2:V) sup, alpha_equiv sup f1 f2 -> exists a, (forall x, In x sup -> alpha_rename a x = x) /\ alpha_rename a f1 = f2.
 
+Hypothesis alpha_V_completeness : forall (f1 f2:V) sup, (exists a, (forall x, In x sup -> alpha_rename a x = x) /\ alpha_rename a f1 = f2) -> alpha_equiv sup f1 f2.
+
+Hypothesis alpha_list_F_soundness : forall (lf1 lf2: list F) sup, alpha_equiv sup lf1 lf2 -> exists a, (forall x, In x sup -> alpha_rename a x = x) /\ map (alpha_rename a) lf1 = lf2.
+
+Hypothesis alpha_list_F_completeness : forall (lf1 lf2: list F) sup , (exists a, (forall x, In x sup -> alpha_rename a x = x) /\ map (alpha_rename a) lf1 = lf2) -> alpha_equiv sup lf1 lf2.
+
+Hypothesis alpha_list_V_soundness : forall (lf1 lf2: list V) sup, alpha_equiv sup lf1 lf2 -> exists a, (forall x, In x sup -> alpha_rename a x = x) /\ map (alpha_rename a) lf1 = lf2.
+
+Hypothesis alpha_list_V_completeness : forall (lf1 lf2: list V) sup , (exists a, (forall x, In x sup -> alpha_rename a x = x) /\ map (alpha_rename a) lf1 = lf2) -> alpha_equiv sup lf1 lf2.
+
+(* list F alpha renaming must be in context *)
+(* (* list F *) *)
+(* Definition alpha_rename_list_F (a: permutation) (l: list F) := *)
+(*   map (alpha_rename a) l. *)
+
+(* Program Instance Alpha_list_F : Alpha (list F) := *)
+(*   {| alpha_rename := alpha_rename_list_F; *)
+(*      alpha_equiv := fun sup l1 l2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_rename_list_F a l1 = l2 |}.  *)
+(* Next Obligation. *)
+(*   unfold alpha_rename_list_F. *)
+(*   induction p. *)
+(*   simpl. exists identity_permutation;split;auto. *)
+(*   simpl.  *)
+  
 (* rename function definition *)
-Definition alpha_rename_fundef {F: Type} {AF : Alpha F} (a: permutation) (fd: fundef F):=
+Definition alpha_rename_fundef (a: permutation) (fd: fundef F):=
   match fd with
   | Internal f => Internal (alpha_rename a f)
   | _ => fd
+  end.
+
+Fixpoint fundef_list_to_F_list (l: list (fundef F)) :=
+  match l with
+  | nil => nil
+  | fd :: l' => match fd with
+             | Internal f => f :: fundef_list_to_F_list l'
+             | _ => fundef_list_to_F_list l'
+              end
   end.
 
 Program Instance Alpha_fundef : Alpha (fundef F) := {
@@ -925,83 +1023,223 @@ Next Obligation.
   exists identity_permutation. split;auto.
 Defined.
 
-(* variable renaming *)
+Definition alpha_rename_list_fundef (a: permutation) (lf: list (fundef F)) :=
+  map (alpha_rename a) lf.
 
-Definition alpha_rename_vardef {V: Type} {AV: Alpha V} (a: permutation) (v: globvar V) :=
+Program Instance Alpha_list_fundef : Alpha (list (fundef F)) :=
+  {| alpha_rename := alpha_rename_list_fundef;
+     alpha_equiv := fun sup l1 l2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_rename_list_fundef a l1 = l2 |}.
+Next Obligation.
+  unfold alpha_rename_list_fundef.
+  simpl. 
+  destruct ALF.
+  generalize (alpha_equiv_ref0 (fundef_list_to_F_list p) sup).
+  intros.
+  apply alpha_list_F_soundness in H.
+  destruct H as [a [? ?]].
+  exists a. split;auto.
+  (* induction on p *)
+  induction p.
+  auto.
+  simpl in *.
+  destruct a0; simpl in *.
+  inversion H0. apply IHp in H3.
+  rewrite H3. rewrite H2. rewrite H2. auto.
+  apply IHp in H0. rewrite H0;auto.
+Defined.
+Next Obligation.
+  unfold alpha_rename_list_fundef.
+  simpl.
+  destruct ALF.
+  Admitted.
+Next Obligation. Admitted. 
+
+  (* variable renaming *)
+  
+Definition alpha_rename_vardef (a: permutation) (v: globvar V) :=
   {| gvar_info := alpha_rename a v.(gvar_info);
      gvar_init := v.(gvar_init);
      gvar_readonly := v.(gvar_readonly);
      gvar_volatile := v.(gvar_volatile) |}.
 
-Instance Alpha_vardef (V: Type) {AV: Alpha V} : Alpha (globvar V) :={
-  alpha_rename := alpha_rename_vardef }.
+Program Instance Alpha_vardef : Alpha (globvar V) :=
+  { alpha_rename := alpha_rename_vardef;
+    alpha_equiv := fun sup v1 v2 => exists a, (forall x, In x sup -> a.(permu) x = x)/\ alpha_rename_vardef a v1 = v2; 
+  }.
+Next Obligation.
+  unfold alpha_rename_vardef.
+  destruct p;simpl.
+  destruct AV. 
+  unfold alpha_rename in *.
+  generalize (alpha_equiv_ref0 gvar_info0 sup). intros.
+  generalize (alpha_V_soundness gvar_info0 sup H). intros.
+  destruct H0 as [a [? ?]].
+  exists a. split.
+  auto. unfold alpha_rename_vardef. simpl.
+  rewrite H1. auto.
+Defined.
+Next Obligation.
+  destruct p1;simpl;auto.
+  unfold alpha_rename_vardef;simpl.
+  destruct AV.  
+  unfold alpha_rename in *;simpl in *.
+  rename gvar_info0 into f.
+  assert (alpha_equiv0 sup f (alpha_rename0 H f)).
+  {
+    apply alpha_V_completeness.
+    exists H. auto. }
+  apply alpha_equiv_sym0 in H1.
+  apply alpha_V_soundness in H1.
+  destruct H1. destruct H1. 
+  exists x. split;auto. rewrite H2. auto.
+Defined.
+Next Obligation.
+  unfold alpha_rename_vardef.
+  destruct p1;simpl;auto.
+  (* internal *)
+  destruct AV.
+  unfold alpha_rename in *;simpl in *.
+  rename gvar_info0 into f.
+  assert (alpha_equiv0 sup f (alpha_rename0 H f)).  apply alpha_V_completeness. exists H. auto.
+  assert (alpha_equiv0 sup (alpha_rename0 H f) (alpha_rename0 H0 (alpha_rename0 H f))). apply alpha_V_completeness. exists H0. auto.
+  generalize (alpha_equiv_trans0 _ _ _ _ H2 H4).
+  intros.
+  apply alpha_V_soundness in H5.
+  destruct H5. destruct H5. exists x. split;auto.
+  rewrite H6;auto.
+Defined.
 
 Global Opaque Alpha_vardef.
 
-Instance Alpha_unit : Alpha unit :={
-  alpha_rename := fun a x => x}.
+Definition alpha_rename_list_vardef (a: permutation) (l: list (globvar V)) :=
+  map (alpha_rename a) l.
 
-Global Opaque Alpha_unit.
+Program Instance Alpha_list_vardef :Alpha (list (globvar V)) :=
+  {| alpha_rename := alpha_rename_list_vardef;
+     alpha_equiv := fun sup l1 l2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_rename_list_vardef a l1 = l2 |}.
+Next Obligation.
+  Admitted.
+Next Obligation.
+  Admitted.
+Next Obligation.
+  Admitted.
+
+Global Opaque Alpha_list_vardef.
 
 (* renaming global definition *)
 
-Definition alpha_rename_def {F V: Type} {AF: Alpha F} {AV: Alpha V} (a: permutation) (gd: globdef F V) :=
+Definition alpha_rename_def (a: permutation) (gd: globdef F V) :=
   match gd with
   | Gfun f => Gfun (alpha_rename a f)
   | Gvar v => Gvar (alpha_rename a v)
   end.
 
-Instance Alpha_def (F V: Type) {AF: Alpha F} {AV: Alpha V} :Alpha (globdef F V) := {
-  alpha_rename := alpha_rename_def }.
+Program Instance Alpha_def  : Alpha (globdef F V) := 
+ { alpha_rename := alpha_rename_def;
+   alpha_equiv := fun sup d1 d2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_rename_def a d1 = d2
+ }.
+Next Obligation.
+  destruct p;simpl in *;auto;
+  unfold alpha_rename_vardef;simpl.
+  (* fundef *)
+  destruct AF.
+  unfold alpha_rename in *;simpl in *.
+  generalize (alpha_equiv_ref0 f sup). intros.
+  generalize (alpha_F_soundness f sup H). intros.
+  destruct H0 as [a [? ?]].
+  exists a. split.
+  auto. rewrite H1. auto.
+  (* vardef *)
+  Transparent Alpha_vardef.
+  generalize (alpha_equiv_ref v sup).
+  intros.
+  simpl in *.
+  destruct H as [a [? ?]].
+  exists a. split;auto.
+  rewrite H0;auto.
+Defined.
+Next Obligation.
+  Transparent Alpha_fundef.
+  destruct p1;simpl;auto.  
+  destruct AF.  
+  unfold alpha_rename in *;simpl in *.
+  assert (alpha_equiv0 sup f (alpha_rename0 H f)).
+  {
+    apply alpha_F_completeness.
+    exists H. auto. }
+  apply alpha_equiv_sym0 in H1.
+  apply alpha_F_soundness in H1.
+  destruct H1. destruct H1. 
+  exists x. split;auto. rewrite H2. auto.
+  (* vardef *)
+  Transparent Alpha_vardef.
+  assert (alpha_equiv sup v (alpha_rename_vardef H v)).
+  simpl.  exists H. split;auto.
+  generalize (alpha_equiv_sym _ _ sup H1).
+  intros. generalize (alpha_equiv_sym _ _ _ H2).
+  intros. simpl in *. destruct H2 as [a [? ?]].
+  exists a. split;auto. rewrite H4. auto.
+Defined.
+Next Obligation.
+  Transparent Alpha_fundef.
+  Transparent Alpha_vardef.
+  destruct p1;simpl;auto.
+  (* fundef *)
+  destruct AF.
+  unfold alpha_rename in *;simpl in *.
+  assert (alpha_equiv0 sup f (alpha_rename0 H f)).  apply alpha_F_completeness. exists H. auto.
+  assert (alpha_equiv0 sup (alpha_rename0 H f) (alpha_rename0 H0 (alpha_rename0 H f))). apply alpha_F_completeness. exists H0. auto.
+  generalize (alpha_equiv_trans0 _ _ _ _ H2 H4).
+  intros.
+  apply alpha_F_soundness in H5.
+  destruct H5. destruct H5. exists x. split;auto.
+  rewrite H6;auto.
+  (* vardef *)
+  assert (alpha_equiv sup v (alpha_rename H v)). simpl. exists H. split;auto. 
+  assert (alpha_equiv sup (alpha_rename H v) (alpha_rename H0 (alpha_rename H v))). simpl. exists H0. split;auto.
+  generalize (alpha_equiv_trans _ _ _ _ H2 H4).
+  intros. simpl in *. destruct H5 as [a [? ?]].
+  exists a. split;auto.
+  rewrite H6;auto.
+Defined.
+  
 
 Global Opaque Alpha_def.
 
-Definition alpha_rename_prog {F V: Type} {AF: Alpha F} {AV: Alpha V} (a: permutation) (p: program F V) :=
-  let ids := map (alpha_rename a) (fst (split p.(prog_defs))) in
-  let defs := map (alpha_rename a) (snd (split p.(prog_defs))) in
+Definition alpha_rename_list_def (a: permutation) (l: list (globdef F V)) :=
+  map (alpha_rename a) l.
+
+Program Instance Alpha_list_def :Alpha (list (globdef F V)) :=
+  {| alpha_rename := alpha_rename_list_def;
+     alpha_equiv := fun sup l1 l2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_rename_list_def a l1 = l2 |}.
+Next Obligation.
+  Admitted.
+Next Obligation.
+  Admitted.
+Next Obligation.
+  Admitted.
+
+Global Opaque Alpha_list_def.
+
+Definition alpha_rename_prog (a: permutation) (p: program F V) :=
+  let ids := alpha_rename a (fst (split p.(prog_defs))) in
+  let defs := alpha_rename a (snd (split p.(prog_defs))) in
   {| prog_defs := combine ids defs;
      prog_public := p.(prog_public);
      prog_main := p.(prog_main)
  |}.
 
-Instance Alpha_prog (F V: Type) {AF: Alpha F} {AV: Alpha V} : Alpha (program F V) :=
-  { alpha_rename:= alpha_rename_prog }.
+Program Instance Alpha_prog : Alpha (program F V) :=
+  { alpha_rename:= alpha_rename_prog;
+    alpha_equiv := fun sup p1 p2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_rename_prog a p1 = p2; 
+  }.
+Next Obligation.
+  Admitted.
+Next Obligation.
+  Admitted.
+Next Obligation.
+  Admitted.
 
 Global Opaque Alpha_prog.
 
-
-Definition alpha_equiv {F V : Type} {AF : Alpha F} {AV : Alpha V} (p1 p1' : program F V) :=
-  exists (a : permutation) , (forall pid, In pid p1.(prog_public) -> a.(permu) pid = pid) /\ alpha_rename a p1 = p1'.
-
-
-(* Lemma alpha_equiv_symmetry : forall p1 p2, alpha_equiv p1 p2 -> alpha_equiv p2 p1. *)
-(* Proof. *)
-(*   Transparent Alpha_prog Alpha_ident. *)
-(*   unfold alpha_equiv. *)
-(*   intros. *)
-(*   destruct H. *)
-(*   generalize (alpha_ident_symmetry x). *)
-(*   intros. *)
-(*   destruct H0. *)
-(*   exists x0. *)
-(*   split. *)
-(*   - intros. *)
-(*     destruct H. *)
-(*     generalize (H pid). *)
-(*     intros. *)
-(*     unfold alpha_rename in *. *)
-(*     simpl in *. *)
-(*     unfold alpha_rename_prog in H2. *)
-(*     subst. simpl in *. *)
-(*     apply H3 in H1. *)
-(*     apply H0 in H1. *)
-(*     auto. *)
-(*   -destruct H. *)
-(*     unfold alpha_rename in *. *)
-(*     simpl in *. *)
-(*     unfold alpha_rename_prog in *. *)
-(*     simpl in *. *)
-(*     subst. *)
-(*     simpl in *. *)
-(*     unfold alpha_rename. *)
-    
+End ALPHA_PROG.

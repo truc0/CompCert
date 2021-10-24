@@ -335,9 +335,8 @@ End LINKER_PROG.
 
 (* static variable renaming *)
 
-
-Definition rlink_program {F V : Type} {LF: Linker F} {LV: Linker V} {AF: Alpha F} {AV : Alpha V} (p1 p2 p : program F V) :=
-  exists p1' p2', alpha_equiv p1 p1' /\  alpha_equiv p2 p2' /\ link_prog p1 p2 = Some p.                                  
+Definition rlink_program {F V : Type} {LF: Linker F} {LV: Linker V}  {AP: Alpha (program F V)} (p1 p2 p : program F V) :=
+  exists p1' p2', alpha_equiv p1.(prog_public) p1 p1' /\  alpha_equiv p2.(prog_public) p2 p2' /\ link_prog p1 p2 = Some p.                                  
 
 
 Program Instance Linker_prog (F V: Type) {LF: Linker F} {LV: Linker V} : Linker (program F V) := {
