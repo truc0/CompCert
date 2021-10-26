@@ -28,6 +28,8 @@ Require LTL.
 Require Linear.
 Require Mach.
 Require Asm.
+Require SSAsm.
+Require RealAsm.
 (** Translation passes. *)
 Require Initializers.
 Require SimplExpr.
@@ -50,7 +52,7 @@ Require CleanupLabels.
 Require Debugvar.
 Require Stacking.
 Require Asmgen.
-
+Require RealAsmgen.
 (** Proofs of semantic preservation. *)
 Require SimplExprproof.
 Require SimplLocalsproof.
@@ -73,6 +75,8 @@ Require CleanupLabelsproof.
 Require Debugvarproof.
 Require Stackingproof.
 Require Asmgenproof.
+Require SSAsmproof.
+Require RealAsmproof.
 (** Command-line flags. *)
 Require Import Compopts.
 
@@ -170,11 +174,11 @@ Definition transf_c_program (p: Csyntax.program) : res Asm.program :=
   @@@ time "Clight generation" SimplExpr.transl_program
   @@@ transf_clight_program.
 
-(* Definition transf_c_program_real p: res Asm.program :=
+ Definition transf_c_program_real p: res Asm.program :=
   transf_c_program p
-  @@ time "SSAsm" SSAsmproof.transf_program.
+  @@ time "SSAsm" SSAsmproof.transf_program
   @@@ time "Translation from SSAsm to RealAsm" RealAsmgen.transf_program.
-*)
+
 (** Force [Initializers] and [Cexec] to be extracted as well. *)
 
 Definition transl_init := Initializers.transl_init.
@@ -262,10 +266,10 @@ Definition CompCert's_passes :=
   ::: mkpass Asmgenproof.match_prog
   ::: pass_nil _.
 
-(* Definition real_asm_passes :=
+ Definition real_asm_passes :=
       mkpass SSAsmproof.match_prog
   ::: mkpass RealAsmproof.match_prog
-  ::: pass_nil _. *)
+  ::: pass_nil _.
 (** Composing the [match_prog] relations above, we obtain the relation
   between CompCert C sources and Asm code that characterize CompCert's
   compilation. *)
@@ -279,8 +283,8 @@ Fixpoint passes_app {A B C} (l1: Passes A B) (l2: Passes B C) : Passes A C :=
   | pass_cons _ _ _ P1 l1 => fun l2 => P1 ::: passes_app l1 l2
   end l2.
 
-(* Definition match_prog_real :=
-  pass_match (compose_passes (passes_app CompCert's_passes real_asm_passes)). *)
+ Definition match_prog_real :=
+  pass_match (compose_passes (passes_app CompCert's_passes real_asm_passes)).
 
 (** The [transf_c_program] function, when successful, produces
   assembly code that is in the [match_prog] relation with the source C program. *)
@@ -353,24 +357,25 @@ Proof.
   intros (pi & EQ & CP); inv EQ; auto.
   setoid_rewrite IHA. split; intro H; decompose [ex and] H; eauto.
 Qed.
-(*
+
 Theorem transf_c_program_real_match:
   forall p tp,
     transf_c_program_real p = OK tp ->
     match_prog_real p tp.
 Proof.
   intros p tp T. unfold transf_c_program_real in T.
-  destruct (transf_c_program p) as [p1|e] eqn:TP; simpl in T; try discriminate. unfold time in T.
-  destruct (RealAsmgen.transf_program p1) eqn:RTP; simpl in T; try discriminate. inv T.
+  destruct (transf_c_program p) as [p1|e] eqn:TP; simpl in T; try discriminate.
+  unfold time in T. unfold SSAsmproof.transf_program in T.
+  destruct (RealAsmgen.transf_program p1) eqn:RTP; simpl in T; try discriminate; inv T.
 (*  destruct (PseudoInstructions.check_program p0) eqn:CHK; simpl in T; try discriminate. inv T. *)
-  unfold match_prog_real.
+  unfold match_prog_real. unfold real_asm_passes.
   rewrite compose_passes_app.
   fold match_prog. exists p1; split.
   eapply transf_c_program_match; eauto.
-  simpl. eexists; split; eauto.
+  simpl. eexists; split; eauto. reflexivity.
+  eexists; split; eauto.
   eapply RealAsmproof.transf_program_match; eauto.
 Qed.
-*)
 
 (** * Semantic preservation *)
 
@@ -516,10 +521,7 @@ Ltac DestructM :=
     exact Asmgenproof.return_address_exists.
     eassumption.
     eapply Asmgen_fn_stack_requirements_match; eauto.
-  eapply Asmgenproof.transf_program_correct; eassumption.
-(*  eapply SSAsmproof.transf_program_correct.
-  eapply Asmgenproof.transf_program_unchange_rsp; eauto.
-  eapply match_program_no_more_functions; eauto. *) }
+  eapply Asmgenproof.transf_program_correct; eassumption. }
   split. auto.
   apply forward_to_backward_simulation.
   apply factor_forward_simulation. auto. eapply sd_traces.
@@ -543,7 +545,6 @@ Proof.
   exact (proj2 (cstrategy_semantic_preservation _ _ H)).
 Qed.
 
-(*
 Lemma match_prog_wf:
   forall p tp,
     match_prog p tp ->
@@ -551,9 +552,36 @@ Lemma match_prog_wf:
 Proof.
   intros p tp M. unfold match_prog, pass_match in M; simpl in M.
   repeat DestructM. subst tp.
-  inv M21.
   eapply Asmgenproof.transf_program_unchange_rsp; eauto.
   eapply match_program_no_more_functions; eauto.
+Qed.
+
+Theorem c_semantic_preservation_SS:
+  forall p tp,
+  match_prog p tp ->
+  backward_simulation (Csem.semantics (fn_stack_requirements tp) p) (SSAsm.semantics tp).
+Proof.
+  intros.
+  apply compose_backward_simulation with (atomic (Cstrategy.semantics (fn_stack_requirements tp) p)).
+  eapply sd_traces; eapply SSAsm.semantics_determinate.
+  apply factor_backward_simulation.
+  apply Cstrategy.strategy_simulation.
+  apply Csem.semantics_single_events.
+  eapply ssr_well_behaved; eapply Cstrategy.semantics_strongly_receptive.
+  apply forward_to_backward_simulation.
+  eapply compose_forward_simulations. instantiate (1:= (Asm.semantics tp)).
+  apply factor_forward_simulation.
+  exploit cstrategy_semantic_preservation; eauto.
+  intros [A B]. apply A.
+  eapply sd_traces.
+  eapply Asm.semantics_determinate.
+  eapply SSAsmproof.transf_program_correct.
+  unfold match_prog, pass_match in H. simpl in H.
+  repeat DestructM. subst.
+  eapply Asmgenproof.transf_program_unchange_rsp; eauto.
+  eapply match_program_no_more_functions; eauto.
+  apply atomic_receptive. apply Cstrategy.semantics_strongly_receptive.
+  apply SSAsm.semantics_determinate.
 Qed.
 
 Theorem c_semantic_preservation_real:
@@ -565,12 +593,14 @@ Proof.
   unfold match_prog_real in H.
   rewrite compose_passes_app in H.
   fold match_prog in H.
-  destruct H as (pi & MP & P).
-  simpl in P. destruct P as (p2 & P & EQ). inv EQ.
-  apply compose_backward_simulation with (SSAsm.semantics pi).
+  destruct H as (p1 & MP1 & P).
+  simpl in P. destruct P as (p2 & MP2 & P'). inv MP2.
+  simpl in P'. destruct P' as (p3 & MP3 & EQ).
+  inv EQ.
+  apply compose_backward_simulation with (SSAsm.semantics p2).
   apply RealAsm.real_asm_single_events.
-  replace (fn_stack_requirements tp) with (fn_stack_requirements pi).
-  eapply c_semantic_preservation; eauto.
+  replace (fn_stack_requirements tp) with (fn_stack_requirements p2).
+  eapply c_semantic_preservation_SS; eauto.
   exploit RealAsmproof.match_prog_inv; eauto. intro EQ. inv EQ. auto.
   apply RealAsmproof.real_asm_correct'; eauto.
   unfold RealAsmproof.match_prog. auto.
@@ -579,7 +609,7 @@ Proof.
   red. intros. exploit AsmFacts.in_find_instr; eauto.
   intros [ofs H2]. eapply A; eauto.
 Qed.
-*)
+
 (** * Correctness of the CompCert compiler *)
 
 (** Combining the results above, we obtain semantic preservation for two
@@ -599,7 +629,7 @@ Theorem transf_c_program_correct:
 Proof.
   intros. apply c_semantic_preservation. apply transf_c_program_match; auto.
 Qed.
-(*
+
 Theorem transf_c_program_correct_real:
   forall p tp,
   transf_c_program_real p = OK tp ->
@@ -607,7 +637,7 @@ Theorem transf_c_program_correct_real:
 Proof.
   intros. apply c_semantic_preservation_real. apply transf_c_program_real_match; auto.
 Qed.
-*)
+
 (** Here is the separate compilation case.  Consider a nonempty list [c_units]
   of C source files (compilation units), [C1 ,,, Cn].  Assume that every
   C compilation unit [Ci] is successfully compiled by CompCert, obtaining
@@ -636,7 +666,7 @@ Proof.
   destruct H2 as (asm_program & P & Q).
   exists asm_program; split; auto. apply c_semantic_preservation; auto.
 Qed.
-(*
+
 Theorem separate_transf_c_program_correct_real:
   forall c_units asm_units c_program,
   nlist_forall2 (fun cu tcu => transf_c_program_real cu = OK tcu) c_units asm_units ->
@@ -653,4 +683,4 @@ Proof.
   destruct H2 as (asm_program & P & Q).
   exists asm_program; split; auto. apply c_semantic_preservation_real; auto.
 Qed.
-*)
+
