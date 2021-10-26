@@ -27,7 +27,7 @@ else
 ARCHDIRS=$(ARCH)_$(BITSIZE) $(ARCH)
 endif
 
-DIRS := lib common $(ARCHDIRS) backend cfrontend driver exportclight cparser
+DIRS := lib common $(ARCHDIRS) backend cfrontend driver exportclight cparser encode stack elf
 
 COQINCLUDES := $(foreach d, $(DIRS), -R $(d) compcert.$(d))
 
@@ -113,7 +113,36 @@ BACKEND=\
   Bounds.v Stacklayout.v Stacking.v Stackingproof.v \
   Asm.v Asmgen.v Asmgenproof0.v Asmgenproof1.v AsmFacts.v Asmgenproof.v \
   AsmRegs.v SSAsm.v SSAsmproof.v \
-  RealAsm.v RealAsmgen.v RealAsmproof.v
+  RealAsm.v RealAsmgen.v RealAsmproof.v \
+  UserAsm.v UserAsmFacts.v UserRealAsm.v LocalLib.v \
+  PseudoInstructions.v \
+  AsmLabelNew.v AsmBuiltinInline.v \
+  AsmStructRet.v \
+  AsmFloatLiteral.v \
+  AsmPseudoInstr.v \
+  Asmlabelgen.v \
+  PadNops.v \
+  PadInitData.v \
+  SeqTable.v RelocProgram.v CheckDef.v Symbtablegen.v \
+  SymbolString.v Jumptablegen.v \
+  SymbtableSort.v \
+  Reloctablesgen.v \
+  RelocBingen.v \
+  RemoveAddend.v \
+  SymbtableEncode.v StrtableEncode.v ShstrtableEncode.v ReloctablesEncode.v SymbtableDecode.v TablesEncode.v \
+  StrtableDecode.v ShstrtableDecode.v ReloctablesDecode.v RelocBinDecode.v RelocProgSemantics.v RelocProgSemantics1.v RelocProgSemantics2.v RelocProgSemantics3.v RelocElfgen.v
+
+# Encoding of data into bytes
+
+ENCODE=Encode.v Bits.v Hex.v
+
+# 
+
+STACK=Assoc.v
+
+# ELF files
+#ELF=RelocElf.v EncodeRelocElf.v RelocElfSemantics.v DecodeRelocElf.v ElfBytesSemantics.v EncodeElfCorrect.v
+ELF=RelocElf.v EncodeRelocElf.v
 
 # C front-end modules (in cfrontend/)
 
@@ -145,7 +174,7 @@ DRIVER=Compopts.v Compiler.v Complements.v
 # All source files
 
 FILES=$(VLIB) $(COMMON) $(BACKEND) $(CFRONTEND) $(DRIVER) $(FLOCQ) \
-  $(MENHIRLIB) $(PARSER)
+  $(MENHIRLIB) $(PARSER) $(ENCODE) $(STACK) $(ELF)
 
 # Generated source files
 

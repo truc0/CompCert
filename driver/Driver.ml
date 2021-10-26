@@ -71,6 +71,48 @@ let compile_c_file sourcename ifile ofile =
   PrintAsm.print_program oc asm;
   close_out oc
 
+let compile_c_file_bytes sourcename ifile ofile =
+  (* Prepare to dump Clight, RTL, etc, if requested *)
+  let set_dest dst opt ext =
+    dst := if !opt then Some (output_filename sourcename ".c" ext)
+      else None in
+  set_dest Cprint.destination option_dparse ".parsed.c";
+  set_dest PrintCsyntax.destination option_dcmedium ".compcert.c";
+  set_dest PrintClight.destination option_dclight ".light.c";
+  set_dest PrintCminor.destination option_dcminor ".cm";
+  set_dest PrintRTL.destination option_drtl ".rtl";
+  set_dest Regalloc.destination_alloctrace option_dalloctrace ".alloctrace";
+  set_dest PrintLTL.destination option_dltl ".ltl";
+  set_dest PrintMach.destination option_dmach ".mach";
+  set_dest AsmToJSON.destination option_sdump !sdump_suffix;
+  (* Parse the ast *)
+  let csyntax = parse_c_file sourcename ifile in
+  (* Convert to ELF *)
+  match Compiler.transf_c_program_bytes csyntax with
+ | Errors.OK ((bs, p), _) ->
+    ElfFileOutput.write_elf ofile bs
+ | Errors.Error msg ->
+    fatal_error no_loc "%a"  print_error msg
+    (* fatal_error no_loc "%s: error generating ELF file\n" sourcename *)
+    (* eprintf "%s: %a" sourcename print_error msg; *)
+    (* exit 2; *)
+    (* () *)
+  (* let relf = *)
+  (*   match Compiler.apply_partial *)
+  (*              (Compiler.transf_c_program csyntax) *)
+  (*              Asmexpand.expand_program with *)
+  (*   | Errors.OK relf -> *)
+  (*       relf *)
+  (*   | Errors.Error msg -> *)
+  (*     let loc = file_loc sourcename in *)
+  (*       fatal_error loc "%a"  print_error msg in *)
+  (* (\* Dump Asm in binary and JSON format *\) *)
+  (* AsmToJSON.print_if asm sourcename; *)
+  (* (\* Print Asm in text form *\) *)
+  (* let oc = open_out ofile in *)
+  (* PrintAsm.print_program oc asm; *)
+  (* close_out oc *)
+
 (* From C source to asm *)
 
 let compile_i_file sourcename preproname =
@@ -83,6 +125,10 @@ let compile_i_file sourcename preproname =
     compile_c_file sourcename preproname
       (output_filename ~final:true sourcename ".c" ".s");
     ""
+  end else if !option_reloc_elf then begin
+    let objname = object_filename sourcename ".c" in
+    compile_c_file_bytes sourcename preproname objname;
+    objname
   end else begin
     let asmname =
       if !option_dasm
@@ -396,6 +442,7 @@ let cmdline_actions =
   (* GCC compatibility: .h files can be preprocessed with -E *)
   Suffix ".h", Self (fun s ->
       push_action process_h_file s; incr num_source_files; incr num_input_files);
+  Exact "-relf", Set option_reloc_elf;
   ]
 
 let _ =

@@ -30,6 +30,8 @@ Require Mach.
 Require Asm.
 Require SSAsm.
 Require RealAsm.
+Require UserAsm.
+Require UserRealAsm.
 (** Translation passes. *)
 Require Initializers.
 Require SimplExpr.
@@ -53,6 +55,24 @@ Require Debugvar.
 Require Stacking.
 Require Asmgen.
 Require RealAsmgen.
+Require UserRealAsmgen.
+Require PseudoInstructions.
+Require AsmBuiltinInline.
+Require AsmStructRet.
+Require AsmFloatLiteral.
+Require AsmPseudoInstr.
+Require Asmlabelgen.
+Require PadNops.
+Require PadInitData.
+Require Symbtablegen.
+Require Jumptablegen.
+Require SymbtableSort.
+Require Reloctablesgen.
+Require RelocBingen.
+Require RemoveAddend.
+Require TablesEncode.
+Require RelocElfgen.
+Require EncodeRelocElf.
 
 (** Proofs of semantic preservation. *)
 Require SimplExprproof.
@@ -179,6 +199,34 @@ Definition transf_c_program (p: Csyntax.program) : res Asm.program :=
 Definition transf_c_program_real p: res Asm.program :=
   transf_c_program p
   @@@ time "Translation from SSAsm to RealAsm" RealAsmgen.transf_program.
+
+Definition transf_c_program_assembler p: res UserAsm.program :=
+  (* transf_c_program_real p *)
+  transf_c_program p            (* TODO: wf_asm_function_check *)
+  @@ time "Translation from RealAsm to AssemblerAsm" UserRealAsmgen.transf_program
+  @@@ PseudoInstructions.check_program
+  @@ time "Elimination of pseudo instruction" PseudoInstructions.transf_program.
+
+Definition transf_c_program_bytes (p: Csyntax.program) : res (list Integers.byte * UserAsm.program * Globalenvs.Senv.t) :=
+  transf_c_program_assembler p
+  @@@ time "Expand builtin inline assembly" AsmBuiltinInline.transf_program
+  @@@ time "Pad Instructions with struct return" AsmStructRet.transf_program
+  @@ time "Generation of the float literal" AsmFloatLiteral.transf_program
+  @@@ time "Elimination of other pseudo instructions" AsmPseudoInstr.transf_program
+  @@@ time "Make local jumps use offsets instead of labels" Asmlabelgen.transf_program
+  @@ time "Pad Nops to make the alignment of functions correct" PadNops.transf_program
+  @@ time "Pad space to make the alignment of data correct" PadInitData.transf_program
+  @@@ time "Generation of the symbol table" Symbtablegen.transf_program
+  @@@ time "Generation of the jump table" Jumptablegen.transf_program
+  @@@ time "Sorting of the symbol table" SymbtableSort.transf_program
+  (* @@@ time "Normalize the symbol table indexes" NormalizeSymb.transf_program *)
+  @@@ time "Generation of relocation table" Reloctablesgen.transf_program
+  @@@ time "Encoding of instructions and data" RelocBingen.transf_program
+  (* @@@ time "Added the starting stub code" Stubgen.transf_program *)
+  @@ time "Removing addendums" RemoveAddend.transf_program
+  @@@ time "Encoding of tables" TablesEncode.transf_program
+  @@@ time "Generation of the reloctable Elf" RelocElfgen.gen_reloc_elf
+  @@@ time "Encoding of the reloctable Elf" EncodeRelocElf.encode_elf_file.
 
 (** Force [Initializers] and [Cexec] to be extracted as well. *)
 
