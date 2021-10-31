@@ -972,7 +972,7 @@ Ltac Equalities :=
   split. auto. intros. destruct B; auto. subst. auto.
 - (* trace length *)
   red; intros; inv H; simpl.
-  omega.
+  lia.
   eapply external_call_trace_length; eauto.
   eapply external_call_trace_length; eauto.
 - (* initial states *)
@@ -992,7 +992,7 @@ Theorem reloc_prog_single_events p rs:
   single_events (semantics p rs).
 Proof.
   red. simpl. intros s t s' STEP.
-  inv STEP; simpl. omega.
+  inv STEP; simpl. lia.
   eapply external_call_trace_length; eauto.
   eapply external_call_trace_length; eauto.
 Qed.

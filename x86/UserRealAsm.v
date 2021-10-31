@@ -749,21 +749,21 @@ End WITHGE.
   Inductive initial_state_gen (prog: UserAsm.program) (rs: regset) m: state -> Prop :=
   | initial_state_gen_intro:
       forall m1 bstack m2 m3 m4 bmain
-        (* (MALLOC: Mem.alloc (Mem.push_new_stage m) 0 (Mem.stack_limit + align (size_chunk Mptr) 8) = (m1,bstack)) *)
         (MALLOC: Mem.alloc m 0 (max_stacksize + (align (size_chunk Mptr)8)) = (m1,bstack))
-        (* (MDROP: Mem.drop_perm m1 bstack 0 (Mem.stack_limit + align (size_chunk Mptr) 8) Writable = Some m2) *)
+        (* (MALLOC: Mem.alloc (Mem.push_new_stage m) 0 (Mem.stack_limit + align (size_chunk Mptr) 8) = (m1,bstack)) *)
         (MDROP: Mem.drop_perm m1 bstack 0 (max_stacksize + (align (size_chunk Mptr) 8)) Writable = Some m2)
-        (* (MRSB: Mem.record_stack_blocks m2 (make_singleton_frame_adt' bstack frame_info_mono 0) = Some m3) *)
+        (* (MDROP: Mem.drop_perm m1 bstack 0 (Mem.stack_limit + align (size_chunk Mptr) 8) Writable = Some m2) *)
         (MRSB: m2 = m3)
-        (* (STORE_RETADDR: Mem.storev Mptr m3 (Vptr bstack (Ptrofs.repr (Mem.stack_limit + align (size_chunk Mptr) 8 - size_chunk Mptr))) Vnullptr = Some m4), *)
+        (* (MRSB: Mem.record_stack_blocks m2 (make_singleton_frame_adt' bstack frame_info_mono 0) = Some m3) *)
         (STORE_RETADDR: Mem.storev Mptr m3 (Vptr bstack (Ptrofs.repr (max_stacksize + align (size_chunk Mptr) 8 - size_chunk Mptr))) Vnullptr = Some m4),
+        (* (STORE_RETADDR: Mem.storev Mptr m3 (Vptr bstack (Ptrofs.repr (Mem.stack_limit + align (size_chunk Mptr) 8 - size_chunk Mptr))) Vnullptr = Some m4), *)
         let ge := Genv.globalenv prog in
         Genv.find_symbol ge prog.(prog_main) = Some bmain ->
         let rs0 :=
             rs #PC <- (Vptr bmain Ptrofs.zero)
                #RA <- Vnullptr
-               (* #RSP <- (Val.offset_ptr (Vptr bstack (Ptrofs.repr (Mem.stack_limit + align (size_chunk Mptr) 8))) (Ptrofs.neg (Ptrofs.repr (size_chunk Mptr)))) in *)
                #RSP <- (Val.offset_ptr (Vptr bstack (Ptrofs.repr (max_stacksize + align (size_chunk Mptr) 8))) (Ptrofs.neg (Ptrofs.repr (size_chunk Mptr)))) in
+               (* #RSP <- (Val.offset_ptr (Vptr bstack (Ptrofs.repr (Mem.stack_limit + align (size_chunk Mptr) 8))) (Ptrofs.neg (Ptrofs.repr (size_chunk Mptr)))) in *)
         initial_state_gen prog rs m (State rs0 m4).
 
   Inductive initial_state (prog: UserAsm.program) (rs: regset) (s: state): Prop :=
@@ -771,6 +771,36 @@ End WITHGE.
       Genv.init_mem prog = Some m ->
       initial_state_gen prog rs m s ->
       initial_state prog rs s.
+
+  Ltac rewnb :=
+  repeat
+    match goal with
+    | H: Mem.store _ _ _ _ _ = Some ?m |- context [Mem.nextblock ?m] =>
+      rewrite (Mem.nextblock_store _ _ _ _ _ _ H)
+    (* | H: Mem.storev _ _ _ _ = Some ?m |- context [Mem.nextblock ?m] => *)
+    (*   rewrite (Mem.storev_nextblock _ _ _ _ _ H) *)
+    | H: Mem.free _ _ _ _ = Some ?m |- context [Mem.nextblock ?m] =>
+      rewrite (Mem.nextblock_free _ _ _ _ _ H)
+    | H: Mem.drop_perm _ _ _ _ _ = Some ?m |- context [Mem.nextblock ?m] =>
+      rewrite (Mem.nextblock_drop _ _ _ _ _ _ H)
+    | H: Mem.alloc _ _ _ = (?m,_) |- context [Mem.nextblock ?m] =>
+      rewrite (Mem.nextblock_alloc _ _ _ _ _ H)
+    (* | H: Mem.record_stack_blocks _ _ = Some ?m |- context [Mem.nextblock ?m] => *)
+    (*   rewrite (Mem.record_stack_block_nextblock _ _ _ H) *)
+    (* | H: Mem.unrecord_stack_block _ = Some ?m |- context [Mem.nextblock ?m] => *)
+    (*   rewrite (Mem.unrecord_stack_block_nextblock _ _ H) *)
+    (* | |- context [ Mem.nextblock (Mem.push_new_stage ?m) ] => rewrite Mem.push_new_stage_nextblock *)
+    (* | H: external_call _ _ _ ?m1 _ _ ?m2 |- Plt _ (Mem.nextblock ?m2) => *)
+    (*   eapply Plt_Ple_trans; [ | apply external_call_nextblock in H; exact H ] *)
+    (* | H: external_call _ _ _ ?m1 _ _ ?m2 |- Ple _ (Mem.nextblock ?m2) => *)
+    (*   eapply Ple_trans; [ | apply external_call_nextblock in H; exact H ] *)
+    (* | H: Genv.init_mem _ = Some ?m |- context [Mem.nextblock ?m] => *)
+    (*   rewrite <- (Genv.init_mem_genv_next _ _ H) *)
+    (* | H: Mem.tailcall_stage ?m1 = Some ?m2 |- context [ Mem.nextblock ?m2] => *)
+    (*   rewrite (Mem.tailcall_stage_nextblock _ _ H) *)
+    (* | H: Mem.record_init_sp ?m1 = Some ?m2 |- context [ Mem.nextblock ?m2] => *)
+    (*   rewrite (Mem.record_init_sp_nextblock_eq _ _ H) *)
+    end.
 
   Definition semantics_gen prog rs m :=
     Semantics step (initial_state_gen prog rs m) final_state (Genv.globalenv prog).
@@ -829,9 +859,10 @@ End WITHGE.
     Proof.
       intros rs0 is IS; inv IS. inv H0.
       constructor.
-      - red. simpl; unfold rs1; simpl_regs; simpl.
+      - red.
+        simpl. unfold rs1. UserAsmFacts.simpl_regs. unfold Val.offset_ptr. (* simpl. (* TODO: explodes*) *)
         exploit Mem.alloc_result; eauto. rewnb.
-        fold ge. intro; subst.
+        intro; subst.
         eexists; split; eauto.
         apply div_ptr_add.
         apply div_unsigned_repr.

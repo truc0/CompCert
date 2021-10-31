@@ -757,7 +757,7 @@ Ltac branch_byte_eq :=
 
 Ltac prove_byte_and_neq :=
   now (unfold Byte.and;
-       repeat (rewrite Byte.unsigned_repr; [ |unfold Byte.max_unsigned; simpl; omega]);
+       repeat (rewrite Byte.unsigned_repr; [ |unfold Byte.max_unsigned; simpl; lia]);
        simpl;
        prove_byte_neq).
 
@@ -825,7 +825,7 @@ Lemma non_zero_len_not_nil : forall (A:Type) (l: list A),
     (length l > 0)%nat -> (l <> nil).
 Proof.
   destruct l; simpl.
-  - intros. omega.
+  - intros. lia.
   - intros H. intro EQ. discriminate.
 Qed.
 
@@ -871,12 +871,12 @@ Lemma list_len_gt1: forall (A:Type) (l:list A) n,
 Proof.
   intros A0 l n H.
   destruct l.
-  + simpl in H. omega.
+  + simpl in H. lia.
   + exists (removelast (a::l)).
     exists (last (a::l) a).
     rewrite <- (app_removelast_last a).
     ++ auto.
-    ++ apply non_zero_len_not_nil. omega.
+    ++ apply non_zero_len_not_nil. lia.
 Qed.
 
 Lemma encode_decode_int_little_refl: forall i l,
@@ -898,10 +898,10 @@ Proof.
   rewrite Z.mod_small. auto.
   unfold valid_int32 in  HV. simpl.
   unfold two_power_pos in HV. simpl in HV. unfold two_power_pos. simpl.
-  omega.
+  lia.
   unfold Int.max_unsigned.
   simpl.
-  unfold valid_int32 in HV. unfold two_power_pos in HV. simpl in HV. omega.
+  unfold valid_int32 in HV. unfold two_power_pos in HV. simpl in HV. lia.
 Qed.
 
 Lemma encode_parse_reg_refl: forall rd x,
@@ -961,13 +961,13 @@ Proof.
     unfold Byte.wordsize.
     unfold Wordsize_8.wordsize.
     unfold two_power_nat.
-    unfold shift_nat. simpl. omega.
+    unfold shift_nat. simpl. lia.
 Qed.
 
 Lemma bool_to_Z_range: forall t, 0 <= bool_to_Z t <=1.
 Proof.
   unfold bool_to_Z.
-  destruct t;omega.
+  destruct t;lia.
 Qed.
 
 Lemma bits_to_Z_range: forall n l,
@@ -978,9 +978,9 @@ Proof.
     intros H.
     rewrite (zero_length_list l).
     split.
-    ++ cbn. omega.
+    ++ cbn. lia.
     ++ cbn. unfold two_power_nat. simpl.
-       omega.
+       lia.
     ++ apply H.
   + split.
     ++ generalize (list_len_gt1 _ l n H).
@@ -992,13 +992,13 @@ Proof.
        simpl in H.
        assert(0<= bits_to_Z l' < two_power_nat (length l' ) ) as l'Range. {
          apply( IHn l').
-         omega.
+         lia.
        }
        assert(bool_to_Z t >=0) as tRange. {
          unfold bool_to_Z.
-         destruct t;omega.
+         destruct t;lia.
        }
-       omega.
+       lia.
     ++ generalize (list_len_gt1 _ l n H).
        intros (l' & t & H10).
        rewrite H10.
@@ -1010,17 +1010,17 @@ Proof.
        simpl in H.
        assert(0<= bits_to_Z l' <= two_power_nat (length l' )-1 ) as l'Range. {
          assert(0<= bits_to_Z l' < two_power_nat (length l' ) ) as l'Range. {
-           apply (IHn l'). omega.
+           apply (IHn l'). lia.
          }
-         omega.
+         lia.
        }
        assert (plus (length l') 1%nat = S (length l')) as Hadd. {
-         omega.
+         lia.
        }
        rewrite Hadd.
        rewrite two_power_nat_S.
        generalize (bool_to_Z_range t).
-       omega.
+       lia.
 Qed.
 
      
@@ -1032,27 +1032,27 @@ Proof.
   induction n2.
   + intros n0 H. unfold two_power_nat. simpl.
     induction n0.
-    ++ simpl. omega.
+    ++ simpl. lia.
     ++ setoid_rewrite (two_power_nat_S).
        assert(two_power_nat n0 >=1) as basic. {
          assert((n0>=0)%nat) as n0Range. {
-           omega.
+           lia.
          }
          unfold two_power_nat.
          apply(IHn0 n0Range).
        }
-       omega.
+       lia.
   + intros n1 H.
     induction n1.
     ++ inversion H.
     ++ assert(two_power_nat n1 >= two_power_nat n2) as basic. {
          assert((n1>=n2)%nat) as n1n2. {
-           inversion H;omega.
+           inversion H;lia.
          }
          apply(IHn2 n1 n1n2).
        }
        repeat rewrite two_power_nat_S.
-       omega.
+       lia.
 Qed.
 
 
@@ -1062,10 +1062,10 @@ Proof.
   intros. 
   repeat rewrite Zdiv2_div. 
   rewrite (Zdiv_unique _ 2 n (bool_to_Z b)).
-  rewrite (Zdiv_unique _ 2 n 0); try omega.
-  omega.
+  rewrite (Zdiv_unique _ 2 n 0); try lia.
+  lia.
   generalize (bool_to_Z_range b).
-  omega.
+  lia.
 Qed.       
        
 
@@ -1075,7 +1075,7 @@ Lemma div2_id: forall n,
 Proof.
   intros.
   rewrite Zdiv2_div.
-  rewrite (Zdiv_unique _ 2 n 0); omega.
+  rewrite (Zdiv_unique _ 2 n 0); lia.
 Qed.
 
 
@@ -1088,9 +1088,9 @@ Proof.
     rewrite (zero_length_list l1);auto.
     cbn.
     rewrite Zdiv2_div.
-    rewrite (Zdiv_unique _ 2 0 (bool_to_Z b));try omega.
+    rewrite (Zdiv_unique _ 2 0 (bool_to_Z b));try lia.
     generalize (bool_to_Z_range b).
-    omega.
+    lia.
   + intros l1 b H.
     symmetry in H.
     generalize (list_len_gt1 _ l1 n H).
@@ -1134,7 +1134,7 @@ Proof.
            destruct (length l2') eqn: EQL.
            + rewrite <- (zero_length_list l2').
              auto. apply EQL.
-           + inversion EQ. simpl in H10. omega.
+           + inversion EQ. simpl in H10. lia.
          }
          rewrite l2N. rewrite <- app_assoc. simpl.
          rewrite Byte.unsigned_repr_eq.
@@ -1147,22 +1147,22 @@ Proof.
              assert (le (length l1) 7%nat) as l1Len. {
                rewrite app_length in LE.
                simpl in LE.
-               omega.
+               lia.
              }
              generalize (bits_to_Z_range (length l1) l1).
              intros H.
              destruct H.
              - auto.
              - split.
-               -- omega.
+               -- lia.
                -- induction (length l1).
-                  --- unfold two_power_nat in H10. simpl in H10. omega.
+                  --- unfold two_power_nat in H10. simpl in H10. lia.
                   --- assert(bits_to_Z l1 < two_power_nat 7%nat) as ub. {
                         assert(two_power_nat (S n) <= two_power_nat 7) as ub1. {
                           generalize (two_power_mono (S n) 7).
-                          omega.
+                          lia.
                         }
-                        omega.
+                        lia.
                       }
                       unfold two_power_nat in ub.
                       simpl in ub.
@@ -1170,12 +1170,12 @@ Proof.
            }
            assert(0<=bool_to_Z b < 2 ) as bRange. {
              unfold bool_to_Z.
-             destruct b; omega.
+             destruct b; lia.
            }
            destruct l1Range.
            destruct bRange.
            split.
-           - omega.
+           - lia.
            - assert(Byte.modulus = 256) as modu. {
                unfold Byte.modulus.
                unfold Byte.wordsize.
@@ -1185,7 +1185,7 @@ Proof.
                auto.
              }
              rewrite modu.
-             omega.
+             lia.
          }
          rewrite range.
          
@@ -1212,22 +1212,22 @@ Proof.
                simpl in LE.
                rewrite plus_assoc in LE.
                rewrite <- app_length in LE.               
-               omega.
+               lia.
              }
              unfold Byte.max_unsigned.
              unfold Byte.modulus.
              assert(two_power_nat (length (l1 ++ l2')) <= two_power_nat 7) as tpnRange. {
                generalize (two_power_mono (length(l1++l2')) 7 lenRange).
-               omega.
+               lia.
              }
              unfold Byte.wordsize.
              unfold Wordsize_8.wordsize.
              assert(two_power_nat 7 < two_power_nat 8 -1) as tpnRange1. {
                unfold two_power_nat.
                simpl.
-               omega.
+               lia.
              }
-             omega.
+             lia.
            + generalize (bool_to_Z_range b).
              intros H.
              assert((length (l1++l2')<=7)%nat) as lenRange. {
@@ -1236,16 +1236,16 @@ Proof.
                simpl in LE.
                rewrite plus_assoc in LE.
                rewrite <- app_length in LE.               
-               omega.
+               lia.
              }
              assert(two_power_nat (length (l1 ++ l2')) <= two_power_nat 7) as tpnRange. {
                generalize (two_power_mono (length(l1++l2')) 7 lenRange).
-               omega.
+               lia.
              }
              assert(two_power_nat 7 = 128) as tpn7. {
                unfold two_power_nat.
                simpl.
-               omega.
+               lia.
              }
              rewrite tpn7 in tpnRange.
               assert(length(l1++l2') = length(l1++l2')) as lenRefl. {
@@ -1261,7 +1261,7 @@ Proof.
                 auto.
               }
               rewrite modo.              
-              omega.
+              lia.
          }              
          rewrite div_prefix.
          assert(le (length(l1++l2')) 8%nat) as len. {
@@ -1270,12 +1270,12 @@ Proof.
            simpl in LE.
            rewrite plus_assoc in LE.
            rewrite <- app_length in LE.
-           omega.
+           lia.
          }
          assert(eq (length(l2')) (S n)) as lenl2. {
            rewrite app_length in EQ.
            simpl in EQ.
-           omega.
+           lia.
          }
          generalize (IHn' l1 l2' len lenl2).
          intros H.
@@ -1294,20 +1294,20 @@ Proof.
              assert(Z.of_nat (S n) = Z.of_nat n +1 ) as pls. {
                rewrite Nat2Z.inj_succ.
                simpl.
-               omega.
+               lia.
              }
              rewrite pls.
-             omega.             
+             lia.             
            }
            rewrite byteMax.
-           omega.
+           lia.
            
     +  rewrite app_length in EQ. simpl in EQ.
        repeat rewrite app_length in LE.
        simpl in LE.
        unfold Byte.max_unsigned. simpl.
        rewrite Zpos_P_of_succ_nat.
-       omega.
+       lia.
 Qed.
 
 Lemma bits_to_Z_suffix: forall n l1 a,
@@ -1322,7 +1322,7 @@ Proof.
     rewrite H10.
     cbn.
     rewrite two_power_nat_O.
-    omega.
+    lia.
 
 
   + intros l1 a H.
@@ -1336,7 +1336,7 @@ Proof.
       rewrite H1 in H.
       rewrite app_length in H.
       simpl in H.
-      omega.
+      lia.
     }
     setoid_rewrite (IHn l' a).
     ++ rewrite lenL'.
@@ -1347,7 +1347,7 @@ Proof.
        repeat rewrite Zmult_assoc.
        repeat rewrite Zplus_assoc.
        replace ( 2 * bool_to_Z a * two_power_nat n) with ( bool_to_Z a * 2 * two_power_nat n).
-       +++ omega.
+       +++ lia.
        +++
          rewrite Zmult_assoc_reverse.
          rewrite (Z.mul_shuffle3 (bool_to_Z a) 2 (two_power_nat n)).
@@ -1377,7 +1377,7 @@ Proof.
     rewrite Z.shiftl_mul_pow2.
     simpl. auto.
     generalize (Zle_0_nat (length l2)).
-    omega.
+    lia.
   + intros l2.
     rewrite bits_to_Z_cons_eq.
     rewrite Z.shiftl_mul_pow2.
@@ -1391,16 +1391,16 @@ Proof.
     rewrite Z.mul_add_distr_r.
     rewrite Z.mul_assoc.
     rewrite Z.add_assoc.
-    omega.
+    lia.
     generalize (Zle_0_nat (length l1)).
-    omega.
+    lia.
     generalize (Zle_0_nat (length l2)).
-    omega.
-    omega.
+    lia.
+    lia.
     generalize (Zle_0_nat (length l2)).
-    omega.
+    lia.
     generalize (Zle_0_nat (length l2)).
-    omega.
+    lia.
 Qed.
 
 
@@ -1417,11 +1417,11 @@ Proof.
     rewrite bits_to_Z_cons_eq.
     rewrite app_length. rewrite two_power_nat_equiv.
     rewrite Nat2Z.inj_add.
-    rewrite Z.pow_add_r; try omega.
+    rewrite Z.pow_add_r; try lia.
     rewrite Z.mul_assoc. rewrite Z.add_comm.
     rewrite Z.mod_add.
     apply IHl1.
-    apply Z.pow_nonzero; try omega.
+    apply Z.pow_nonzero; try lia.
 Qed.
 
 Lemma Z_and7: forall l1 l2,
@@ -1433,7 +1433,7 @@ Proof.
   assert (7 = Z.ones 3) as OEQ. {
     rewrite Z.ones_equiv. simpl. auto.
   }
-  rewrite OEQ, Z.land_ones; try omega.
+  rewrite OEQ, Z.land_ones; try lia.
   replace 3 with (Z.of_nat (length l2)).
   apply bits_to_Z_mod.
   rewrite L2.
@@ -1451,14 +1451,14 @@ Proof.
   repeat rewrite Byte.unsigned_repr.
   apply Z_and7; auto.
   + unfold Byte.max_unsigned. unfold Byte.modulus. unfold two_power_nat. simpl.
-    omega.
+    lia.
   + assert(length(l1++l2) = length(l1++l2)) as len by auto.
     generalize (bits_to_Z_range (length(l1++l2)) (l1++l2) len).
     intros H11.
     assert(two_power_nat (length (l1++l2)) <= two_power_nat 8) as ub. {
       generalize (two_power_mono (length(l1++l2)) 8 H).
       intros H12.
-      omega.
+      lia.
     }
     assert (Byte.max_unsigned = 255) as maxByte. {
       unfold Byte.max_unsigned. unfold Byte.modulus. simpl. auto.
@@ -1468,7 +1468,7 @@ Proof.
     }
     rewrite tp in ub.
     rewrite maxByte.
-    omega.
+    lia.
 Qed.
       
 
@@ -1478,8 +1478,8 @@ Proof.
   intros. apply Z.bits_inj.
   red. intros.
   destruct n.
-  - apply H; omega.
-  - apply H. generalize (Zgt_pos_0 p). omega.
+  - apply H; lia.
+  - apply H. generalize (Zgt_pos_0 p). lia.
   - simpl. auto.
 Qed.
 
@@ -1490,7 +1490,7 @@ Proof.
   apply Znneg_bits_inj.
   intros n GE0.
   rewrite Z.lor_spec.
-  apply Int.Z_add_is_or. omega.
+  apply Int.Z_add_is_or. lia.
   intros j JRNG.
   rewrite <- Z.land_spec, AND.
   apply Z.bits_0.
@@ -1506,8 +1506,8 @@ Proof.
     rewrite Z.land_ones.
     replace (bits_to_Z l) with (bits_to_Z l + 0).
     rewrite (Zmod_unique (bits_to_Z l + 0) (2^Z.of_nat (length l)) 0 (bits_to_Z l)).
-    omega.
-    omega.
+    lia.
+    lia.
     assert(length l = length l) by auto.
     generalize (bits_to_Z_range (length l) l H).
     intros H10.
@@ -1515,14 +1515,14 @@ Proof.
     assert(0<=Z.of_nat X). {
       generalize (Zle_0_nat X).
       intros H11.
-      omega.
+      lia.
     }
     rewrite two_power_nat_equiv in H10.
-    omega.
-    omega.
+    lia.
+    lia.
     generalize (Zle_0_nat (length l)).
     intros H11.
-    omega.
+    lia.
   }
   rewrite insert.
   rewrite Z.land_comm.
@@ -1534,18 +1534,18 @@ Proof.
     rewrite(Zmod_unique (n*2^Z.of_nat X) (2^Z.of_nat X) n 0).
     rewrite Z.land_0_l.
     auto.
-    omega.
-    assert(0<2) by omega.
+    lia.
+    assert(0<2) by lia.
     assert(0<=Z.of_nat X). {
       generalize (Zle_0_nat X).
       intros H10.
-      omega.
+      lia.
     }
     generalize (Z.pow_pos_nonneg 2 (Z.of_nat X) H H10).
     intros H11.
-    omega.
-    omega.
-    omega.
+    lia.
+    lia.
+    lia.
   + rewrite Z.land_comm.
     auto.
 Qed.
@@ -1591,10 +1591,10 @@ Proof.
     assert ((length l1 <= 4)%nat). {
       rewrite app_length in *.
       rewrite H10 in H.
-      omega.
+      lia.
     }
     assert(two_power_nat (length l1) <= two_power_nat 4). {
-      generalize(two_power_mono (length l1) 4). omega.
+      generalize(two_power_mono (length l1) 4). lia.
     }
     repeat rewrite two_power_nat_equiv in H13.
     repeat rewrite <- Zpower_nat_Z in *.
@@ -1602,11 +1602,11 @@ Proof.
     unfold Zpower_nat in H13.
     simpl in H13.
     unfold Zpower_nat in H11.    
-    omega.
-    omega.
+    lia.
+    lia.
     unfold Z.ones.
     simpl.
-    omega.
+    lia.
   }
   rewrite H11.
   assert(Z.land (bits_to_Z l2) (Z.shiftl 15 4) = 0). {
@@ -1641,18 +1641,18 @@ Proof.
   rewrite andf0_Z. auto.
   auto.
   auto.
-  unfold Byte.max_unsigned. simpl. omega.
+  unfold Byte.max_unsigned. simpl. lia.
   assert(length(l1++l2) = length(l1++l2)) by auto.
   generalize (bits_to_Z_range (length(l1++l2)) (l1++l2) H11).
   intros H12.
   assert(two_power_nat (length (l1++l2)) <= two_power_nat 8) as ub. {
     generalize (two_power_mono (length(l1++l2)) 8 H).    
-    omega.
+    lia.
   }
   replace (two_power_nat 8 ) with 256 in ub.
   unfold Byte.max_unsigned. simpl.
-  omega.
-  unfold two_power_nat. simpl. omega.
+  lia.
+  unfold two_power_nat. simpl. lia.
 Qed.
 Lemma Z_shru_bits: forall n l1 l2,
     (length l2 = n)%nat ->
@@ -1677,10 +1677,10 @@ Proof.
        intros Hrange.
        rewrite two_power_nat_equiv in Hrange.
        rewrite H in Hrange.
-       omega.
+       lia.
        rewrite Z.mul_comm. auto.
-       omega.
-    ++ omega.
+       lia.
+    ++ lia.
        
 Qed.
 
@@ -1736,7 +1736,7 @@ Proof.
        intros HILTN.
        generalize (IHn i _ l HLengthL HILTN).
        auto.
-       omega.
+       lia.
        simpl in H.
        inversion H. auto.
 Qed.
@@ -1772,8 +1772,8 @@ Proof.
        rewrite HSubl'. simpl. auto.
        rewrite H11 in H.
        simpl in H.
-       omega.
-       omega.       
+       lia.
+       lia.       
 Qed.
 
 
@@ -1804,9 +1804,9 @@ Proof.
        split. auto.
        simpl.
        f_equal. auto.
-       omega.
+       lia.
        simpl in H.
-       omega.
+       lia.
 Qed.
 
 
@@ -1853,9 +1853,9 @@ Proof.
        split.
        auto.
        rewrite HAll. auto.
-       omega.
+       lia.
        simpl in H.
-       omega.       
+       lia.       
 Qed.
 
 (* Lemma encode_decode_reg_refl: forall r x bits1 bits2, *)
@@ -1887,10 +1887,10 @@ Qed.
 (*       assert(Byte.eqm (Z.shiftl (bits_to_Z (bits1 ++ x ++ sublist bits2 3)) (Z.of_nat (length (remove_first_n bits2 3))) + bits_to_Z (remove_first_n bits2 3)) (bits_to_Z ( remove_first_n bits2 3))). { *)
 (*         unfold Byte.eqm. *)
 (*         unfold Byte.eqmod. *)
-(*         rewrite (remove_first_length 11 3 bits2); try omega; auto. *)
+(*         rewrite (remove_first_length 11 3 bits2); try lia; auto. *)
 (*         rewrite (Z.shiftl_mul_pow2). *)
 (*         exists(bits_to_Z (bits1 ++ x ++ sublist bits2 3)). *)
-(*         simpl. auto. simpl. omega.                 *)
+(*         simpl. auto. simpl. lia.                 *)
 (*       } *)
 (*       generalize (Byte.eqm_samerepr _ _ H12). *)
 (*       auto.      *)
@@ -1899,8 +1899,8 @@ Qed.
 (*     auto. *)
   
 (*     apply (remove_first_length 11 3 bits2). *)
-(*     auto. omega. repeat rewrite <- app_assoc. auto. *)
-(*     rewrite <- (sublist_remove_first_cat 11 3 bits2). auto. auto. omega. omega. *)
+(*     auto. lia. repeat rewrite <- app_assoc. auto. *)
+(*     rewrite <- (sublist_remove_first_cat 11 3 bits2). auto. auto. lia. lia. *)
 (*     unfold Z.pow. unfold Z.pow_pos. simpl. auto. *)
 (*   + rewrite <- Byte.and_shru. *)
 (*     rewrite app_assoc. *)
@@ -1919,8 +1919,8 @@ Qed.
 (*     repeat rewrite app_length. rewrite H10. rewrite ( sublist_length 11 3). *)
 (*     rewrite (encode_reg_length r);auto. *)
 (*     auto. *)
-(*     omega. *)
-(*     rewrite(sublist_length 11 3);auto. omega. *)
+(*     lia. *)
+(*     rewrite(sublist_length 11 3);auto. lia. *)
 (* Qed. *)
     
 
@@ -1970,12 +1970,12 @@ Proof.
          intros Hrange.
          assert(two_power_nat (length l1) <= two_power_nat 2). {
            generalize  (two_power_mono (length l1) 2 H).
-           omega.
+           lia.
          }
          unfold two_power_nat in *.
          simpl in H12.
-         omega.
-         omega.
+         lia.
+         lia.
        }
          
        rewrite and2.
@@ -1988,24 +1988,24 @@ Proof.
       rewrite Z.land_comm.
       rewrite (and_short l2 (bits_to_Z l1)).
       auto.
-  + unfold Byte.max_unsigned. simpl. omega.
+  + unfold Byte.max_unsigned. simpl. lia.
   + unfold Byte.max_unsigned.
     simpl.
     generalize (bits_to_Z_range (length(l1++l2)) (l1++l2) eq_refl).
     intros Hrange.
     assert((length(l1++l2) <=8)%nat). {
       rewrite app_length.
-      omega.
+      lia.
     }
     assert(two_power_nat (length (l1 ++ l2)) <= two_power_nat 8). {
       generalize (two_power_mono (length(l1++l2)) 8 H11).
-      omega.
+      lia.
     }
     
     unfold two_power_nat in H12.
     simpl in H12.
     unfold two_power_nat in Hrange.
-    omega.
+    lia.
 Qed.
 
 Lemma decode_encode_rr_operand_refl: forall l r1 r2 x x0,
@@ -2190,7 +2190,7 @@ Proof.
              unfold Ptrofs.modulus.
              unfold two_power_nat. unfold Ptrofs.wordsize.
              unfold Wordsize_Ptrofs.wordsize. destruct Archi.ptr64 eqn:EQAR;inversion EQAR.
-             simpl. omega.
+             simpl. lia.
              1-3:intros HNot.
              1-3:inversion HNot.
              
@@ -2232,7 +2232,7 @@ Proof.
              unfold Ptrofs.modulus.
              unfold two_power_nat. unfold Ptrofs.wordsize.
              unfold Wordsize_Ptrofs.wordsize. destruct Archi.ptr64 eqn:EQAR;inversion EQAR.
-             simpl. omega.
+             simpl. lia.
              1-3: intros HNot;inversion HNot.
              
        +++
@@ -2352,7 +2352,7 @@ Proof.
              generalize (encode_parse_reg_refl _ _ EQ0).
              rewrite H.
              intros HRdEQ. inversion HRdEQ. auto.
-             simpl. omega.
+             simpl. lia.
              1-9: intros HNot; inversion HNot.             
     ++
       monadInv EQ.
@@ -2481,7 +2481,7 @@ Proof.
                unfold Ptrofs.modulus.
                unfold two_power_nat. unfold Ptrofs.wordsize.
                unfold Wordsize_Ptrofs.wordsize. destruct Archi.ptr64 eqn:EQAR;inversion EQAR.
-               simpl. omega.
+               simpl. lia.
                1-14: intros HNot; inversion HNot.
                
           ++++
@@ -3150,7 +3150,7 @@ Proof.
        split.
        +++ simpl. auto.
        +++ 
-         assert((length b["10"] <= 2)%nat) as len2 by (simpl;omega).
+         assert((length b["10"] <= 2)%nat) as len2 by (simpl;lia).
          assert((length (x0 ++ b[ "100"]) = 6)%nat) as len6. {
            rewrite app_length.
            simpl.
@@ -3161,7 +3161,7 @@ Proof.
          simpl in *.
          rewrite H11.
          unfold not. intros H12. inversion H12.
-       +++ omega.
+       +++ lia.
        +++ unfold Z.pow. unfold Z.pow_pos. simpl. auto.
     ++
       unfold encode_addrmode in EQ.
@@ -3186,9 +3186,9 @@ Proof.
               simpl in H.
               setoid_rewrite H.
               auto.
-              omega.
+              lia.
               simpl. unfold Z.pow_pos. simpl. auto.
-        ++++ assert((length b["10"] <= 2)%nat) as len2 by (simpl;omega).
+        ++++ assert((length b["10"] <= 2)%nat) as len2 by (simpl;lia).
              assert((length (x0 ++ b[ "100"]) = 6)%nat) as len6. {
                rewrite app_length.
                simpl.
@@ -3204,7 +3204,7 @@ Proof.
           exists(bB[ b["10"] ++ x0 ++ x1]).
           split.
           ++++ simpl. auto.
-          ++++ assert((length b["10"] <= 2)%nat) as len2 by (simpl;omega).
+          ++++ assert((length b["10"] <= 2)%nat) as len2 by (simpl;lia).
                assert((length (x0 ++ x1) = 6)%nat) as len6. {
                  rewrite app_length.
                  rewrite (encode_reg_length rd); auto.
@@ -3240,10 +3240,10 @@ Proof.
            repeat rewrite <- app_assoc in H.
            setoid_rewrite H.
            simpl. auto.
-           omega.
+           lia.
            simpl.
            unfold Z.pow_pos. simpl.
-           omega.
+           lia.
        +++
          assert ((length b["00"] <=2)%nat) as len by (simpl; auto).
          assert ((length  (x0++b["100"]) = 6)%nat) as len2. {
@@ -3351,7 +3351,7 @@ Lemma encode_decode_instr_refl: forall ofs i s l,
     unfold Int.wordsize in H. unfold Wordsize_32.wordsize in H.
     unfold two_power_nat in H. simpl in H.
     unfold two_power_pos;simpl.
-    omega.
+    lia.
     repeat rewrite app_length.
     simpl.
     rewrite (encode_reg_length rd).
@@ -3381,9 +3381,9 @@ Lemma encode_decode_instr_refl: forall ofs i s l,
     destruct HInstr_reloc as [irofs HInstr_reloc].
     assert(HOfs: ofs + 1 + 1 = irofs + ofs). {
         unfold instr_reloc_offset in HInstr_reloc.
-        replace (ofs+1+1)with (1 + 1 + ofs) by omega.
+        replace (ofs+1+1)with (1 + 1 + ofs) by lia.
         monadInv HInstr_reloc.        
-        omega.
+        lia.
     }
     monadInv EQ.
     destruct (Ptrofs.eq_dec Ptrofs.zero Ptrofs.zero); inversion EQ.
@@ -3453,7 +3453,7 @@ Lemma encode_decode_instr_refl: forall ofs i s l,
       destruct HInstr_reloc as [irofs HInstr_reloc].     
       assert(HOfs: ofs + am + 1 = irofs + ofs). {
         unfold instr_reloc_offset in HInstr_reloc.
-        replace (ofs+am+1)with (1 + am + ofs) by omega.
+        replace (ofs+am+1)with (1 + am + ofs) by lia.
         monadInv HInstr_reloc.        
         unfold am.
         simpl. setoid_reflexivity. 
@@ -3479,7 +3479,7 @@ Lemma encode_decode_instr_refl: forall ofs i s l,
       simpl.
       
       assert (HOfs: ofs+a_size+1 = x + ofs). {
-        replace (ofs+a_size+1) with (1+a_size+ofs) by omega.
+        replace (ofs+a_size+1) with (1+a_size+ofs) by lia.
         simpl in EQ2.
         inversion EQ2.
         rewrite Heqa_size.
@@ -3515,7 +3515,7 @@ Lemma encode_decode_instr_refl: forall ofs i s l,
       simpl.
       assert(HOfs: ofs + am + 1 = irofs + ofs). {
         unfold instr_reloc_offset in HInstr_reloc.
-        replace (ofs+am+1)with (1 + am + ofs) by omega.
+        replace (ofs+am+1)with (1 + am + ofs) by lia.
         rewrite <- Heqam in HInstr_reloc.
         inversion HInstr_reloc.
         rewrite Heqam.
@@ -3542,7 +3542,7 @@ Lemma encode_decode_instr_refl: forall ofs i s l,
       simpl.
       assert(HOfs: ofs + am + 1 = irofs + ofs). {
         unfold instr_reloc_offset in HInstr_reloc.
-        replace (ofs+am+1)with (1 + am + ofs) by omega.
+        replace (ofs+am+1)with (1 + am + ofs) by lia.
         rewrite <- Heqam in HInstr_reloc.
         inversion HInstr_reloc.
         rewrite Heqam.
@@ -3631,7 +3631,7 @@ Lemma encode_decode_instr_refl: forall ofs i s l,
       simpl.
       assert(HOfs: ofs + am + 1 = irofs + ofs). {
         unfold instr_reloc_offset in HInstr_reloc.
-        replace (ofs+am+1)with (1 + am + ofs) by omega.
+        replace (ofs+am+1)with (1 + am + ofs) by lia.
         rewrite <- Heqam in HInstr_reloc.
         inversion HInstr_reloc.
         rewrite Heqam.
@@ -3658,7 +3658,7 @@ Lemma encode_decode_instr_refl: forall ofs i s l,
       simpl.
       assert(HOfs: ofs + am + 1 = irofs + ofs). {
         unfold instr_reloc_offset in HInstr_reloc.
-        replace (ofs+am+1)with (1 + am + ofs) by omega.
+        replace (ofs+am+1)with (1 + am + ofs) by lia.
         rewrite <- Heqam in HInstr_reloc.
         inversion HInstr_reloc.
         rewrite Heqam.
@@ -3745,7 +3745,7 @@ Lemma encode_decode_instr_refl: forall ofs i s l,
        simpl in H11.
        unfold two_power_pos.
        simpl.
-       omega.
+       lia.
     ++ auto.
   + (* (Psubl_rr rd r1) *)
     exists (Psubl_rr rd r1).
@@ -3828,7 +3828,7 @@ Lemma encode_decode_instr_refl: forall ofs i s l,
     unfold two_power_nat in H.
     simpl in H.
     unfold two_power_pos.
-    simpl. omega.
+    simpl. lia.
     auto.
     repeat rewrite app_length.
     simpl.
@@ -3917,12 +3917,12 @@ Lemma encode_decode_instr_refl: forall ofs i s l,
       unfold Byte.shru.
       simpl. repeat rewrite Byte.unsigned_repr. unfold Z.shiftr.
       simpl. unfold Byte.and. f_equal.
-      unfold Byte.max_unsigned. simpl. omega.
-      unfold Byte.max_unsigned. simpl. omega.
+      unfold Byte.max_unsigned. simpl. lia.
+      unfold Byte.max_unsigned. simpl. lia.
       repeat rewrite app_length.
       simpl.
       rewrite (encode_reg_length r1).
-      omega.
+      lia.
       apply EQ.
       rewrite (encode_reg_length r1); auto.
     }
@@ -3948,7 +3948,7 @@ Lemma encode_decode_instr_refl: forall ofs i s l,
     unfold two_power_nat in H.
     simpl in H.
     unfold two_power_pos.
-    simpl. omega.
+    simpl. lia.
     1-3: auto.
     repeat rewrite app_length.
     simpl.
@@ -4080,7 +4080,7 @@ Lemma encode_decode_instr_refl: forall ofs i s l,
       destruct HInstr_reloc as [irofs HInstr_reloc].     
       assert(HOfs: ofs + am + 1 = irofs + ofs). {
         unfold instr_reloc_offset in HInstr_reloc.
-        replace (ofs+am+1)with (1 + am + ofs) by omega.
+        replace (ofs+am+1)with (1 + am + ofs) by lia.
         monadInv HInstr_reloc.        
         unfold am.
         simpl. setoid_reflexivity. 
@@ -4106,7 +4106,7 @@ Lemma encode_decode_instr_refl: forall ofs i s l,
       simpl.
       
       assert (HOfs: ofs+a_size+1 = x + ofs). {
-        replace (ofs+a_size+1) with (1+a_size+ofs) by omega.
+        replace (ofs+a_size+1) with (1+a_size+ofs) by lia.
         simpl in EQ2.
         inversion EQ2.
         rewrite Heqa_size.
@@ -4143,7 +4143,7 @@ Lemma encode_decode_instr_refl: forall ofs i s l,
       simpl.
       assert(HOfs: ofs + am + 1 = irofs + ofs). {
         unfold instr_reloc_offset in HInstr_reloc.
-        replace (ofs+am+1)with (1 + am + ofs) by omega.
+        replace (ofs+am+1)with (1 + am + ofs) by lia.
         rewrite <- Heqam in HInstr_reloc.
         inversion HInstr_reloc.
         rewrite Heqam.
@@ -4170,7 +4170,7 @@ Lemma encode_decode_instr_refl: forall ofs i s l,
       simpl.
       assert(HOfs: ofs + am + 1 = irofs + ofs). {
         unfold instr_reloc_offset in HInstr_reloc.
-        replace (ofs+am+1)with (1 + am + ofs) by omega.
+        replace (ofs+am+1)with (1 + am + ofs) by lia.
         rewrite <- Heqam in HInstr_reloc.
         inversion HInstr_reloc.
         rewrite Heqam.
@@ -4292,7 +4292,7 @@ Lemma encode_decode_instr_refl: forall ofs i s l,
     unfold Int.modulus in H; unfold Int.wordsize in H; unfold Wordsize_32.wordsize in H.
     unfold two_power_nat in H; simpl in H.
     unfold valid_int32.
-    unfold two_power_pos. simpl. omega.
+    unfold two_power_pos. simpl. lia.
     repeat rewrite app_length.
     simpl.
     rewrite (encode_reg_length rd).

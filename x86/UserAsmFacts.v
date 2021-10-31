@@ -13,11 +13,11 @@ Require Import Globalenvs.
 Require Import Events.
 Require Import Values.
 Require Import Conventions1.
-Require Import Asmgen.
+(* Require Import Asmgen. *)
 (* Require Asmgenproof0. *)
 Require Import Errors.
 
-(* CompCertELF/backend/Asmgenproof0 *)
+(* CompCertELF/ backend/Asmgenproof0 & x86/AsmRegs *)
 Lemma undef_regs_other:
   forall r rl rs,
   (forall r', In r' rl -> r <> r') ->
@@ -27,7 +27,82 @@ Proof.
   rewrite IHrl by auto. rewrite Pregmap.gso; auto.
 Qed.
 
+Ltac simpl_not_in NIN :=
+  let H1 := fresh in
+  let H2 := fresh in
+  first [ apply Decidable.not_or in NIN; destruct NIN as [H1 H2]; simpl_not_in H2
+        | idtac ].
+
+Lemma nextinstr_pc:
+  forall rs (*SACC:*)sz, (nextinstr rs (*SACC:*)sz)#PC = Val.offset_ptr rs#PC (*SACC:*)sz.
+Proof.
+  intros. apply Pregmap.gss.
+Qed.
+
+Lemma nextinstr_inv:
+  forall r rs (*SACC:*)sz, r <> PC -> (nextinstr rs (*SACC:*)sz)#r = rs#r.
+Proof.
+  intros. unfold nextinstr. apply Pregmap.gso. red; intro; subst. auto.
+Qed.
+
+Lemma nextinstr_inv1:
+  forall r rs (*SACC:*)sz, data_preg r = true -> (nextinstr rs (*SACC:*)sz)#r = rs#r.
+Proof.
+  intros. apply nextinstr_inv. red; intro; subst; discriminate.
+Qed.
+
+Lemma nextinstr_rsp:
+  forall rs sz,
+    nextinstr rs sz RSP = rs RSP.
+Proof.
+  unfold nextinstr.
+  intros; rewrite Pregmap.gso; congruence.
+Qed.
+
+Lemma nextinstr_nf_rsp:
+  forall rs sz,
+    nextinstr_nf rs sz RSP = rs RSP.
+Proof.
+  unfold nextinstr_nf.
+  intros. rewrite nextinstr_rsp.
+  rewrite undef_regs_other; auto.
+  simpl; intuition subst; congruence.
+Qed.
+
+Lemma nextinstr_nf_pc: forall rs sz, nextinstr_nf rs sz PC = Val.offset_ptr (rs PC) sz.
+Proof.
+  unfold nextinstr_nf. simpl.
+  intros. rewrite nextinstr_pc. f_equal.
+Qed.
+
+Ltac simpl_regs_in H :=
+  repeat first [ rewrite Pregmap.gso in H by congruence
+               | rewrite Pregmap.gss in H
+               | rewrite nextinstr_pc in H
+               | rewrite nextinstr_rsp in H
+               | rewrite nextinstr_nf_rsp in H
+               | rewrite nextinstr_nf_pc in H
+               | rewrite nextinstr_inv in H by congruence
+               ].
+
+Ltac simpl_regs :=
+  repeat first [ rewrite Pregmap.gso by congruence
+               | rewrite Pregmap.gss
+               | rewrite nextinstr_pc
+               | rewrite nextinstr_rsp
+               | rewrite nextinstr_nf_rsp
+               | rewrite nextinstr_nf_pc
+               | rewrite nextinstr_inv by congruence
+               ].
+
+(* *********************************************** *)
+
 (* CompCertELF/x86/Asmgen *)
+(** Extracting integer or float registers. *)
+
+(* Local Open Scope string_scope. *)
+Local Open Scope error_monad_scope.
+
 (** Extracting integer or float registers. *)
 
 Definition ireg_of (r: mreg) : res ireg :=
@@ -39,6 +114,42 @@ Definition freg_of (r: mreg) : res freg :=
 (** Accessing slots in the stack frame. *)
 
 Definition loadind (base: ireg) (ofs: ptrofs) (ty: typ) (dst: mreg) (k: code) :=
+  do instr <-
+  let a := Addrmode (Some base) None (inl _ (Ptrofs.unsigned ofs)) in
+  match ty, preg_of dst with
+  | Tint, IR r => OK (Pmovl_rm r a)
+  | Tlong, IR r => OK (Pmovq_rm r a)
+  | Tsingle, FR r => OK (Pmovss_fm r a)
+  | Tsingle, ST0  => OK (Pflds_m a)
+  | Tfloat, FR r => OK (Pmovsd_fm r a)
+  | Tfloat, ST0  => OK (Pfldl_m a)
+  | Tany32, IR r => if Archi.ptr64 then Error (msg "Asmgen.loadind1") else OK (Pmov_rm_a r a)
+  | Tany64, IR r => if Archi.ptr64 then OK (Pmov_rm_a r a) else Error (msg "Asmgen.loadind2")
+  | Tany64, FR r => OK (Pmovsd_fm_a r a)
+  | _, _ => Error (msg "Asmgen.loadind")
+  end;
+  OK (instr :: k).
+
+Definition storeind (src: mreg) (base: ireg) (ofs: ptrofs) (ty: typ) (k: code) :=
+  do instr <-
+  let a := Addrmode (Some base) None (inl _ (Ptrofs.unsigned ofs)) in
+  match ty, preg_of src with
+  | Tint, IR r => OK (Pmovl_mr a r)
+  | Tlong, IR r => OK (Pmovq_mr a r)
+  | Tsingle, FR r => OK (Pmovss_mf a r)
+  | Tsingle, ST0 => OK (Pfstps_m a)
+  | Tfloat, FR r => OK (Pmovsd_mf a r)
+  | Tfloat, ST0 => OK (Pfstpl_m a)
+  | Tany32, IR r => if Archi.ptr64 then Error (msg "Asmgen.storeind1") else OK (Pmov_mr_a a r)
+  | Tany64, IR r => if Archi.ptr64 then OK (Pmov_mr_a a r) else Error (msg "Asmgen.storeind2")
+  | Tany64, FR r => OK (Pmovsd_mf_a a r)
+  | _, _ => Error (msg "Asmgen.storeind")
+  end;
+  OK (instr :: k).
+
+(*
+Definition loadind (base: ireg) (ofs: ptrofs) (ty: typ) (dst: mreg) (k: code) :=
+  do instr <-
   let a := Addrmode (Some base) None (inl _ (Ptrofs.unsigned ofs)) in
   match ty, preg_of dst with
   | Tint, IR r => OK (Pmovl_rm r a :: k)
@@ -67,6 +178,7 @@ Definition storeind (src: mreg) (base: ireg) (ofs: ptrofs) (ty: typ) (k: code) :
   | Tany64, FR r => OK (Pmovsd_mf_a a r :: k)
   | _, _ => Error (msg "Asmgen.storeind")
   end.
+*)
 
 (* ********************** *)
 
@@ -255,13 +367,6 @@ Qed.
     | _ => nil
     end.
 
-  Require Import AsmRegs.
-
-  Ltac simpl_not_in NIN :=
-    let H1 := fresh in
-    let H2 := fresh in
-    first [ apply Decidable.not_or in NIN; destruct NIN as [H1 H2]; simpl_not_in H2
-          | idtac ].
 
   Lemma exec_load_rsp:
     forall (ge: genv) K m1 am rs1 f0 rs2 m2 sz,
@@ -269,8 +374,6 @@ Qed.
       forall r,
         ~ In  r (PC :: RA :: CR ZF :: CR CF :: CR PF :: CR SF :: CR OF :: f0 :: nil) ->
       rs2 r = rs1 r.
-  Admitted.
-  (*
   Proof.
     intros ge' K m1 am rs1 f0 rs2 m2 sz LOAD.
     unfold exec_load in LOAD. destr_in LOAD. inv LOAD.
@@ -279,12 +382,7 @@ Qed.
     intros.
     simpl_not_in H.
     simpl. simpl_regs. auto.
-    unfold nextinstr.
-    intros.
-    simpl_not_in H.
-    simpl. simpl_regs. auto.
   Qed.
-  *)
 
   Lemma exec_store_rsp:
     forall (ge: genv)  K m1 am rs1 f0 rs2 m2 (l: list preg) sz,
@@ -292,8 +390,6 @@ Qed.
       forall r,
         ~ In  r (PC :: RA :: CR ZF :: CR CF :: CR PF :: CR SF :: CR OF :: l) ->
       rs2 r = rs1 r.
-  Admitted.
-  (*
   Proof.
     intros ge' K m1 am rs1 f0 rs2 m2 l sz STORE.
     unfold exec_store in STORE. repeat destr_in STORE.
@@ -304,15 +400,12 @@ Qed.
     simpl. simpl_regs. 
     rewrite undef_regs_other. auto. intros; intro; subst. congruence.
   Qed.
-  *)
   
   Lemma exec_instr_only_written_regs:
     forall (ge: Genv.t UserAsm.fundef unit) rs1 m1 rs2 m2 f i (*init_stk*) r,
       UserAsm.exec_instr (*init_stk*) ge f i rs1 m1 = Next rs2 m2 ->
       ~ In  r (PC :: RA :: CR ZF :: CR CF :: CR PF :: CR SF :: CR OF :: written_regs i) ->
       rs2 # r = rs1 # r.
-  Admitted.
-  (*
   Proof.
     intros ge rs1 m1 rs2 m2 f i r EI NIN.
     simpl in NIN.
@@ -340,7 +433,6 @@ Qed.
     solveofs H7.
     solveofs H7.
   Qed.
-  *)
 
 
   Definition check_asm_instr_no_rsp i :=
@@ -422,26 +514,20 @@ Qed.
       (IN : In i ti)
       (TI : loadind ir o t m nil = OK ti),
       ~ In (IR RSP) (written_regs i).
-  Admitted.
-  (*
   Proof.
     unfold loadind. intros. monadInv1 TI. destruct IN. 2: easy. subst.
     repeat destr_in EQ; simpl; apply Classical_Prop.and_not_or; split; solve_rs; auto.
   Qed.
-  *)
 
   Lemma storeind_no_rsp:
     forall ir o t m ti i
       (IN : In i ti)
       (TI : storeind ir o t m nil = OK ti),
       ~ In (IR RSP) (written_regs i).
-  Admitted.
-  (*
   Proof.
     unfold storeind. intros. monadInv TI. destruct IN. 2: easy. subst.
     repeat destr_in EQ; simpl; try apply Classical_Prop.and_not_or; try split; solve_rs; auto.
   Qed.
-  *)
 
   (* NCC: *)
   (*

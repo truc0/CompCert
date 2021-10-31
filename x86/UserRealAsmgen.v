@@ -252,7 +252,7 @@ Definition transf_instr (i: Asm.instruction): list UserAsm.instruction :=
   (* | Psubl_ri (rd: ireg) (n: int) *)
   (* | Psubq_ri (rd: ireg) (n: int64). *)
   (* | _ => [ Pnop ] *)
-  | _ => [ Pxorl_ri RAX Int.zero ]
+  | _ => [ Pmovsb ]
   end.
 
 Definition transf_code (c: Asm.code) : code :=

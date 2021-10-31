@@ -1871,7 +1871,7 @@ Inductive step: state -> trace -> state -> Prop :=
       find_instr (Ptrofs.unsigned ofs) f.(fn_code) = Some (Pbuiltin ef args res) ->
       eval_builtin_args ge rs (rs RSP) m args vargs ->
       external_call ef ge vargs (* NCC: *)m (*((*SACC:*)Mem.push_new_stage m)*) t vres m' ->
-  (* NCC: *) (* (*SACC:*)Mem.unrecord_stack_block m' = Some m'' -> *)
+  (* NCC: *) m' = m'' -> (* (*SACC:*)Mem.unrecord_stack_block m' = Some m'' -> *)
   (*SACC:*)no_rsp_builtin_preg res ->
       rs' = nextinstr_nf
              (set_res res vres
@@ -1893,7 +1893,7 @@ Inductive step: state -> trace -> state -> Prop :=
         no_rsp_pair (loc_external_result (ef_sig ef)) ->
         ra_after_call ge (rs#RA) ->*)
       external_call ef ge args m t res m' ->
-  (* NCC: *) (* (*SACC:*)Mem.unrecord_stack_block m' = Some m'' -> *)
+  (* NCC: *) m' = m'' -> (* (*SACC:*)Mem.unrecord_stack_block m' = Some m'' -> *)
       rs' = (set_pair (loc_external_result (ef_sig ef)) res rs) #PC <- (rs RA) ->
   (*SACC:*)(*rs' = (set_pair (loc_external_result (ef_sig ef)) res (undef_regs (CR ZF :: CR CF :: CR PF :: CR SF :: CR OF :: nil) (undef_regs (map preg_of destroyed_at_call) rs))) #PC <- (rs RA) #RA <- Vundef ->*)
       step (State rs m) t (State rs' (*SACC:*)m'').
@@ -1967,10 +1967,10 @@ Ltac Equalities :=
 + discriminate.
 + assert (vargs0 = vargs) by (eapply eval_builtin_args_determ; eauto). subst vargs0.
   exploit external_call_determ. eexact H5. eexact H12. intros [A B].
-  split. auto. intros. destruct B; auto. subst. auto. (*congruence.*) admit.
+  split. auto. intros. destruct B; auto. subst. auto. (* congruence. *)
 + assert (args0 = args) by (eapply extcall_arguments_determ; eauto). subst args0.
   exploit external_call_determ. eexact H4. eexact H9. intros [A B].
-  split. auto. intros. destruct B; auto. subst. auto. (*congruence.*) admit.
+  split. auto. intros. destruct B; auto. subst. auto. (*congruence.*)
 - (* trace length *)
   red; intros; inv H; simpl.
   lia.
@@ -1986,7 +1986,7 @@ Ltac Equalities :=
   inv H. red; intros; red; intros. inv H; rewrite H0 in *; eelim NOTNULL; eauto.
 - (* final states *)
   inv H; inv H0. auto. congruence.
-Admitted.
+Qed.
 
 (** Classification functions for processor registers (used in Asmgenproof). *)
 

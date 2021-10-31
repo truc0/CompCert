@@ -317,16 +317,16 @@ Qed.
 Lemma sec_size_pos a:
   0 <= sec_size a.
 Proof.
-  destruct a; simpl. generalize (code_size_non_neg code); omega.
-  generalize (init_data_list_size_pos init). omega.
-  generalize (init_data_list_size_pos init). omega.
-  omega.
+  destruct a; simpl. generalize (code_size_non_neg code); lia.
+  generalize (init_data_list_size_pos init). lia.
+  generalize (init_data_list_size_pos init). lia.
+  lia.
 Qed.
 
 Lemma fold_sec_size_range: forall l,
     0 <= fold_right (fun (y : RelocProgram.section) (x : Z) => sec_size y + x) 0 l.
 Proof.
-  induction l; simpl; intros; eauto. omega.
+  induction l; simpl; intros; eauto. lia.
   apply Z.add_nonneg_nonneg. apply sec_size_pos. auto.
 Qed.
 
@@ -379,18 +379,18 @@ Lemma fold_left_size_acc: forall b acc,
     acc + fold_left (fun (acc : Z) (sec : RelocProgram.section) => sec_size sec + acc) b 0.
 Proof.
   induction b; simpl; intros; eauto.
-  omega.
+  lia.
   rewrite (IHb (sec_size a + acc)).
-  rewrite (IHb (sec_size a + 0)). omega.
+  rewrite (IHb (sec_size a + 0)). lia.
 Qed.
 
 Lemma fold_left_le: forall b acc,
     acc <= fold_left (fun (acc : Z) (sec : RelocProgram.section) => sec_size sec + acc) b acc.
 Proof.
   induction b; simpl; intros; eauto.
-  omega.
+  lia.
   rewrite fold_left_size_acc. specialize (IHb 0).
-  generalize (sec_size_pos a). omega.
+  generalize (sec_size_pos a). lia.
 Qed.
 
 Lemma get_sections_size_app a b:
@@ -419,7 +419,7 @@ Proof.
   destruct (list_first_n_prefix (N.to_nat id') s) as (l2 & EQ).
   rewrite EQ at 2.
   rewrite get_sections_size_app.
-  generalize (get_sections_size_pos l2); omega.
+  generalize (get_sections_size_pos l2); lia.
 Qed.
 
 Lemma get_section_size_range p id
@@ -428,18 +428,18 @@ Lemma get_section_size_range p id
 Proof.
   unfold get_elf_shoff in *.
   split.
-  unfold get_section_size. destr. apply sec_size_pos. omega.
+  unfold get_section_size. destr. apply sec_size_pos. lia.
   eapply Z.le_lt_trans. 2: eauto.
   cut (get_section_size id (prog_sectable p) <= get_sections_size (prog_sectable p)).
-  cut (0 <= elf_header_size). intros; omega. vm_compute; congruence.
+  cut (0 <= elf_header_size). intros; lia. vm_compute; congruence.
   generalize (prog_sectable p). clear. Opaque Z.add.
   unfold get_section_size, SecTable.get. generalize (N.to_nat (SecTable.idx id)). clear.
   unfold get_sections_size.
-  induction n; destruct s; simpl; intros; eauto. omega.
-  etransitivity. 2: apply fold_left_le. omega. omega.
+  induction n; destruct s; simpl; intros; eauto. lia.
+  etransitivity. 2: apply fold_left_le. lia. lia.
   etransitivity. apply IHn.
   rewrite fold_left_size_acc with (acc:=sec_size v + 0) .
-  generalize (sec_size_pos v). omega.
+  generalize (sec_size_pos v). lia.
 Qed.
 
 Lemma get_sections_size_in t x:
@@ -452,10 +452,10 @@ Proof.
   easy.
   destruct H.
   - subst; simpl.
-    etransitivity. 2: apply fold_left_le. omega.
+    etransitivity. 2: apply fold_left_le. lia.
   - etransitivity. eapply IHt. auto.
     rewrite (fold_left_size_acc t (sec_size a + 0)).
-    generalize (sec_size_pos a); omega.
+    generalize (sec_size_pos a); lia.
 Qed.
 
 Lemma dummy_symbentry_length: length encode_dummy_symbentry = 16%nat.
@@ -498,7 +498,7 @@ Lemma length_filter {A} (l: list A) f:
   (length (filter f l) <= length l)%nat.
 Proof.
   induction l; simpl; intros; eauto.
-  destr; simpl; omega.
+  destr; simpl; lia.
 Qed.
 
 Lemma one_greater_last_local_symb_range p symt
@@ -508,11 +508,11 @@ Lemma one_greater_last_local_symb_range p symt
   0 <= one_greater_last_local_symb_index p < two_power_pos 32.
 Proof.
   unfold one_greater_last_local_symb_index.
-  split. omega.
+  split. lia.
   eapply Z.le_lt_trans. 2: apply l. clear l.
   unfold get_elf_shoff.
   transitivity (get_sections_size (prog_sectable p)).
-  2: change elf_header_size with 52; omega.
+  2: change elf_header_size with 52; lia.
   etransitivity. 2: apply get_sections_size_in; eauto.
   erewrite create_symbtable_section_length; eauto.
   change 16 with (Z.of_nat 16).
@@ -655,7 +655,7 @@ Proof.
       simpl.
       rewrite <- EQ0.
       rewrite fold_left_size_acc.
-      cut (Z.of_nat (length x1) = sec_size a). omega. clear - EQ.
+      cut (Z.of_nat (length x1) = sec_size a). lia. clear - EQ.
       unfold transl_section in EQ. destr_in EQ. inv EQ. simpl. auto.
   - apply gen_sections_length in EQ. setoid_rewrite <- EQ.
     apply Nat.eqb_eq in Heqb.
@@ -695,6 +695,6 @@ Proof.
     rewrite ! Z.eqb_refl.
     unfold get_sections_size. simpl.
     change elf_header_size with 52.
-    rewrite !  (proj2 (Z.eqb_eq _ _)) by omega; auto.
+    rewrite !  (proj2 (Z.eqb_eq _ _)) by lia; auto.
   - reflexivity.
 Qed.
