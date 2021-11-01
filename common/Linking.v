@@ -332,13 +332,6 @@ Qed.
 
 End LINKER_PROG.
 
-
-(* static variable renaming *)
-
-Definition rlink_program {F V : Type} {LF: Linker F} {LV: Linker V}  {AP: Alpha (program F V)} (p1 p2 p : program F V) :=
-  exists p1' p2', alpha_equiv p1.(prog_public) p1 p1' /\  alpha_equiv p2.(prog_public) p2 p2' /\ link_prog p1 p2 = Some p.                                  
-
-
 Program Instance Linker_prog (F V: Type) {LF: Linker F} {LV: Linker V} : Linker (program F V) := {
   link := link_prog;
   linkorder := fun p1 p2 =>
@@ -392,6 +385,12 @@ Proof.
 Qed.
 
 Global Opaque Linker_prog.
+
+
+(* static variable renaming *)
+
+Definition rlink_program {F V : Type} {LF: Linker F} {LV: Linker V} {AF: Alpha F} {AV: Alpha V} (p1 p2 p : program F V) :=
+  exists p1' p2', alpha_equiv p1.(prog_public) p1 p1' /\  alpha_equiv p2.(prog_public) p2 p2' /\ link p1' p2' = Some p.                                
 
 (** * Matching between two programs *)
 
@@ -825,15 +824,32 @@ Qed.
 
 End LINK_LIST_MATCH.
 
+(* Alpha link commute *)
+
+Section ALPHA_PROG_PROPERTY.
+  Context {F V: Type} {AF: Alpha F} {AV: Alpha V} {LF: Linker F} {LV: Linker V}.
+
+  Theorem alpha_link_commute: forall (p1 p2 p1' p2' p p': program F V),
+      alpha_equiv p1.(prog_public) p1 p1' ->
+      alpha_equiv p2.(prog_public) p2 p2' ->
+      link p1 p2 = Some p ->
+      link p1' p2' = Some p' ->
+      alpha_equiv p.(prog_public) p p'.
+Admitted.
+
+End ALPHA_PROG_PROPERTY.
+
 (** * Linking and composition of compilation passes *)
 
 Set Implicit Arguments.
 
 (** A generic language is a type of programs and a linker. *)
 
-Structure Language := mklang { lang_prog :> Type; lang_link: Linker lang_prog }.
+(* in addition a Alpha renaming function *)
 
-Canonical Structure Language_gen (A: Type) (L: Linker A) : Language := @mklang A L.
+Structure Language := mklang { lang_prog :> Type; lang_link: Linker lang_prog; lang_alpha: Alpha lang_prog; lang_sup: lang_prog -> support}.
+
+Canonical Structure Language_gen (A: Type) (L: Linker A) (AL: Alpha A) (sup: A -> support) : Language := @mklang A L AL sup.
 
 (** A compilation pass from language [S] (source) to language [T] (target)
   is a matching relation between [S] programs and [T] programs,
@@ -842,27 +858,40 @@ Canonical Structure Language_gen (A: Type) (L: Linker A) : Language := @mklang A
 
 Record Pass (S T: Language) := mkpass {
   pass_match :> lang_prog S -> lang_prog T -> Prop;
-  pass_match_link: @TransfLink (lang_prog S) (lang_prog T) (lang_link S) (lang_link T) pass_match
+  pass_match_link: @TransfLink (lang_prog S) (lang_prog T) (lang_link S) (lang_link T) pass_match;
+  pass_match_alpha: @TransfAlpha (lang_prog S) (lang_prog T) (lang_alpha S) (lang_alpha T) pass_match (lang_sup S) (lang_sup T)
 }.
 
-Arguments mkpass {S} {T} (pass_match) {pass_match_link}.
+Arguments mkpass {S} {T} (pass_match) {pass_match_link} {pass_match_alpha}.
 
 Program Definition pass_identity (l: Language): Pass l l :=
   {| pass_match := fun p1 p2 => p1 = p2;
-     pass_match_link := _ |}.
+     pass_match_link := _ ;
+     pass_match_alpha := _;|}.
 Next Obligation.
   red; intros. subst. exists p; auto.
 Defined.
+Next Obligation.
+  red;intros. subst. exists s'; auto.
+Defined.
+
 
 Program Definition pass_compose {l1 l2 l3: Language} (pass: Pass l1 l2) (pass': Pass l2 l3) : Pass l1 l3 :=
   {| pass_match := fun p1 p3 => exists p2, pass_match pass p1 p2 /\ pass_match pass' p2 p3;
-     pass_match_link := _ |}.
+     pass_match_link := _;
+     pass_match_alpha := _|}.
 Next Obligation.
   red; intros.
   destruct H0 as (p1' & A1 & B1).
   destruct H1 as (p2' & A2 & B2).
   edestruct (pass_match_link pass) as (p' & A & B); eauto.
   edestruct (pass_match_link pass') as (tp & C & D); eauto.
+Defined.
+Next Obligation.
+  red; intros.
+  destruct H0 as (p1' & A1 & B1).
+  edestruct (pass_match_alpha pass) as (p' & A & B); eauto.
+  edestruct (pass_match_alpha pass') as (tp & C & D); eauto.
 Defined.
 
 (** A list of compilation passes that can be composed. *)

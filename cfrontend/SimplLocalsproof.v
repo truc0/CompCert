@@ -2324,3 +2324,8 @@ Local Transparent Linker_fundef.
             type_eq t0 t2 && calling_convention_eq c c0); inv H2.
   econstructor; split; eauto.
 Qed.
+
+(* Alpha and compile commute *)
+Instance TransfSimplLocalAlpha: TransfAlpha match_prog (@prog_public _)(@prog_public _).
+Proof.
+  Admitted.

@@ -1,4 +1,4 @@
-(* *********************************************************************)
+  (* *********************************************************************)
 (*                                                                     *)
 (*              The Compcert verified compiler                         *)
 (*                                                                     *)
@@ -356,3 +356,5 @@ Qed.
 
 End CLEANUP.
 
+Instance TransfCleanuplabelAlpha: TransfAlpha match_prog (@AST.prog_public _ _) (@AST.prog_public _ _).
+Admitted.

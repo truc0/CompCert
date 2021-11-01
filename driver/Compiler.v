@@ -218,6 +218,15 @@ Proof.
 - red; intros. subst tp1 tp2. exists p; auto.
 Qed.
 
+Instance TransfIfAlpha {A: Type} {LA: Alpha A}
+                      (flag: unit -> bool) (transf: A -> A -> Prop) (get_sup: A -> support) (TL: TransfAlpha transf get_sup get_sup)
+                      : TransfAlpha (match_if flag transf) get_sup get_sup.
+Proof.
+  unfold match_if. destruct (flag tt).
+- auto.
+- red; intros. subst. exists s'; auto.
+Qed.
+
 (** This is the list of compilation passes of CompCert in relational style.
   Each pass is characterized by a [match_prog] relation between its
   input code and its output code.  The [mkpass] and [:::] combinators,
@@ -478,4 +487,80 @@ Proof.
   { eapply link_list_compose_passes; eauto. }
   destruct H2 as (asm_program & P & Q).
   exists asm_program; split; auto. apply c_semantic_preservation; auto.
+Qed.
+
+Theorem alpha_asm_correct:
+  forall (p1 p2: Asm.program),
+    alpha_equiv p1.(prog_public) p1 p2 ->
+    backward_simulation (Asm.semantics p1) (Asm.semantics p2).
+Admitted.
+
+(* move to Asm.v *)
+Lemma alpha_prog_public: forall (p1 p2: Asm.program)  sup, alpha_equiv sup p1 p2 -> p1.(prog_public) = p2.(prog_public).
+  Transparent Alpha_prog.
+  simpl.
+  unfold alpha_rename_prog.
+  destruct p1. destruct p2. simpl.
+  intros. destruct H as [? [? ?]].
+  inversion H0. auto.
+Qed.
+
+Definition transf_alpha := pass_match_alpha (compose_passes CompCert's_passes).
+
+Definition transf_link := pass_match_link (compose_passes CompCert's_passes).
+
+Theorem rlink_correct:
+  forall p1 p2 p tp1 tp2 tp,
+    Ctypes.rlink_program p1 p2 p ->
+    transf_c_program p1 = OK tp1 ->
+    transf_c_program p2 = OK tp2 ->
+    rlink_program tp1 tp2 tp ->
+    backward_simulation (Csem.semantics p) (Asm.semantics tp).
+Proof.
+  Transparent Alpha_prog.
+  unfold rlink_program. unfold Ctypes.rlink_program.
+  intros.
+  destruct H as [p1' [p2' [eq1' [eq2' link']]]].
+  destruct H2 as [tp1' [tp2' [teq1' [teq2' linkt']]]].
+  (* generate tp1'' tp2'' *)
+  apply transf_c_program_match in H0.
+  apply transf_c_program_match in H1.
+  generalize (transf_alpha _ _ _ eq1' H0).
+  generalize (transf_alpha _ _ _ eq2' H1).
+  intros eq2'' eq1''.
+  destruct eq1'' as [tp1'' [? ?]].
+  destruct eq2'' as [tp2'' [? ?]].
+  (* relate tp1' and tp1'' ... *)
+  generalize (alpha_prog_public tp1 tp1').
+  generalize (alpha_prog_public tp2 tp2').
+  intros.
+  generalize (H6 _ teq1').
+  generalize (H5 _ teq2').
+  intros. simpl in H2, H4.
+  rewrite H7 in *. rewrite H8 in *.
+  apply alpha_equiv_sym in H2.
+  apply alpha_equiv_sym in H4.
+  generalize (alpha_equiv_trans H2 teq1').
+  generalize (alpha_equiv_trans H4 teq2').
+  intros.
+  apply alpha_equiv_sym in H9. apply alpha_equiv_sym in H10.
+  (* tp1'' and tp2'' can be link, use link_prog_match *)
+  generalize transf_link.
+  unfold TransfLink.
+  intros TransfLink.
+  generalize (TransfLink _ _ _ _ _ link' H H3). clear TransfLink. intros Tl.
+  destruct Tl as [tp'' [link'' Match]].
+  (* alpha and link are commute *)
+  generalize (alpha_link_commute  _ _ _ _ _ _ H10 H9 linkt' link'').
+  intros.
+  (* alpha imply semantic preservation, use symmetry first *)
+  apply alpha_equiv_sym in H11.
+  generalize (alpha_prog_public _ _ _ H11).
+  intros. rewrite <- H12 in H11.
+  apply alpha_asm_correct in H11.
+  apply c_semantic_preservation in Match.
+  (* use semantic compositition *)
+  eapply compose_backward_simulation.
+  eapply Asm.semantics_determinate.
+  eauto. auto.
 Qed.

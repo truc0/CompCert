@@ -265,3 +265,12 @@ Inductive final_state: state -> int -> Prop :=
 
 Definition semantics (p: program) :=
   Semantics step (initial_state p) final_state (Genv.globalenv p).
+
+Definition alpha_rename_function (a: permutation) (f: function) :=
+  f.
+
+Program Instance Alpha_function :Alpha function :=
+  { alpha_rename := alpha_rename_function
+  }.
+
+Global Opaque Alpha_function.

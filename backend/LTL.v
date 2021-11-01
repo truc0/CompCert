@@ -320,3 +320,12 @@ Fixpoint successors_block (b: bblock) : list node :=
   | Lreturn :: _ => nil
   | instr :: b' => successors_block b'
   end.
+
+Definition alpha_rename_function (a: permutation) (f: function) :=
+  f.
+
+Program Instance Alpha_function :Alpha function :=
+  { alpha_rename := alpha_rename_function
+  }.
+
+Global Opaque Alpha_function.

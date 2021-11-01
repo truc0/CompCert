@@ -1575,167 +1575,153 @@ Qed.
 End LINK_MATCH_PROGRAM.
 
 
-
-Section ALPHA_PROG.
-
-        
-  Context {F V: Type} {AF: Alpha F} {AV: Alpha V}.
-  Context {ALF: Alpha (list F)} {ALV: Alpha (list V)}.
-
-Hypothesis alpha_F_soundness : forall (f1 f2:F) sup, alpha_equiv sup f1 f2 -> exists a, (forall x, In x sup -> alpha_rename a x = x) /\ alpha_rename a f1 = f2.
-
-Hypothesis alpha_F_completeness : forall (f1 f2:F) sup, (exists a, (forall x, In x sup -> alpha_rename a x = x) /\ alpha_rename a f1 = f2) -> alpha_equiv sup f1 f2.
-
-Hypothesis alpha_list_F_soundness : forall (lf1 lf2: list F) sup, alpha_equiv sup lf1 lf2 -> exists a, (forall x, In x sup -> alpha_rename a x = x) /\ map (alpha_rename a) lf1 = lf2.
-
-Hypothesis alpha_list_F_completeness : forall (lf1 lf2: list F) sup , (exists a, (forall x, In x sup -> alpha_rename a x = x) /\ map (alpha_rename a) lf1 = lf2) -> alpha_equiv sup lf1 lf2.
-
-
 (* static variable renaming *)
 
 (* composite definition renaming *)
 Definition alpha_rename_composite (a:permutation) (comp : composite_definition) : composite_definition :=
   match comp with
   | Composite id us mems attr =>
-    let mems' := combine (map (alpha_rename a) (fst (split mems))) (snd (split mems)) in
-    Composite (alpha_rename a id) us mems' attr
+    Composite (alpha_rename a id) us mems attr
   end.
 
 (* unused *)
 Program Instance Alpha_composite : Alpha composite_definition :=
   { alpha_rename := alpha_rename_composite;
-    alpha_equiv := fun sup comp1 comp2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_rename_composite a comp1 = comp2
-  }.
+   }.
 Next Obligation.
-  Admitted.
+  destruct p;simpl.
+  rewrite alpha_rename_refl.
+  auto.
+Defined.
 Next Obligation.
-  Admitted.
+  destruct p1;simpl.
+  erewrite alpha_rename_sym;auto.
+Defined.
 Next Obligation.
-  Admitted.
+  destruct p1;simpl.
+  erewrite alpha_rename_trans;auto.
+Defined.
 
 Global Opaque Alpha_composite.
 
-(* list composite type *)
-
-Definition alpha_rename_list_compiste (a:permutation) (l: list composite_definition) :=
-  map (alpha_rename a) l.
-
-Program Instance Alpha_list_composite : Alpha (list composite_definition) :=
-  { alpha_rename := alpha_rename_list_compiste;
-    alpha_equiv := fun sup l1 l2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_rename_list_compiste a l1 = l2}.
-Next Obligation.
-  Admitted.
-Next Obligation.
-  Admitted.
-Next Obligation.
-  Admitted.
-
-Global Opaque Alpha_list_composite.
-
-Definition alpha_rename_fundef (a: permutation) (fd: fundef F) :=
+Definition alpha_rename_fundef {F: Type} {AF: Alpha F} (a: permutation) (fd: fundef F) :=
   match fd with
   | Internal f => Internal (alpha_rename a f)
   | _ => fd
   end.
 
-Program Instance Alpha_rename_fundef : Alpha (fundef F) :=
+Program Instance Alpha_fundef {F:Type} {AF: Alpha F} : Alpha (fundef F) :=
   { alpha_rename := alpha_rename_fundef;
-    alpha_equiv := fun sup f1 f2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_rename_fundef a f1 = f2
-  }.
+    }.
 Next Obligation.
-  Admitted.
+  destruct p;simpl.
+  rewrite alpha_rename_refl.
+  auto. auto.
+Defined.
 Next Obligation.
-  Admitted.
+  destruct p1;simpl.
+  erewrite alpha_rename_sym;auto. auto.
+Defined.
 Next Obligation.
-  Admitted.
+  destruct p1;simpl.
+  erewrite alpha_rename_trans;auto. auto.
+Defined.
+Global Opaque Alpha_fundef.
 
-Global Opaque Alpha_rename_fundef.
-
-Definition alpha_rename_list_fundef (a:permutation) (l: list (fundef F)) :=
-  map (alpha_rename a) l.
-
-Program Instance Alpha_list_fundef : Alpha (list (fundef F)) :=
-  { alpha_rename := alpha_rename_list_fundef;
-    alpha_equiv := fun sup l1 l2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_rename_list_fundef a l1 = l2}.
-Next Obligation.
-  Admitted.
-Next Obligation.
-  Admitted.
-Next Obligation.
-  Admitted.
-
-Global Opaque Alpha_list_fundef.
-
-
-Definition alpha_rename_def (a: permutation) (g: globdef (fundef F) type) :=
+Definition alpha_rename_def {F:Type} {AF: Alpha F} (a: permutation) (g: globdef (fundef F) type) :=
   match g with
   | Gfun f => Gfun (alpha_rename a f) 
   | Gvar v => Gvar v
   end.
 
-Program Instance Alpha_def : Alpha (globdef (fundef F) type) :=
+Program Instance Alpha_def {F:Type} {AF: Alpha F} : Alpha (globdef (fundef F) type) :=
   { alpha_rename:= alpha_rename_def;
-    alpha_equiv := fun sup d1 d2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_rename_def a d1 = d2
   }.
 Next Obligation.
-  Admitted.
+  destruct p;simpl.
+  rewrite alpha_rename_refl.
+  auto. auto.
+Defined. 
 Next Obligation.
-  Admitted.
+  destruct p1;simpl.
+  erewrite alpha_rename_sym;auto. auto.
+Defined.
 Next Obligation.
-  Admitted.
+  destruct p1;simpl.
+  erewrite alpha_rename_trans;auto. auto.
+Defined.
 
 Global Opaque Alpha_def.
-
-Definition alpha_rename_list_def (a:permutation) (l: list (globdef (fundef F) type)) :=
-  map (alpha_rename a) l.
-
-Program Instance Alpha_list_def : Alpha (list (globdef (fundef F) type)) :=
-  { alpha_rename := alpha_rename_list_def;
-    alpha_equiv := fun sup l1 l2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_rename_list_def a l1 = l2}.
-Next Obligation.
-  Admitted.
-Next Obligation.
-  Admitted.
-Next Obligation.
-  Admitted.
-
-Global Opaque Alpha_list_def.
-
 
 (* here we do not rename composite because it demand that we should 
    define rename for PTree
  *)
 
-Program Definition  alpha_rename_prog (a: permutation) (p: program F) : (program F) :=
-  let ids := alpha_rename a (fst (split p.(prog_defs))) in
-  let defs := alpha_rename a (snd (split p.(prog_defs))) in
+Definition alpha_rename_prog {F:Type} {AF:Alpha F}(a: permutation) (p: program F) : (program F) :=
+  let idefs := map (fun (d:ident*globdef (fundef F) type) => let (id, defs) := d in
+                        (alpha_rename a id, alpha_rename a defs)
+                   ) p.(prog_defs) in
   (* let types := map (alpha_rename a) p.(prog_types) in *)
-  {| prog_defs := combine ids defs;
+  {| prog_defs := idefs;
      prog_public := p.(prog_public);
      prog_main := p.(prog_main);
      prog_types := p.(prog_types);
-     prog_comp_env := _;
-     prog_comp_env_eq := _ |}.
-Next Obligation.
-  destruct p.
-  auto.
-Defined.
-Next Obligation.
-  destruct p.
-  auto.
-Defined.
+     prog_comp_env := p.(prog_comp_env);
+     prog_comp_env_eq := p.(prog_comp_env_eq)
+  |}.
+(* Next Obligation. *)
+(*   destruct p. *)
+(*   auto. *)
+(* Defined. *)
+(* Next Obligation. *)
+(*   destruct p. *)
+(*   induction prog_types0;auto. *)
+(*   unfold build_composite_env in *. *)
+(*   simpl in *. *)
+(*   destruct a0;simpl in *. *)
+(*   Transparent Alpha_composite. simpl. *)
+(*   monadInv prog_comp_env_eq0. *)
+(*   Admitted.                     (* need rename for PTree? *) *)
 
-Program Instance Alpha_prog : Alpha (program F) :=
-  { alpha_rename := alpha_rename_prog;
-    alpha_equiv := fun sup p1 p2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_rename_prog a p1 = p2}.
+
+
+(* alpha program outside ALPHA_PROG *)
+Program Instance Alpha_prog (F: Type) {AF: Alpha F}: Alpha (program F) :=
+  { alpha_rename := alpha_rename_prog; }.
 Next Obligation.
-  Admitted.
+  destruct p. unfold alpha_rename_prog.
+  simpl.
+  induction prog_defs0. auto.
+  simpl in *. injection IHprog_defs0. intros.
+  destruct a. rewrite H.
+  do 2 erewrite alpha_rename_refl by auto.
+  auto.
+Defined.
 Next Obligation.
-  Admitted.
+  destruct p1. unfold alpha_rename_prog.
+  simpl.
+  induction prog_defs0.
+  auto.
+  simpl in *. destruct a. injection IHprog_defs0.
+  intros. rewrite H.
+  erewrite alpha_rename_sym. erewrite alpha_rename_sym;auto.
+  auto. auto.  
+Defined.
 Next Obligation.
-Admitted.
+  destruct p1. unfold alpha_rename_prog.
+  simpl.
+  induction prog_defs0.
+  auto.
+  simpl in *. destruct a. injection IHprog_defs0.
+  intros. rewrite H.
+  do 2 erewrite alpha_rename_trans by auto.  
+  auto.
+Defined.
 
 Global Opaque Alpha_prog.
+
+Section ALPHA_PROPERTY.
+Context {F: Type} {AF: Alpha F}.
 
 Lemma alpha_sup_exchange: forall p1 p2, alpha_equiv p1.(prog_public) p1 p2 <-> alpha_equiv p2.(prog_public) p1 p2.
   Transparent Alpha_prog.
@@ -1766,7 +1752,18 @@ Lemma alpha_prog_public: forall p1 p2 sup, alpha_equiv sup p1 p2 -> p1.(prog_pub
   inversion H0. auto.
 Qed.
 
-End ALPHA_PROG.
+
+Theorem alpha_link_commute: forall p1 p2 p1' p2' p p', alpha_equiv p1.(prog_public) p1 p1' -> alpha_equiv p2.(prog_public) p2 p2' -> link p1 p2 = Some p -> link p1' p2' = Some p' -> alpha_equiv p.(prog_public) p p'.
+Admitted.
+
+
+(* (* alpha and link commute *) *)
+(* Class AlphaLink {P: Type} {LP: Linker P} {AP: Alpha P} (get_sup: P -> list ident):= *)
+(*   alpha_link: *)
+(*     forall p1 p2 p1' p2' p p', alpha_equiv (get_sup p1) p1 p1' -> alpha_equiv (get_sup p2) p2 p2' -> link p1 p2 = Some p -> link p1' p2' = Some p' -> alpha_equiv (get_sup p) p p'. *)
+
+
+End ALPHA_PROPERTY.
 
 
 Definition rlink_program  {F:Type} {AP: Alpha (program F)} (p1 p2 p: program F) : Prop :=
@@ -1775,10 +1772,6 @@ Definition rlink_program  {F:Type} {AP: Alpha (program F)} (p1 p2 p: program F) 
 
 (* Definition max_program_ident {F : Type} (p: program F):= *)
 (*   fold_left Pos.max (map fst p.(prog_defs)) 1%positive. *)
-
-Class AlphaLink {P: Type} {LP: Linker P} {AP: Alpha P} (get_sup: P -> list ident):=
-  alpha_link:
-    forall p1 p2 p1' p2' p p', alpha_equiv (get_sup p1) p1 p1' -> alpha_equiv (get_sup p2) p2 p2' -> link p1 p2 = Some p -> link p1' p2' = Some p' -> alpha_equiv (get_sup p) p p'.
 
 
 Section RLINK_MATCH_PROGRAM.

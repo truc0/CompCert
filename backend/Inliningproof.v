@@ -1351,3 +1351,6 @@ Proof.
 Qed.
 
 End INLINING.
+
+Instance TransfInliningAlpha: TransfAlpha match_prog (@AST.prog_public _ _) (@AST.prog_public _ _).
+Admitted.

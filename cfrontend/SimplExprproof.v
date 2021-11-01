@@ -2376,10 +2376,13 @@ Section ALPHA_PRESERVATION.
 
 End ALPHA_PRESERVATION.
 
-Lemma transl_alpha_irrelvant : forall (p p': Csyntax.program) (tp: Clight.program),
-    alpha_equiv p.(prog_public) p p' -> match_prog p tp -> exists tp', match_prog p' tp' /\ alpha_equiv tp.(prog_public) tp tp'. 
-
+Instance TransfSimplExprAlpha : TransfAlpha match_prog (@prog_public _)(@prog_public _).
 Proof.
+  Admitted.
+(* Lemma transl_alpha_irrelvant : forall (p p': Csyntax.program) (tp: Clight.program), *)
+(*     alpha_equiv p.(prog_public) p p' -> match_prog p tp -> exists tp', match_prog p' tp' /\ alpha_equiv tp.(prog_public) tp tp'.  *)
+
+(* Proof. *)
   (* unfold alpha_equiv in *. *)
   (* unfold match_prog in *. *)
   (* unfold alpha_prog in *. *)
@@ -2456,8 +2459,6 @@ Proof.
 
   (* simpl.  *)
   
-
-Admitted.
 (* Theorem TransfSimplExprRLink : forall (p1 p2: Csyntax.program) (tp1 tp2: Clight.program) (p: Csyntax.program), *)
 (*     rlink_program p1 p2 p -> *)
 (*     match_prog p1 tp1 -> match_prog p2 tp2 -> *)
@@ -2477,20 +2478,20 @@ Admitted.
 
 Theorem rlink_correct : forall p1 p2 p tp1 tp2 tp,
     rlink_program p1 p2 p -> match_prog p1 tp1 -> match_prog p2 tp2 -> rlink_program tp1 tp2 tp -> forward_simulation (Cstrategy.semantics p) (Clight.semantics1 tp).
-  Transparent Alpha_prog Alpha_Csyntax Alpha_Clight.
+  Transparent Alpha_prog.
   unfold rlink_program.
   intros.
   destruct H as [p1' [p2' [eq1' [eq2' link']]]].
   destruct H2 as [tp1' [tp2' [teq1' [teq2' linkt']]]].
   (* generate tp1'' tp2'' *)
-  generalize (transl_alpha_irrelvant _ _ _ eq1' H0).
-  generalize (transl_alpha_irrelvant _ _ _ eq2' H1).
+  generalize (TransfSimplExprAlpha _ _ _ eq1' H0).
+  generalize (TransfSimplExprAlpha _ _ _ eq2' H1).
   intros eq2'' eq1''.
   destruct eq1'' as [tp1'' [? ?]].
   destruct eq2'' as [tp2'' [? ?]].
   (* relate tp1' and tp1'' ... *)
-  generalize (alpha_prog_public_Clight tp1 tp1').
-  generalize (alpha_prog_public_Clight tp2 tp2').
+  generalize (alpha_prog_public tp1 tp1').
+  generalize (alpha_prog_public tp2 tp2').
   intros.
   generalize (H6 _ teq1').
   generalize (H5 _ teq2').
@@ -2498,8 +2499,8 @@ Theorem rlink_correct : forall p1 p2 p tp1 tp2 tp,
   rewrite H7 in *. rewrite H8 in *.
   apply alpha_equiv_sym in H2.
   apply alpha_equiv_sym in H4.
-  generalize (alpha_equiv_trans _ _ _ _ H2 teq1').
-  generalize (alpha_equiv_trans _ _ _ _ H4 teq2').
+  generalize (alpha_equiv_trans H2 teq1').
+  generalize (alpha_equiv_trans H4 teq2').
   intros.
   apply alpha_equiv_sym in H9. apply alpha_equiv_sym in H10.
   (* tp1'' and tp2'' can be link, use link_prog_match *)
@@ -2509,13 +2510,13 @@ Theorem rlink_correct : forall p1 p2 p tp1 tp2 tp,
   generalize (TransfLink _ _ _ _ _ link' H H3). intros Tl.
   destruct Tl as [tp'' [link'' Match]].
   (* alpha and link are commute *)
-  generalize alpha_link. 
-  unfold get_sup. intro al.
+  generalize alpha_link_commute. 
+  intro al.
   generalize (al _ _ _ _ _ _ H10 H9 linkt' link'').
   intros.
   (* alpha imply semantic preservation, use symmetry first *)
   apply alpha_equiv_sym in H11.
-  generalize (alpha_prog_public_Clight _ _ _ H11).
+  generalize (alpha_prog_public _ _ _ H11).
   intros. rewrite <- H12 in H11.
   apply alpha_program_correct in H11.
   apply transl_program_correct in Match.

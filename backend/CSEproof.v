@@ -1251,3 +1251,6 @@ Proof.
 Qed.
 
 End PRESERVATION.
+
+Instance TransfCSEAlpha: TransfAlpha match_prog (@AST.prog_public _ _) (@AST.prog_public _ _).
+Admitted.

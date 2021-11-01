@@ -261,7 +261,8 @@ Qed.
 
 End PRESERVATION.
 
-
+Instance TransfRenumberAlpha: TransfAlpha match_prog (@AST.prog_public _ _) (@AST.prog_public _ _).
+Admitted.
 
 
 

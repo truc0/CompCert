@@ -1218,3 +1218,11 @@ Definition data_preg (r: preg) : bool :=
   | RA => false
   end.
 
+Definition alpha_rename_function (a: permutation) (f: function) :=
+  f.
+
+Program Instance Alpha_function :Alpha function :=
+  { alpha_rename := alpha_rename_function
+  }.
+
+Global Opaque Alpha_function.

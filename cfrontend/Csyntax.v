@@ -262,8 +262,7 @@ end
          end.
 
 Program Instance Alpha_expr :Alpha expr:=
-  {alpha_rename:= alpha_expr;
-   alpha_equiv:= fun sup e1 e2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_expr a e1 = e2
+  {alpha_rename:= alpha_expr
   }.
 Next Obligation.
   Admitted.
@@ -302,7 +301,6 @@ with alpha_labeled_statements (a: permutation) (ls: labeled_statements) :=      
 
 Program Instance Alpha_statement : Alpha statement :=
   { alpha_rename := alpha_statement;
-    alpha_equiv := fun sup s1 s2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_statement a s1 = s2 
   }.
 Next Obligation.
   Admitted.
@@ -323,7 +321,6 @@ Definition alpha_function (a: permutation) (f: function) :=
 
 Program Instance Alpha_function : Alpha function :=
   { alpha_rename := alpha_function;
-    alpha_equiv := fun sup f1 f2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_function a f1 = f2 
   }.
 Next Obligation.
   Admitted.
@@ -333,80 +330,3 @@ Next Obligation.
 Admitted.
 
 Global Opaque Alpha_function.
-
-Definition alpha_rename_list_function (a: permutation) (l: list function) :=
-  map (alpha_rename a) l.
-
-Program Instance Alpha_list_function :Alpha (list function) :=
-  {| alpha_rename := alpha_rename_list_function;
-     alpha_equiv := fun sup l1 l2 => exists a, (forall x, In x sup -> a.(permu) x = x) /\ alpha_rename_list_function a l1 = l2 |}.
-Next Obligation.
-  Admitted.
-Next Obligation.
-  Admitted.
-Next Obligation.
-  Admitted.
-
-Global Opaque Alpha_list_function.
-
-
-(* link and alpha commute *)
-
-Lemma alpha_function_soundness : forall (f1 f2 : function) (sup : support),
-                       alpha_equiv sup f1 f2 ->
-                       exists a : permutation,
-                         (forall x : ident,
-                          In x sup -> alpha_rename a x = x) /\
-                         alpha_rename a f1 = f2.
-  Transparent Alpha_function.
-  simpl. auto.
-Qed.
-
-Lemma alpha_function_completeness : forall (f1 f2 : function) (sup : list ident),
-                          (exists a : permutation,
-                             (forall x : ident,
-                              In x sup -> alpha_rename a x = x) /\
-                             alpha_rename a f1 = f2) ->
-                          alpha_equiv sup f1 f2.
- Transparent Alpha_function.
-  simpl. auto.
-Qed.
-
-  
-Lemma alpha_list_function_soundness : forall (lf1 lf2 : list function) (sup : support),
-                            alpha_equiv sup lf1 lf2 ->
-                            exists a : permutation,
-                              (forall x : ident,
-                               In x sup -> alpha_rename a x = x) /\
-                              map (alpha_rename a) lf1 = lf2.
- Transparent Alpha_list_function.
-  simpl. auto.
-Qed.
-
-
-Lemma alpha_list_function_completeness : forall (lf1 lf2 : list function)
-                                 (sup : list ident),
-                               (exists a : permutation,
-                                  (forall x : ident,
-                                   In x sup -> alpha_rename a x = x) /\
-                                  map (alpha_rename a) lf1 = lf2) ->
-                               alpha_equiv sup lf1 lf2.
- Transparent Alpha_list_function.
-  simpl. auto.
-Qed.
-
-Global Opaque alpha_function_soundness alpha_function_completeness alpha_list_function_soundness alpha_list_function_completeness.
-
-Program Instance Alpha_Csyntax : Alpha program :=
-  Alpha_prog alpha_function_soundness alpha_function_completeness alpha_list_function_soundness alpha_list_function_completeness.
-
-Global Opaque Alpha_Csyntax.
-
-Definition alpha_prog_public_Csyntax := alpha_prog_public alpha_function_soundness alpha_function_completeness alpha_list_function_soundness alpha_list_function_completeness.
-
-Definition get_sup : program -> list ident := fun (p:program) => p.(prog_public).
-
-
-Instance alpha_link_csyntax:  AlphaLink get_sup.
-unfold AlphaLink. unfold get_sup.
-Admitted.

@@ -502,3 +502,13 @@ Lemma wf_initial:
 Proof.
   intros. inv H. fold ge. constructor. constructor.
 Qed.
+
+
+Definition alpha_rename_function (a: permutation) (f: function) :=
+  f.
+
+Program Instance Alpha_function :Alpha function :=
+  { alpha_rename := alpha_rename_function
+  }.
+
+Global Opaque Alpha_function.

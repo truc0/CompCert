@@ -1475,3 +1475,6 @@ Local Transparent Linker_fundef.
 - destruct e; inv H2. econstructor; eauto.
 - destruct (external_function_eq e e0); inv H2. econstructor; eauto.
 Qed.
+
+Instance TransfSelectionAlpha : TransfAlpha match_prog (@AST.prog_public _ _) (@AST.prog_public _ _).
+Admitted.

@@ -736,3 +736,6 @@ Proof.
 Qed.
 
 End LINEARIZATION.
+
+Instance TransfLinearizeAlpha: TransfAlpha match_prog (@AST.prog_public _ _) (@AST.prog_public _ _).
+Admitted.

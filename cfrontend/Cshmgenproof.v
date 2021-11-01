@@ -1892,3 +1892,6 @@ Local Transparent Linker_fundef Linking.Linker_fundef.
 - intros. exists tt. auto.
 - replace (program_of_program p) with pp. auto. inv E; destruct pp; auto.
 Qed.
+
+Instance TransfCshmgenAlpha: TransfAlpha match_prog (@prog_public _) (@AST.prog_public _ _).
+Admitted.
