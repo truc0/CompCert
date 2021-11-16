@@ -1062,7 +1062,7 @@ Definition alpha_rename_prog {F V: Type} {AF: Alpha F} {AV: Alpha V} (a: permuta
                         (alpha_rename a id, alpha_rename a defs)
                    ) p.(prog_defs) in
   {| prog_defs := idefs;
-     prog_public := p.(prog_public);
+     prog_public := map (alpha_rename a) p.(prog_public);
      prog_main := p.(prog_main)
  |}.
 
@@ -1073,33 +1073,58 @@ Next Obligation.
   destruct p. unfold alpha_rename_prog.
   simpl.
   induction prog_defs0.
-  auto.
-  simpl. inversion IHprog_defs0.
-  destruct a. rewrite alpha_rename_refl.
-  unfold ident_identity in *. simpl in H0.
-  rewrite H0. rewrite H0. auto.
+  - simpl. induction prog_public0;auto;simpl.
+    + injection IHprog_public0 as H. rewrite H in *.
+      unfold ident_identity. auto.
+  - induction prog_public0.
+    + inversion IHprog_defs0.
+      destruct a. simpl. rewrite alpha_rename_refl.
+      unfold ident_identity in *. simpl in H0.
+      rewrite H0. rewrite H0. auto.
+    + inversion IHprog_defs0.
+      destruct a. simpl. unfold ident_identity.
+      rewrite alpha_rename_refl.
+      unfold ident_identity in *. simpl in H0.
+      rewrite H0. rewrite H0. rewrite H1. rewrite H1.  auto.
 Defined.
 Next Obligation.
   destruct p1. unfold alpha_rename_prog.
   simpl.
   induction prog_defs0.
-  auto.
-  simpl in *. destruct a. injection IHprog_defs0.
-  intros. rewrite H.
-  erewrite alpha_rename_sym by auto.
-  unfold inverse_permutation in H0. rewrite H0.
-  auto.
+  - induction prog_public0;auto;simpl.
+    + injection IHprog_public0 as H. rewrite H in *.
+      unfold inverse_permutation in H0. rewrite (H0 _). auto. 
+  - induction prog_public0.
+    + simpl in *. destruct a. injection IHprog_defs0.
+      intros. rewrite H.
+      erewrite alpha_rename_sym by auto.
+      unfold inverse_permutation in H0. rewrite H0.
+      auto.
+    + simpl in *. destruct a.  injection IHprog_defs0.
+      intros. rewrite H.
+      erewrite alpha_rename_sym by auto.
+      unfold inverse_permutation in H0. rewrite H0.
+      rewrite H2. rewrite H0.
+      auto. 
 Defined.
 Next Obligation.
   destruct p1. unfold alpha_rename_prog.
   simpl.
   induction prog_defs0.
-  auto.
-  simpl in *. destruct a. injection IHprog_defs0.
-  intros. rewrite H.
-  erewrite alpha_rename_trans by auto.
-  auto.
+  - induction prog_public0;auto;simpl.
+    + injection IHprog_public0 as H. rewrite H in *.
+      auto.
+  - induction prog_public0.
+    + simpl in *. destruct a. injection IHprog_defs0.
+      intros. rewrite H.
+      erewrite alpha_rename_trans by auto.
+      auto.
+    + simpl in *. destruct a. injection IHprog_defs0.
+      intros. rewrite H. rewrite H0.
+      erewrite alpha_rename_trans by auto.
+      auto.
 Defined.
+
 
 Global Opaque Alpha_prog.
 

@@ -573,11 +573,87 @@ Proof.
   unfold max_reg_function. extlia.
 Qed.
 
-Definition alpha_rename_function (a: permutation) (f: function) :=
-  f.
+(* renaming *)
 
-Program Instance Alpha_function :Alpha function :=
+Definition alpha_rename_instruction (a:permutation) (i: instruction) :=
+  match i with
+  | Iop op args res s => Iop (alpha_rename a op) args res s
+  | Iload chunk addr args dst s => Iload chunk (alpha_rename a addr) args dst s
+  | Istore chunk addr args src s => Istore chunk (alpha_rename a addr) args src s
+  | Icall sig ros args res s =>
+    match ros with
+    | inr _ => i
+    | inl id => Icall sig (inl (alpha_rename a id)) args res s
+    end
+  | Itailcall sig ros args =>
+    match ros with
+    | inr _ => i
+    | inl id => Itailcall sig (inl (alpha_rename a id)) args
+    end
+  | _ => i
+  end.
+
+Program Instance Alpha_instruction  : Alpha instruction :=
+  { alpha_rename := alpha_rename_instruction }.
+Next Obligation.
+  destruct p;auto;simpl;
+    try (erewrite alpha_rename_refl;auto);
+  destruct s0;auto. 
+Defined.
+Next Obligation.
+  unfold inverse_permutation in H0.
+  destruct p1;simpl;auto;
+    try (erewrite alpha_rename_sym;auto);
+  destruct s0;auto;simpl;erewrite alpha_rename_sym;auto.
+Defined.
+Next Obligation.
+  destruct p1;simpl;auto;
+    try (erewrite alpha_rename_trans;auto);
+  destruct s0;auto.
+Defined.
+
+Global Opaque Alpha_instruction.
+
+Definition alpha_rename_function (a: permutation) (f: function) :=
+  mkfunction
+    f.(fn_sig)
+    f.(fn_params)
+    f.(fn_stacksize)
+    (PTree.map1 (alpha_rename a) f.(fn_code))
+    f.(fn_entrypoint).
+
+Program Instance Alpha_function : Alpha function :=
   { alpha_rename := alpha_rename_function
   }.
+Next Obligation.
+  unfold alpha_rename_function.
+  destruct p;simpl.
+  induction fn_code0.
+  - auto.
+  - inversion IHfn_code0_1. inversion IHfn_code0_2.
+    simpl. rewrite H0. rewrite H1. rewrite H0. rewrite H1.
+    destruct o;simpl.
+    + rewrite alpha_rename_refl. auto.
+    + auto.
+Defined.
+Next Obligation.
+  unfold inverse_permutation in H0.
+   unfold alpha_rename_function.
+  destruct p1;simpl.
+  induction fn_code0;auto.
+  - injection IHfn_code0_1. injection IHfn_code0_2.
+    intros. simpl. rewrite H. rewrite H1.
+    destruct o;simpl;auto.
+    + erewrite alpha_rename_sym;auto.
+Defined.
+Next Obligation.
+  unfold alpha_rename_function.
+  destruct p1;simpl.
+  induction fn_code0;auto.
+  - injection IHfn_code0_1. injection IHfn_code0_2.
+    intros. simpl. rewrite H. rewrite H0.
+    destruct o;simpl;auto.
+    + erewrite alpha_rename_trans;auto.
+Defined.
 
 Global Opaque Alpha_function.

@@ -1519,3 +1519,53 @@ Definition builtin_arg_ok
   | (BA _ | BA_splitlong (BA _) (BA _)) => true
   | _ => builtin_arg_ok_1 ba c
   end.  
+
+(** * Static renaming *)
+Definition alpha_rename_addressing (a: permutation) (addr: addressing) :=
+  match addr with
+  | Aglobal id ofs => Aglobal (alpha_rename a id) ofs
+  | Abased id ofs => Abased (alpha_rename a id) ofs
+  | Abasedscaled n id ofs => Abasedscaled n (alpha_rename a id) ofs
+  | _ => addr
+  end.
+
+Program Instance Alpha_addressing : Alpha addressing :=
+  { alpha_rename := alpha_rename_addressing }.
+Next Obligation.
+  destruct p;auto.
+Defined.
+Next Obligation.
+  unfold inverse_permutation in  H0.
+  destruct p1;simpl;auto;rewrite H0;auto.
+Defined.
+Next Obligation.
+  destruct p1;simpl;auto.
+Defined.
+
+Global Opaque Alpha_addressing.
+
+Definition alpha_rename_operation (a: permutation) (op: operation) :=
+  match op with
+  | Oindirectsymbol s => Oindirectsymbol (alpha_rename a s)
+  | Olea addr => Olea (alpha_rename a addr)
+  | Oleal addr => Oleal (alpha_rename a addr)
+  | _ => op
+  end.
+
+Program Instance Alpha_operation : Alpha operation :=
+  { alpha_rename := alpha_rename_operation }.
+Next Obligation.
+  destruct p;simpl;auto;
+  rewrite alpha_rename_refl;auto.
+Defined.
+Next Obligation.
+  unfold inverse_permutation in H0.
+  destruct p1;simpl;auto;
+    erewrite alpha_rename_sym;auto.
+Defined.
+Next Obligation.
+  destruct p1;simpl;auto;
+  erewrite alpha_rename_trans;auto.
+Defined.
+
+Global Opaque Alpha_operation.

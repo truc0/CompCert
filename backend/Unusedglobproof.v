@@ -1445,7 +1445,167 @@ Proof.
 * intros. apply PTree.elements_keys_norepet.
 Qed.
 
+
+(** * Alpha rename and compile commute *)
+
+Definition rename_wset a w base :=
+  (IS.fold
+     (fun (id : IS.elt) (acc : IS.t) =>
+        IS.add (alpha_rename a id) acc) w base).
+
+Lemma In_fold_base: forall id w1 a b,
+        IS.In id b ->
+        IS.In id (rename_wset a w1 b).
+Admitted.
+
+Lemma In_rename_wset : forall id1 id2 w1 w2 a b, IS.In id1 w1 ->
+                                    alpha_rename a id1 = id2 ->
+                                    w2 = rename_wset a w1 b ->
+                                    IS.In id2 w2.
+Proof.
+  intros.
+  Transparent Alpha_ident.
+  (* unfold rename_wset in H1. *)
+  simpl in *.
+  destruct w1. 
+  cbv delta in H. rewrite H1.
+  simpl in H.
+  (* unfold IS.In. unfold IS.MSet.In. *)
+  generalize dependent b.
+  generalize dependent w2.
+  induction this.
+  - inversion H.
+  - intros.
+    destruct w2.
+    unfold IS.fold, IS.MSet.fold, IS.MSet.Raw.fold in *. 
+    simpl in *.
+    inversion is_ok;subst.
+    apply IS.MSet.Raw.bst_Ok in H6.
+    apply IS.MSet.Raw.bst_Ok in H7.
+    inversion H;subst.
+    + generalize (In_fold_base). intros Inbase.
+       unfold rename_wset in Inbase. simpl in Inbase.
+      (* unfold IS.fold, IS.MSet.fold, IS.MSet.Raw.fold, IS.In, IS.MSet.In in Inbase . *)
+      clear H1.
+      unfold rename_wset.
+      unfold IS.fold, IS.MSet.fold, IS.MSet.Raw.fold in * .
+      simpl in *.
+      set (b':= ((fix fold
+              (A : Type) (f : IS.MSet.Raw.elt -> A -> A)
+              (t1 : IS.MSet.Raw.tree) (base : A) {struct t1} : A :=
+              match t1 with
+              | IS.MSet.Raw.Leaf => base
+              | IS.MSet.Raw.Node _ l x r =>
+                  fold A f r (f x (fold A f l base))
+              end) IS.t
+             (fun (id : IS.elt) (acc : IS.t) =>
+                IS.add (permu a id) acc) this1 b)).
+      inversion is_ok;subst. apply IS.MSet.Raw.bst_Ok in H5.
+      set (w2' := {| IS.MSet.this := this2; IS.MSet.is_ok := H5 |}).
+      assert (this2 = IS.MSet.this w2') by auto.
+      rewrite H0.
+      eapply Inbase.
+      eapply IS.MSet.Raw.add_spec;auto.
+      destruct b'. auto.
+    + generalize (In_fold_base). intros Inbase.
+      unfold rename_wset in Inbase. simpl in Inbase.
+      unfold rename_wset in *.
+      unfold IS.fold, IS.MSet.fold, IS.MSet.Raw.fold in * .
+      simpl in *. clear IHthis2.  
+      set (b' := (IS.add (permu a t0)
+          ((fix fold
+              (A : Type) (f : IS.MSet.Raw.elt -> A -> A)
+              (t1 : IS.MSet.Raw.tree) (base : A) {struct t1} : A :=
+              match t1 with
+              | IS.MSet.Raw.Leaf => base
+              | IS.MSet.Raw.Node _ l x r =>
+                  fold A f r (f x (fold A f l base))
+              end) IS.t
+             (fun (id : IS.elt) (acc : IS.t) =>
+                IS.add (permu a id) acc) this1 b))).
+       inversion is_ok;subst. apply IS.MSet.Raw.bst_Ok in H7.
+      set (w2' :=  {| IS.MSet.this := this2; IS.MSet.is_ok := H7 |}).
+      assert (this2 = IS.MSet.this w2') by auto. rewrite H0.
+      eapply Inbase.
+      apply IS.MSet.Raw.bst_Ok in H6.
+      set (w3' := {| IS.MSet.this := this1; IS.MSet.is_ok := H6|}).
+      assert (this1 = IS.MSet.this w3') by auto.
+      eapply IS.MSet.Raw.add_spec.
+      destruct (((fix fold
+           (A : Type) (f : IS.MSet.Raw.elt -> A -> A)
+           (t1 : IS.MSet.Raw.tree) (base : A) {struct t1} : A :=
+           match t1 with
+           | IS.MSet.Raw.Leaf => base
+           | IS.MSet.Raw.Node _ l x r =>
+               fold A f r (f x (fold A f l base))
+           end) IS.t
+          (fun (id : IS.elt) (acc : IS.t) => IS.add (permu a id) acc)
+          this1 b)).
+      auto.
+      right.
+      eapply IHthis1;auto.
+    + generalize (In_fold_base). intros Inbase.
+      unfold rename_wset in Inbase. simpl in Inbase.
+      unfold rename_wset in *.
+      unfold IS.fold, IS.MSet.fold, IS.MSet.Raw.fold in * .
+      simpl in *. clear IHthis1.
+      set (b' := (IS.add (permu a t0)
+          ((fix fold
+              (A : Type) (f : IS.MSet.Raw.elt -> A -> A)
+              (t1 : IS.MSet.Raw.tree) (base : A) {struct t1} : A :=
+              match t1 with
+              | IS.MSet.Raw.Leaf => base
+              | IS.MSet.Raw.Node _ l x r =>
+                  fold A f r (f x (fold A f l base))
+              end) IS.t
+             (fun (id : IS.elt) (acc : IS.t) =>
+                IS.add (permu a id) acc) this1 b))).
+      eapply IHthis2.
+       inversion is_ok;subst. apply IS.MSet.Raw.bst_Ok in H7.
+      set (w2' :=  {| IS.MSet.this := this2; IS.MSet.is_ok := H7 |}).
+      auto. auto.
+      eauto.
+Qed.
+
+
 Instance TransfSelectionLink : TransfLink match_prog := link_match_program.
 
-Instance TransfUnuseglobAlpha: TransfAlpha match_prog (@AST.prog_public _ _) (@AST.prog_public _ _).
+Instance TransfUnuseglobAlpha: TransfAlpha match_prog (fun p => p.(prog_main) :: p.(prog_public)) (fun p => p.(prog_main) :: p.(prog_public)).
+Transparent TransfAlpha.
+Proof.
+  red.
+  unfold match_prog. unfold alpha_equiv.
+  intros.
+  destruct H0 as [w [? ?]].
+  destruct H as [a [? ?]].
+  exists (alpha_rename a t).
+  split.
+  set (w' := rename_wset a w).
+  exists w'.
+  assert (used_closed' : forall (id : IS.elt) (gd : globdef fundef unit)
+                           (id' : ident),
+             IS.In id w' ->
+             (prog_defmap s') ! id = Some gd ->
+             ref_def gd id' -> IS.In id' w' ).
+  { intros.
+    destruct H0. clear used_defined0. clear used_main0. clear used_public0.
+    destruct a. unfold FinFun.Bijective in bijective.
+    destruct bijective as [g [bij1 bij2]].
+    Transparent Alpha_ident.
+    simpl in *.
+
+    
+  induction this.
+  - unfold IS.fold. unfold IS.MSet.fold. unfold IS.MSet.Raw.fold. 
+    unfold IS.empty. unfold IS.MSet.empty.
+    simpl in *.
+    split.
+    + 
+
+
+    
+  exists a. split;auto.
+  rewrite (match_prog_public _ _ _ H1).
+  auto.
+  
 Admitted.

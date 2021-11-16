@@ -139,3 +139,50 @@ Definition transform_program (p: program) : res program :=
         Error (msg "Unusedglob: reference to undefined global")
   end.
 
+(** * Static renaming for workset (Unused)*)
+
+Program Definition alpha_rename_workset (a: permutation) (w: workset) :=
+  (* {| w_seen := *)
+  (*      {| IS.MSet.this := IS.MSet.Raw.fold (fun id acc => IS.MSet.Raw.add (alpha_rename a id) acc) w.(w_seen).(IS.MSet.this) IS.MSet.Raw.empty; *)
+  (*         IS.MSet.is_ok := _ |}; *)
+ 
+       
+  {| w_seen := IS.fold (fun id acc => IS.add (alpha_rename a id) acc) w.(w_seen) IS.empty;                                                                          w_todo := map (alpha_rename a) w.(w_todo) |}.
+(* Next Obligation. *)
+(*   destruct w. *)
+(*   destruct w_seen0. *)
+(*   simpl. *)
+(*   assert (Strengthen: forall base, *)
+(*              IS.MSet.Raw.Ok base -> *)
+(*              IS.MSet.Raw.Ok *)
+(*                (IS.MSet.Raw.fold *)
+(*                   (fun (id : IS.MSet.Raw.elt) (acc : IS.MSet.Raw.tree) => *)
+(*                      IS.MSet.Raw.add (alpha_rename a id) acc) this *)
+(*                   base)). *)
+(*   { induction is_ok. *)
+(*     - simpl. unfold IS.MSet.Raw.empty. intros. auto. *)
+(*     - intros. simpl in *. *)
+(*       generalize (IHis_ok1 base H). intros. *)
+(*       generalize (IS.MSet.Raw.add_ok). intros. *)
+(*       apply (H1 _ (alpha_rename a x)) in H0.  *)
+(*       eapply IHis_ok2. auto. } *)
+(*   eapply Strengthen. *)
+(*   unfold IS.MSet.Raw.empty. constructor. *)
+(* Defined.   *)
+
+(* Program Instance Alpha_workset : Alpha workset := *)
+(*   { alpha_rename := alpha_rename_workset }. *)
+(* Next Obligation. *)
+(*   unfold alpha_rename_workset. *)
+(*   destruct p. f_equal. *)
+(*   destruct  w_seen0.  *)
+(*   induction this;simpl. *)
+(*   - unfold IS.fold. unfold IS.MSet.fold. unfold IS.MSet.Raw.fold. *)
+(*     unfold IS.empty. unfold IS.MSet.empty. *)
+(*     simpl. *)
+(*     f_equal. f_equal. apply Axioms.proof_irr. *)
+(*     induction w_todo0;simpl;auto. *)
+(*     rewrite alpha_rename_refl. f_equal. auto. *)
+(*   - f_equal. *)
+(*     simpl in *. *)
+    
