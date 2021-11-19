@@ -297,29 +297,18 @@ Record function : Type := mkfunction { fn_sig: signature; fn_code: code; fn_stac
 Definition fundef := AST.fundef function.
 Definition program := AST.program fundef unit.
 
-Definition instr_size (i:instruction) := 1%Z.
+(** * Operational semantics *)
 
-Lemma instr_size_repr : forall i, 0<= instr_size i <= Ptrofs.max_unsigned.
-Proof.
-  intro. unfold instr_size. vm_compute. split; congruence.
-Qed.
-
-Lemma instr_size_positive :forall i, 0 < instr_size i.
-Proof.
-  intro. unfold instr_size. lia.
-Qed.
 Fixpoint code_size (c:code) : Z :=
   match c with
   |nil => 0
-  |i::c' => code_size c' + instr_size i
+  |i::c' => code_size c' + 1
   end.
 
 Lemma code_size_non_neg: forall c, 0 <= code_size c.
 Proof.
-  intros. induction c; simpl. lia. unfold instr_size. lia.
+  intros. induction c; simpl; lia.
 Qed.
-
-(** * Operational semantics *)
 
 Lemma preg_eq: forall (x y: preg), {x=y} + {x<>y}.
 Proof. decide equality. apply ireg_eq. apply freg_eq. decide equality. Defined.
@@ -355,7 +344,7 @@ Definition set_pair (p: rpair preg) (v: val) (rs: regset) : regset :=
   | Twolong rhi rlo => rs#rhi <- (Val.hiword v) #rlo <- (Val.loword v)
   end.
 
-Fixpoint no_rsp_pair (b: rpair preg) :=
+Definition no_rsp_pair (b: rpair preg) :=
   match b with
   | One r => r <> RSP
   | Twolong hi lo => hi <> RSP /\ lo <> RSP
@@ -588,10 +577,8 @@ Lemma label_pos_rng:
     0 <= z - pos <= code_size c.
 Proof.
   induction c; simpl; intros; eauto. congruence. repeat destr_in H.
-  generalize (code_size_non_neg c) (instr_size_positive a); lia.
-  apply IHc in H2.
-  generalize (instr_size_positive a); lia.
-  generalize (instr_size_positive a); lia.
+  generalize (code_size_non_neg c); lia.
+  apply IHc in H2. lia. lia.
 Qed.
 
 Lemma label_pos_repr:
@@ -612,7 +599,7 @@ Lemma find_instr_ofs_pos:
     0 <= o.
 Proof.
   induction c; simpl; intros; repeat destr_in H.
-  lia. apply IHc in H1. generalize (instr_size_positive a); lia.
+  lia. apply IHc in H1. lia.
 Qed.
 
 Lemma label_pos_spec:
@@ -620,15 +607,14 @@ Lemma label_pos_spec:
     code_size c + pos <= Ptrofs.max_unsigned ->
     0 <= pos ->
     label_pos lbl pos c = Some z ->
-    find_instr ((z - pos) - instr_size (Plabel lbl)) c = Some (Plabel lbl).
+    find_instr ((z - pos) - 1) c = Some (Plabel lbl).
 Proof.
-  unfold instr_size.
   induction c; simpl; intros; repeat destr_in H1.
   destruct a; simpl in Heqb; try congruence. repeat destr_in Heqb.
-  apply pred_dec_true. unfold instr_size. lia.
-  eapply IHc in H3. 3: lia. 2: generalize (instr_size_positive a); lia.
+  apply pred_dec_true. lia.
+  eapply IHc in H3. 3: lia. 2: lia.
   generalize (find_instr_ofs_pos _ _ _ H3). intro.
-  rewrite pred_dec_false. 2: generalize (instr_size_positive a); lia.
+  rewrite pred_dec_false. 2: lia.
   rewrite <- H3. f_equal. lia.
 Qed.
 
@@ -887,8 +873,8 @@ Qed.
 Fixpoint offsets_after_call (c: code) (p: Z) : list Z :=
   match c with
     nil => nil
-  | i::c => let r := offsets_after_call c (p + instr_size i) in
-           if is_call_dec i then (p+instr_size i)::r
+  | i::c => let r := offsets_after_call c (p + 1) in
+           if is_call_dec i then (p + 1)::r
            else r
   end.
 

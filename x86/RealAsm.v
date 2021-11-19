@@ -2,6 +2,7 @@ Require Import Smallstep.
 Require Import Machregs.
 Require Import Asm.
 Require Import Integers.
+Require Import Floats.
 Require Import List.
 Require Import ZArith.
 Require Import Memtype.
@@ -14,9 +15,8 @@ Require Import Events.
 Require Import Values.
 Require Import Conventions1.
 Require Import SSAsm AsmFacts AsmRegs.
-
+(*
 Section WFASM.
-
 
   Fixpoint in_builtin_arg (b: builtin_arg preg) (r: preg) :=
     match b with
@@ -224,11 +224,11 @@ Section WFASM.
   Lemma find_instr_bound:
     forall c o i,
       find_instr o c = Some i ->
-      o + (instr_size i) <= code_size c.
+      o + 1 <= code_size c.
   Proof.
     induction c; simpl; intros; eauto. congruence.
     destr_in H. inv H. generalize (code_size_non_neg c). lia.
-    apply IHc in H. unfold instr_size in *. lia.
+    apply IHc in H. lia.
   Qed.
 
   Lemma find_instr_pos_positive:
@@ -239,18 +239,24 @@ Section WFASM.
      induction c; intros; simpl; inv H. destr_in H1. lia.
      eapply IHc in H1. lia.
    Qed.
+
+  Lemma instr_size_repr : 0 <= 1 <= Ptrofs.max_unsigned.
+  Proof.
+    vm_compute. split; congruence.
+  Qed.
+
   Lemma code_bounded_repr':
     forall c
       (RNG: 0 <= code_size c <= Ptrofs.max_unsigned)
       i o
       (FI: find_instr o c = Some i)
       sz
-      (LE: 0 <= sz <= instr_size i),
+      (LE: 0 <= sz <= 1),
       Ptrofs.unsigned (Ptrofs.add (Ptrofs.repr o) (Ptrofs.repr sz)) = o + sz.
   Proof.
     intros.
     unfold Ptrofs.add.
-    rewrite (Ptrofs.unsigned_repr sz). 2:generalize (instr_size_repr i); lia.
+    rewrite (Ptrofs.unsigned_repr sz). 2: generalize (instr_size_repr); lia.
     generalize (find_instr_bound _ _ _ FI) (find_instr_pos_positive _ _ _ FI). intros.
     rewrite (Ptrofs.unsigned_repr o) by lia.
     apply Ptrofs.unsigned_repr; lia.
@@ -354,7 +360,8 @@ Section WFASM.
     induction c; simpl; intros; eauto. congruence.
     destr_in H. inv H. eexists nil, c; simpl. split; auto.
     edestruct IHc as (aa & b & EQ & SZ). apply H. subst.
-    exists (a::aa), b; simpl; split; auto. unfold instr_size. lia.
+    exists (a::aa), b; simpl; split; auto.
+    generalize (instr_size_positive a). lia.
   Qed.
 
   Lemma find_instr_app_pres: forall f1 f2 ofs i,
@@ -655,11 +662,612 @@ Section WFASM.
   Qed.
 
 End WFASM.
+*)
+(*
+Section INSTR_SIZE.
+
+Definition instr_size (i:instruction) := 1%Z.
+
+Lemma instr_size_repr : forall i, 0<= instr_size i <= Ptrofs.max_unsigned.
+Proof.
+  intro. unfold instr_size. vm_compute. split; congruence.
+Qed.
+
+Lemma instr_size_positive :forall i, 0 < instr_size i.
+Proof.
+  intro. unfold instr_size. lia.
+Qed.
+
+Lemma code_size_non_neg: forall c, 0 <= code_size c.
+Proof.
+  intros. induction c; simpl. lia.
+  generalize (instr_size_positive a). lia.
+Qed.
+
+(** Looking up instructions in a code sequence by position. *)
+
+Fixpoint find_instr (pos: Z) (c: code) {struct c} : option instruction :=
+  match c with
+  | nil => None
+  | i :: il => if zeq pos 0 then Some i else find_instr (pos - instr_size i) il
+  end.
+
+Fixpoint label_pos (lbl: label) (pos: Z) (c: code) {struct c} : option Z :=
+  match c with
+  | nil => None
+  | instr :: c' =>
+    let nextpos := pos + instr_size instr in
+      if is_label lbl instr then Some nextpos else label_pos lbl nextpos c'
+  end.
+
+Lemma label_pos_rng:
+  forall lbl c pos z,
+    label_pos lbl pos c = Some z ->
+    0 <= pos ->
+    0 <= z - pos <= code_size c.
+Proof.
+  induction c; simpl; intros; eauto. congruence. repeat destr_in H.
+  generalize (code_size_non_neg c) (instr_size_positive a). lia.
+  apply IHc in H2.
+  generalize (instr_size_positive a); lia.
+  generalize (instr_size_positive a); lia.
+Qed.
+
+Lemma label_pos_repr:
+  forall lbl c pos z,
+    code_size c + pos <= Ptrofs.max_unsigned ->
+    0 <= pos ->
+    label_pos lbl pos c = Some z ->
+    Ptrofs.unsigned (Ptrofs.repr (z - pos)) = z - pos.
+Proof.
+  intros.
+  apply Ptrofs.unsigned_repr.
+  generalize (label_pos_rng _ _ _ _ H1 H0). lia.
+Qed.
+
+Lemma find_instr_ofs_pos:
+  forall c o i,
+    find_instr o c = Some i ->
+    0 <= o.
+Proof.
+  induction c; simpl; intros; repeat destr_in H.
+  lia. apply IHc in H1.
+  generalize (instr_size_positive a); lia.
+Qed.
+
+Lemma label_pos_spec:
+  forall lbl c pos z,
+    code_size c + pos <= Ptrofs.max_unsigned ->
+    0 <= pos ->
+    label_pos lbl pos c = Some z ->
+    find_instr ((z - pos) - instr_size (Plabel lbl)) c = Some (Plabel lbl).
+Proof.
+  induction c; simpl; intros; repeat destr_in H1.
+  destruct a; simpl in Heqb; try congruence. repeat destr_in Heqb.
+  apply pred_dec_true. generalize (instr_size_positive (Plabel l)). lia.
+  eapply IHc in H3.
+  2: lia.  2: generalize (instr_size_positive a); lia.
+  generalize (find_instr_ofs_pos _ _ _ H3). intro.
+  rewrite pred_dec_false.  2: generalize (instr_size_positive a); lia.
+  rewrite <- H3. f_equal. lia.
+Qed.
+
+Definition nextinstr (rs: regset) (sz:ptrofs) :=
+  rs#PC <- (Val.offset_ptr rs#PC sz).
+
+Definition nextinstr_nf (rs: regset) (sz:ptrofs) : regset :=
+  nextinstr (undef_regs (CR ZF :: CR CF :: CR PF :: CR SF :: CR OF :: nil) rs) sz.
+
+End INSTR_SIZE.
+*)
+
+(** * Operational Semantics with instr_size *)
+Section INSTRSIZE.
+Variable instr_size : instruction -> Z.
+
+Fixpoint code_size (c:code) : Z :=
+  match c with
+  |nil => 0
+  |i::c' => code_size c' + instr_size i
+  end.
+
+(** Looking up instructions in a code sequence by position. *)
+
+Fixpoint find_instr (pos: Z) (c: code) {struct c} : option instruction :=
+  match c with
+  | nil => None
+  | i :: il => if zeq pos 0 then Some i else find_instr (pos - instr_size i) il
+  end.
+
+Fixpoint label_pos (lbl: label) (pos: Z) (c: code) {struct c} : option Z :=
+  match c with
+  | nil => None
+  | instr :: c' =>
+    let nextpos := pos + instr_size instr in
+      if is_label lbl instr then Some nextpos else label_pos lbl nextpos c'
+  end.
+
+Definition nextinstr (rs: regset) (sz:ptrofs) :=
+  rs#PC <- (Val.offset_ptr rs#PC sz).
+
+Definition nextinstr_nf (rs: regset) (sz:ptrofs) : regset :=
+  nextinstr (undef_regs (CR ZF :: CR CF :: CR PF :: CR SF :: CR OF :: nil) rs) sz.
+
 
 Section WITHGE.
   Variable ge : Genv.t Asm.fundef unit.
 
-  Definition exec_instr f i rs (m: mem) :=
+(** Auxiliaries for memory accesses. *)
+
+Definition exec_load (chunk: memory_chunk) (m: mem)
+                     (a: addrmode) (rs: regset) (rd: preg) (sz:ptrofs):=
+  match Mem.loadv chunk m (eval_addrmode ge a rs) with
+  | Some v => Next (nextinstr_nf (rs#rd <- v) sz) m
+  | None => Stuck
+  end.
+
+Definition exec_store (chunk: memory_chunk) (m: mem)
+                      (a: addrmode) (rs: regset) (r1: preg)
+                      (destroyed: list preg) (sz:ptrofs) :=
+  match Mem.storev chunk m (eval_addrmode ge a rs) (rs r1) with
+  | Some m' => Next (nextinstr_nf (undef_regs destroyed rs) sz) m'
+  | None => Stuck
+  end.
+
+Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : outcome :=
+  let sz := Ptrofs.repr (instr_size i) in
+  match i with
+  (** Moves *)
+  | Pmov_rr rd r1 =>
+      Next (nextinstr (rs#rd <- (rs r1)) sz) m
+  | Pmovl_ri rd n =>
+      Next (nextinstr_nf (rs#rd <- (Vint n)) sz) m
+  | Pmovq_ri rd n =>
+      Next (nextinstr_nf (rs#rd <- (Vlong n)) sz) m
+  | Pmov_rs rd id =>
+      Next (nextinstr_nf (rs#rd <- (Genv.symbol_address ge id Ptrofs.zero)) sz) m
+  | Pmovl_rm rd a =>
+      exec_load Mint32 m a rs rd sz
+  | Pmovq_rm rd a =>
+      exec_load Mint64 m a rs rd sz
+  | Pmovl_mr a r1 =>
+      exec_store Mint32 m a rs r1 nil sz
+  | Pmovq_mr a r1 =>
+      exec_store Mint64 m a rs r1 nil sz
+  | Pmovsd_ff rd r1 =>
+      Next (nextinstr (rs#rd <- (rs r1)) sz) m
+  | Pmovsd_fi rd n =>
+      Next (nextinstr (rs#rd <- (Vfloat n)) sz) m
+  | Pmovsd_fm rd a =>
+      exec_load Mfloat64 m a rs rd sz
+  | Pmovsd_mf a r1 =>
+      exec_store Mfloat64 m a rs r1 nil sz
+  | Pmovss_fi rd n =>
+      Next (nextinstr (rs#rd <- (Vsingle n)) sz) m
+  | Pmovss_fm rd a =>
+      exec_load Mfloat32 m a rs rd sz
+  | Pmovss_mf a r1 =>
+      exec_store Mfloat32 m a rs r1 nil sz
+  | Pfldl_m a =>
+      exec_load Mfloat64 m a rs ST0 sz
+  | Pfstpl_m a =>
+      exec_store Mfloat64 m a rs ST0 (ST0 :: nil) sz
+  | Pflds_m a =>
+      exec_load Mfloat32 m a rs ST0 sz
+  | Pfstps_m a =>
+      exec_store Mfloat32 m a rs ST0 (ST0 :: nil) sz
+  (** Moves with conversion *)
+  | Pmovb_mr a r1 =>
+      exec_store Mint8unsigned m a rs r1 nil sz
+  | Pmovw_mr a r1 =>
+      exec_store Mint16unsigned m a rs r1 nil sz
+  | Pmovzb_rr rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.zero_ext 8 rs#r1)) sz) m
+  | Pmovzb_rm rd a =>
+      exec_load Mint8unsigned m a rs rd sz
+  | Pmovsb_rr rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.sign_ext 8 rs#r1)) sz) m
+  | Pmovsb_rm rd a =>
+      exec_load Mint8signed m a rs rd sz
+  | Pmovzw_rr rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.zero_ext 16 rs#r1)) sz) m
+  | Pmovzw_rm rd a =>
+      exec_load Mint16unsigned m a rs rd sz
+  | Pmovsw_rr rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.sign_ext 16 rs#r1)) sz) m
+  | Pmovsw_rm rd a =>
+      exec_load Mint16signed m a rs rd sz
+  | Pmovzl_rr rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.longofintu rs#r1)) sz) m
+  | Pmovsl_rr rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.longofint rs#r1)) sz) m
+  | Pmovls_rr rd =>
+      Next (nextinstr (rs#rd <- (Val.loword rs#rd)) sz) m
+  | Pcvtsd2ss_ff rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.singleoffloat rs#r1)) sz) m
+  | Pcvtss2sd_ff rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.floatofsingle rs#r1)) sz) m
+  | Pcvttsd2si_rf rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.maketotal (Val.intoffloat rs#r1))) sz) m
+  | Pcvtsi2sd_fr rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.maketotal (Val.floatofint rs#r1))) sz) m
+  | Pcvttss2si_rf rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.maketotal (Val.intofsingle rs#r1))) sz) m
+  | Pcvtsi2ss_fr rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.maketotal (Val.singleofint rs#r1))) sz) m
+  | Pcvttsd2sl_rf rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.maketotal (Val.longoffloat rs#r1))) sz) m
+  | Pcvtsl2sd_fr rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.maketotal (Val.floatoflong rs#r1))) sz) m
+  | Pcvttss2sl_rf rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.maketotal (Val.longofsingle rs#r1))) sz) m
+  | Pcvtsl2ss_fr rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.maketotal (Val.singleoflong rs#r1))) sz) m
+  (** Integer arithmetic *)
+  | Pleal rd a =>
+      Next (nextinstr (rs#rd <- (eval_addrmode32 ge a rs)) sz) m
+  | Pleaq rd a =>
+      Next (nextinstr (rs#rd <- (eval_addrmode64 ge a rs)) sz) m
+  | Pnegl rd =>
+      Next (nextinstr_nf (rs#rd <- (Val.neg rs#rd)) sz) m
+  | Pnegq rd =>
+      Next (nextinstr_nf (rs#rd <- (Val.negl rs#rd)) sz) m
+  | Paddl_ri rd n =>
+      Next (nextinstr_nf (rs#rd <- (Val.add rs#rd (Vint n))) sz) m
+  | Paddq_ri rd n =>
+      Next (nextinstr_nf (rs#rd <- (Val.addl rs#rd (Vlong n))) sz) m
+  | Psubl_rr rd r1 =>
+      Next (nextinstr_nf (rs#rd <- (Val.sub rs#rd rs#r1)) sz) m
+  | Psubq_rr rd r1 =>
+      Next (nextinstr_nf (rs#rd <- (Val.subl rs#rd rs#r1)) sz) m
+  | Pimull_rr rd r1 =>
+      Next (nextinstr_nf (rs#rd <- (Val.mul rs#rd rs#r1)) sz) m
+  | Pimulq_rr rd r1 =>
+      Next (nextinstr_nf (rs#rd <- (Val.mull rs#rd rs#r1)) sz) m
+  | Pimull_ri rd n =>
+      Next (nextinstr_nf (rs#rd <- (Val.mul rs#rd (Vint n))) sz) m
+  | Pimulq_ri rd n =>
+      Next (nextinstr_nf (rs#rd <- (Val.mull rs#rd (Vlong n))) sz) m
+  | Pimull_r r1 =>
+      Next (nextinstr_nf (rs#RAX <- (Val.mul rs#RAX rs#r1)
+                            #RDX <- (Val.mulhs rs#RAX rs#r1)) sz) m
+  | Pimulq_r r1 =>
+      Next (nextinstr_nf (rs#RAX <- (Val.mull rs#RAX rs#r1)
+                            #RDX <- (Val.mullhs rs#RAX rs#r1)) sz) m
+  | Pmull_r r1 =>
+      Next (nextinstr_nf (rs#RAX <- (Val.mul rs#RAX rs#r1)
+                            #RDX <- (Val.mulhu rs#RAX rs#r1)) sz) m
+  | Pmulq_r r1 =>
+      Next (nextinstr_nf (rs#RAX <- (Val.mull rs#RAX rs#r1)
+                            #RDX <- (Val.mullhu rs#RAX rs#r1)) sz) m
+  | Pcltd =>
+      Next (nextinstr_nf (rs#RDX <- (Val.shr rs#RAX (Vint (Int.repr 31)))) sz) m
+  | Pcqto =>
+      Next (nextinstr_nf (rs#RDX <- (Val.shrl rs#RAX (Vint (Int.repr 63)))) sz) m
+  | Pdivl r1 =>
+      match rs#RDX, rs#RAX, rs#r1 with
+      | Vint nh, Vint nl, Vint d =>
+          match Int.divmodu2 nh nl d with
+          | Some(q, r) => Next (nextinstr_nf (rs#RAX <- (Vint q) #RDX <- (Vint r)) sz) m
+          | None => Stuck
+          end
+      | _, _, _ => Stuck
+      end
+  | Pdivq r1 =>
+      match rs#RDX, rs#RAX, rs#r1 with
+      | Vlong nh, Vlong nl, Vlong d =>
+          match Int64.divmodu2 nh nl d with
+          | Some(q, r) => Next (nextinstr_nf (rs#RAX <- (Vlong q) #RDX <- (Vlong r)) sz) m
+          | None => Stuck
+          end
+      | _, _, _ => Stuck
+      end
+  | Pidivl r1 =>
+      match rs#RDX, rs#RAX, rs#r1 with
+      | Vint nh, Vint nl, Vint d =>
+          match Int.divmods2 nh nl d with
+          | Some(q, r) => Next (nextinstr_nf (rs#RAX <- (Vint q) #RDX <- (Vint r)) sz) m
+          | None => Stuck
+          end
+      | _, _, _ => Stuck
+      end
+  | Pidivq r1 =>
+      match rs#RDX, rs#RAX, rs#r1 with
+      | Vlong nh, Vlong nl, Vlong d =>
+          match Int64.divmods2 nh nl d with
+          | Some(q, r) => Next (nextinstr_nf (rs#RAX <- (Vlong q) #RDX <- (Vlong r)) sz) m
+          | None => Stuck
+          end
+      | _, _, _ => Stuck
+      end
+  | Pandl_rr rd r1 =>
+      Next (nextinstr_nf (rs#rd <- (Val.and rs#rd rs#r1)) sz) m
+  | Pandq_rr rd r1 =>
+      Next (nextinstr_nf (rs#rd <- (Val.andl rs#rd rs#r1)) sz) m
+  | Pandl_ri rd n =>
+      Next (nextinstr_nf (rs#rd <- (Val.and rs#rd (Vint n))) sz) m
+  | Pandq_ri rd n =>
+      Next (nextinstr_nf (rs#rd <- (Val.andl rs#rd (Vlong n))) sz) m
+  | Porl_rr rd r1 =>
+      Next (nextinstr_nf (rs#rd <- (Val.or rs#rd rs#r1)) sz) m
+  | Porq_rr rd r1 =>
+      Next (nextinstr_nf (rs#rd <- (Val.orl rs#rd rs#r1)) sz) m
+  | Porl_ri rd n =>
+      Next (nextinstr_nf (rs#rd <- (Val.or rs#rd (Vint n))) sz) m
+  | Porq_ri rd n =>
+      Next (nextinstr_nf (rs#rd <- (Val.orl rs#rd (Vlong n))) sz) m
+  | Pxorl_r rd =>
+      Next (nextinstr_nf (rs#rd <- Vzero) sz) m
+  | Pxorq_r rd =>
+      Next (nextinstr_nf (rs#rd <- (Vlong Int64.zero)) sz) m
+  | Pxorl_rr rd r1 =>
+      Next (nextinstr_nf (rs#rd <- (Val.xor rs#rd rs#r1)) sz) m
+  | Pxorq_rr rd r1 =>
+      Next (nextinstr_nf (rs#rd <- (Val.xorl rs#rd rs#r1)) sz) m
+  | Pxorl_ri rd n =>
+      Next (nextinstr_nf (rs#rd <- (Val.xor rs#rd (Vint n))) sz) m
+  | Pxorq_ri rd n =>
+      Next (nextinstr_nf (rs#rd <- (Val.xorl rs#rd (Vlong n))) sz) m
+  | Pnotl rd =>
+      Next (nextinstr_nf (rs#rd <- (Val.notint rs#rd)) sz) m
+  | Pnotq rd =>
+      Next (nextinstr_nf (rs#rd <- (Val.notl rs#rd)) sz) m
+  | Psall_rcl rd =>
+      Next (nextinstr_nf (rs#rd <- (Val.shl rs#rd rs#RCX)) sz) m
+  | Psalq_rcl rd =>
+      Next (nextinstr_nf (rs#rd <- (Val.shll rs#rd rs#RCX)) sz) m
+  | Psall_ri rd n =>
+      Next (nextinstr_nf (rs#rd <- (Val.shl rs#rd (Vint n))) sz) m
+  | Psalq_ri rd n =>
+      Next (nextinstr_nf (rs#rd <- (Val.shll rs#rd (Vint n))) sz) m
+  | Pshrl_rcl rd =>
+      Next (nextinstr_nf (rs#rd <- (Val.shru rs#rd rs#RCX)) sz) m
+  | Pshrq_rcl rd =>
+      Next (nextinstr_nf (rs#rd <- (Val.shrlu rs#rd rs#RCX)) sz) m
+  | Pshrl_ri rd n =>
+      Next (nextinstr_nf (rs#rd <- (Val.shru rs#rd (Vint n))) sz) m
+  | Pshrq_ri rd n =>
+      Next (nextinstr_nf (rs#rd <- (Val.shrlu rs#rd (Vint n))) sz) m
+  | Psarl_rcl rd =>
+      Next (nextinstr_nf (rs#rd <- (Val.shr rs#rd rs#RCX)) sz) m
+  | Psarq_rcl rd =>
+      Next (nextinstr_nf (rs#rd <- (Val.shrl rs#rd rs#RCX)) sz) m
+  | Psarl_ri rd n =>
+      Next (nextinstr_nf (rs#rd <- (Val.shr rs#rd (Vint n))) sz) m
+  | Psarq_ri rd n =>
+      Next (nextinstr_nf (rs#rd <- (Val.shrl rs#rd (Vint n))) sz) m
+  | Pshld_ri rd r1 n =>
+      Next (nextinstr_nf
+              (rs#rd <- (Val.or (Val.shl rs#rd (Vint n))
+                                (Val.shru rs#r1 (Vint (Int.sub Int.iwordsize n))))) sz) m
+  | Prorl_ri rd n =>
+      Next (nextinstr_nf (rs#rd <- (Val.ror rs#rd (Vint n))) sz) m
+  | Prorq_ri rd n =>
+      Next (nextinstr_nf (rs#rd <- (Val.rorl rs#rd (Vint n))) sz) m
+  | Pcmpl_rr r1 r2 =>
+      Next (nextinstr (compare_ints (rs r1) (rs r2) rs m) sz) m
+  | Pcmpq_rr r1 r2 =>
+      Next (nextinstr (compare_longs (rs r1) (rs r2) rs m) sz) m
+  | Pcmpl_ri r1 n =>
+      Next (nextinstr (compare_ints (rs r1) (Vint n) rs m) sz) m
+  | Pcmpq_ri r1 n =>
+      Next (nextinstr (compare_longs (rs r1) (Vlong n) rs m) sz) m
+  | Ptestl_rr r1 r2 =>
+      Next (nextinstr (compare_ints (Val.and (rs r1) (rs r2)) Vzero rs m) sz) m
+  | Ptestq_rr r1 r2 =>
+      Next (nextinstr (compare_longs (Val.andl (rs r1) (rs r2)) (Vlong Int64.zero) rs m) sz) m
+  | Ptestl_ri r1 n =>
+      Next (nextinstr (compare_ints (Val.and (rs r1) (Vint n)) Vzero rs m) sz) m
+  | Ptestq_ri r1 n =>
+      Next (nextinstr (compare_longs (Val.andl (rs r1) (Vlong n)) (Vlong Int64.zero) rs m) sz) m
+  | Pcmov c rd r1 =>
+      let v :=
+        match eval_testcond c rs with
+        | Some b => if b then rs#r1 else rs#rd
+        | None   => Vundef
+      end in
+      Next (nextinstr (rs#rd <- v) sz) m
+  | Psetcc c rd =>
+      Next (nextinstr (rs#rd <- (Val.of_optbool (eval_testcond c rs))) sz) m
+  (** Arithmetic operations over double-precision floats *)
+  | Paddd_ff rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.addf rs#rd rs#r1)) sz) m
+  | Psubd_ff rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.subf rs#rd rs#r1)) sz) m
+  | Pmuld_ff rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.mulf rs#rd rs#r1)) sz) m
+  | Pdivd_ff rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.divf rs#rd rs#r1)) sz) m
+  | Pnegd rd =>
+      Next (nextinstr (rs#rd <- (Val.negf rs#rd)) sz) m
+  | Pabsd rd =>
+      Next (nextinstr (rs#rd <- (Val.absf rs#rd)) sz) m
+  | Pcomisd_ff r1 r2 =>
+      Next (nextinstr (compare_floats (rs r1) (rs r2) rs) sz) m
+  | Pxorpd_f rd =>
+      Next (nextinstr_nf (rs#rd <- (Vfloat Float.zero)) sz) m
+  (** Arithmetic operations over single-precision floats *)
+  | Padds_ff rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.addfs rs#rd rs#r1)) sz) m
+  | Psubs_ff rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.subfs rs#rd rs#r1)) sz) m
+  | Pmuls_ff rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.mulfs rs#rd rs#r1)) sz) m
+  | Pdivs_ff rd r1 =>
+      Next (nextinstr (rs#rd <- (Val.divfs rs#rd rs#r1)) sz) m
+  | Pnegs rd =>
+      Next (nextinstr (rs#rd <- (Val.negfs rs#rd)) sz) m
+  | Pabss rd =>
+      Next (nextinstr (rs#rd <- (Val.absfs rs#rd)) sz) m
+  | Pcomiss_ff r1 r2 =>
+      Next (nextinstr (compare_floats32 (rs r1) (rs r2) rs) sz) m
+  | Pxorps_f rd =>
+      Next (nextinstr_nf (rs#rd <- (Vsingle Float32.zero)) sz) m
+  (** Branches and calls *)
+  | Pjmp_l lbl =>
+      goto_label ge f lbl rs m
+  | Pjmp_s id sg =>
+    let addr := Genv.symbol_address ge id Ptrofs.zero in
+    match Genv.find_funct ge addr with
+    | Some _ =>
+      Next (rs#PC <- addr) m
+    | _ => Stuck
+    end
+  | Pjmp_r r sg =>
+    let addr := (rs r) in
+    match Genv.find_funct ge addr with
+    | Some _ =>
+      Next (rs#PC <- addr) m
+    | _ => Stuck
+    end
+  | Pjcc cond lbl =>
+      match eval_testcond cond rs with
+      | Some true => goto_label ge f lbl rs m
+      | Some false => Next (nextinstr rs sz) m
+      | None => Stuck
+      end
+  | Pjcc2 cond1 cond2 lbl =>
+      match eval_testcond cond1 rs, eval_testcond cond2 rs with
+      | Some true, Some true => goto_label ge f lbl rs m
+      | Some _, Some _ => Next (nextinstr rs sz) m
+      | _, _ => Stuck
+      end
+  | Pjmptbl r tbl =>
+      match rs#r with
+      | Vint n =>
+          match list_nth_z tbl (Int.unsigned n) with
+          | None => Stuck
+          | Some lbl => goto_label ge f lbl (rs #RAX <- Vundef #RDX <- Vundef) m
+          end
+      | _ => Stuck
+      end
+  | Pcall_s id sg =>
+    let addr := Genv.symbol_address ge id Ptrofs.zero in
+    match Genv.find_funct ge addr with
+    | Some _ =>
+      Next (rs#RA <- (Val.offset_ptr rs#PC Ptrofs.one) #PC <- addr) m
+    | _ => Stuck
+    end
+  | Pcall_r r sg =>
+    let addr := (rs r) in
+    match Genv.find_funct ge addr with
+    | Some _ =>
+      Next (rs#RA <- (Val.offset_ptr rs#PC Ptrofs.one) #PC <- addr) m
+    | _ => Stuck
+    end
+  | Pret =>
+    if check_ra_after_call ge (rs#RA) then Next (rs#PC <- (rs#RA) #RA <- Vundef) m else Stuck
+  (** Saving and restoring registers *)
+  | Pmov_rm_a rd a =>
+      exec_load (if Archi.ptr64 then Many64 else Many32) m a rs rd sz
+  | Pmov_mr_a a r1 =>
+      exec_store (if Archi.ptr64 then Many64 else Many32) m a rs r1 nil sz
+  | Pmovsd_fm_a rd a =>
+      exec_load Many64 m a rs rd sz
+  | Pmovsd_mf_a a r1 =>
+      exec_store Many64 m a rs r1 nil sz
+  (** Pseudo-instructions *)
+  | Plabel lbl =>
+      Next (nextinstr rs sz) m
+  | Pallocframe fsz ofs_ra ofs_link =>
+    if zle 0 fsz then
+    match rs # PC with
+    |Vptr (Global id) _
+     =>
+     let (m0,path) := Mem.alloc_frame m id in
+     let (m1, stk) := Mem.alloc m0 0 fsz in
+     match Mem.record_frame (Mem.push_stage m1) (Memory.mk_frame fsz) with
+     |None => Stuck
+     |Some m2 =>
+      let sp := Vptr stk Ptrofs.zero in
+      match Mem.storev Mptr m2 (Val.offset_ptr sp ofs_ra) rs#RA with
+      | None => Stuck
+      | Some m3 =>
+        match Mem.storev Mptr m3 (Val.offset_ptr sp ofs_link) rs#RSP with
+        | None => Stuck
+        | Some m4 => Next (nextinstr (rs #RAX <- (rs#RSP) #RSP <- sp) sz) m4
+        end
+      end
+     end
+    |_ => Stuck
+    end else Stuck
+  | Pfreeframe fsz ofs_ra ofs_link =>
+    if zle 0 fsz then
+      match loadvv Mptr m (Val.offset_ptr rs#RSP ofs_ra) with
+      | None => Stuck
+      | Some ra =>
+          match Mem.loadv Mptr m (Val.offset_ptr rs#RSP ofs_link) with
+          | None => Stuck
+          | Some sp =>
+              match rs#RSP with
+              | Vptr stk ofs =>
+                  if check_topframe fsz (Mem.astack (Mem.support m)) then
+                  if Val.eq sp (parent_sp_stree (Mem.stack (Mem.support m))) then
+                  if Val.eq (Vptr stk ofs) (top_sp_stree (Mem.stack (Mem.support m))) then
+                  match Mem.free m stk 0 fsz with
+                  | None => Stuck
+                  | Some m' =>
+                    match Mem.return_frame m' with
+                    | None => Stuck
+                    | Some m'' =>
+                      match Mem.pop_stage m'' with
+                        | None => Stuck
+                        | Some m''' =>
+                        Next (nextinstr (rs#RSP <- sp #RA <- ra) sz) m'''
+                      end
+                    end
+                  end else Stuck else Stuck else Stuck
+              | _ => Stuck
+              end
+          end
+      end else Stuck
+  | Pbuiltin ef args res =>
+      Stuck                             (**r treated specially below *)
+  (** The following instructions and directives are not generated
+      directly by [Asmgen], so we do not model them. *)
+  | Padcl_ri _ _
+  | Padcl_rr _ _
+  | Paddl_mi _ _
+  | Paddl_rr _ _
+  | Pbsfl _ _
+  | Pbsfq _ _
+  | Pbsrl _ _
+  | Pbsrq _ _
+  | Pbswap64 _
+  | Pbswap32 _
+  | Pbswap16 _
+  | Pcfi_adjust _
+  | Pfmadd132 _ _ _
+  | Pfmadd213 _ _ _
+  | Pfmadd231 _ _ _
+  | Pfmsub132 _ _ _
+  | Pfmsub213 _ _ _
+  | Pfmsub231 _ _ _
+  | Pfnmadd132 _ _ _
+  | Pfnmadd213 _ _ _
+  | Pfnmadd231 _ _ _
+  | Pfnmsub132 _ _ _
+  | Pfnmsub213 _ _ _
+  | Pfnmsub231 _ _ _
+  | Pmaxsd _ _
+  | Pminsd _ _
+  | Pmovb_rm _ _
+  | Pmovq_rf _ _
+  | Pmovsq_rm _ _
+  | Pmovsq_mr _ _
+  | Pmovsb
+  | Pmovsw
+  | Pmovw_rm _ _
+  | Pnop
+  | Prep_movsl
+  | Psbbl_rr _ _
+  | Psqrtsd _ _
+  | Psubl_ri _ _
+  | Psubq_ri _ _ => Stuck
+  end.
+
+(* maybe useful to prove SSAsm -> RealAsm_1 *)
+(*  Definition exec_instr f i rs (m: mem) :=
     match i with
     | Pallocframe sz ofs_ra ofs_link =>
       let aligned_sz := align sz 8 in
@@ -702,6 +1310,7 @@ Section WITHGE.
       end
     | _ => Asm.exec_instr ge f i rs m
     end.
+*)
 
   Inductive step  : state -> trace -> state -> Prop :=
   | exec_step_internal:
@@ -720,7 +1329,8 @@ Section WITHGE.
         external_call ef ge vargs m t vres m' ->
         rs' = nextinstr_nf
                 (set_res res vres
-                         (undef_regs (map preg_of (destroyed_by_builtin ef)) rs)) ->
+                         (undef_regs (map preg_of (destroyed_by_builtin ef)) rs))
+                         (Ptrofs.repr (instr_size (Pbuiltin ef args res))) ->
         step (State rs m) t (State rs' m')
   | exec_step_external:
       forall b ef args res rs m t rs' m',
@@ -767,6 +1377,9 @@ Definition rs_state s :=
 Definition m_state s :=
   let '(State _ m) := s in m.
 
+
+
+(* Syntactic or Semantic ? *)
   Section INVARIANT.
 
     Variable prog: Asm.program.

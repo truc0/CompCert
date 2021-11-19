@@ -576,10 +576,11 @@ Proof.
   eapply sd_traces.
   eapply Asm.semantics_determinate.
   eapply SSAsmproof.transf_program_correct.
-  unfold match_prog, pass_match in H. simpl in H.
+  eapply match_prog_wf; eauto.
+(*  unfold match_prog, pass_match in H. simpl in H.
   repeat DestructM. subst.
   eapply Asmgenproof.transf_program_unchange_rsp; eauto.
-  eapply match_program_no_more_functions; eauto.
+  eapply match_program_no_more_functions; eauto. *)
   apply atomic_receptive. apply Cstrategy.semantics_strongly_receptive.
   apply SSAsm.semantics_determinate.
 Qed.

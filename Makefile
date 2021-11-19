@@ -114,8 +114,8 @@ BACKEND=\
   Asm.v Asmgen.v Asmgenproof0.v Asmgenproof1.v \
   AsmRegs.v AsmFacts.v Asmgenproof.v \
   SSAsm.v SSAsmproof.v \
-  RealAsm.v RealAsmgen.v RealAsmproof.v
-
+  RealAsm.v RealAsmgen.v RealAsmproof.v \
+  PseudoInstructions.v PseudoInstructionsproof.v
 # C front-end modules (in cfrontend/)
 
 CFRONTEND=Ctypes.v Cop.v Csyntax.v Csem.v Ctyping.v Cstrategy.v Cexec.v \

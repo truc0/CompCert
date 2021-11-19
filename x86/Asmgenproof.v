@@ -427,7 +427,7 @@ Proof.
   destruct a; simpl in *; try lia.
   destruct a. simpl in *. subst. apply code_tail_no_bigger in CT. simpl in CT. lia. simpl in Heql.
   inv Heql.
-  specialize (IHCT _ eq_refl). subst. simpl. unfold instr_size. lia.
+  specialize (IHCT _ eq_refl). subst. simpl. lia.
 Qed.
 
 Lemma offsets_after_call_app:
@@ -435,7 +435,7 @@ Lemma offsets_after_call_app:
     offsets_after_call (y ++ z) pos =  offsets_after_call y pos ++ offsets_after_call z (pos + code_size y).
 Proof.
   induction y; simpl; intros; eauto. rewrite Z.add_0_r. auto.
-  rewrite ! IHy. destr. simpl. rewrite Z.add_assoc. unfold instr_size. f_equal.
+  rewrite ! IHy. destr. simpl. rewrite Z.add_assoc.  f_equal.
   f_equal. f_equal. lia.
   simpl. rewrite Z.add_assoc. f_equal. f_equal.  lia.
 Qed.
@@ -482,7 +482,7 @@ Proof.
   rewrite offsets_after_call_app.
   apply in_app. right.  unfold offsets_after_call. rewrite pred_dec_true.
   left. rewrite EQSZ.
-  rewrite code_size_app. f_equal. unfold instr_size.
+  rewrite code_size_app. f_equal.
   rewrite Z.add_comm. f_equal. auto.
 Qed.
 
