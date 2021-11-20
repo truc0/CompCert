@@ -582,34 +582,47 @@ Definition alpha_rename_instruction (a:permutation) (i: instruction) :=
   | Istore chunk addr args src s => Istore chunk (alpha_rename a addr) args src s
   | Icall sig ros args res s =>
     match ros with
-    | inr _ => i
-    | inl id => Icall sig (inl (alpha_rename a id)) args res s
+    | inl _ => i
+    | inr id => Icall sig (inr (alpha_rename a id)) args res s
     end
   | Itailcall sig ros args =>
     match ros with
-    | inr _ => i
-    | inl id => Itailcall sig (inl (alpha_rename a id)) args
+    | inl _ => i
+    | inr id => Itailcall sig (inr (alpha_rename a id)) args
     end
+  | Ibuiltin ef bals bres s => Ibuiltin ef (map (alpha_rename a) bals) bres s    
   | _ => i
   end.
-
+ 
 Program Instance Alpha_instruction  : Alpha instruction :=
   { alpha_rename := alpha_rename_instruction }.
 Next Obligation.
   destruct p;auto;simpl;
     try (erewrite alpha_rename_refl;auto);
-  destruct s0;auto. 
+    try destruct s0;auto.
+  (* builtin list *)
+  induction l;simpl;auto.
+  erewrite alpha_rename_refl. inversion IHl.
+  f_equal. f_equal. rewrite H0. auto.
 Defined.
 Next Obligation.
   unfold inverse_permutation in H0.
   destruct p1;simpl;auto;
     try (erewrite alpha_rename_sym;auto);
-  destruct s0;auto;simpl;erewrite alpha_rename_sym;auto.
+    try destruct s0;auto;simpl;try erewrite alpha_rename_sym;auto.
+  (* builtin list *)
+  induction l;simpl;auto.
+  erewrite alpha_rename_sym;auto.
+  f_equal. f_equal. injection IHl.  intros. auto.  
 Defined.
 Next Obligation.
   destruct p1;simpl;auto;
     try (erewrite alpha_rename_trans;auto);
-  destruct s0;auto.
+    try destruct s0;auto.
+  induction l;simpl;auto.
+  erewrite alpha_rename_trans;auto.
+  f_equal. f_equal. injection IHl.  intros. auto. 
+  
 Defined.
 
 Global Opaque Alpha_instruction.

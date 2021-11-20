@@ -739,7 +739,7 @@ Inductive builtin_arg_constraint : Type :=
   | OK_addressing
   | OK_all.
 
-(* static variable rename : Alpha renaming*)
+(** * static variable rename : Alpha renaming *)
 
 Require Import FinFun.
 Require Import Fin.
@@ -830,6 +830,8 @@ Defined.
 Definition inverse_permutation (a1 a2:permutation):=
   forall x, a2.(permu) (a1.(permu) x) = x.
 
+
+
 Definition support := list ident.
 
 Class Alpha (P: Type) := 
@@ -871,6 +873,54 @@ Definition max_program_ident {F V : Type} (p: program F V):=
 (*   simpl. auto.   *)
 (* Defined. *)
 
+(** *some properties about map *)
+Lemma map_alpha_refl {T: Type} {AT: Alpha T} : forall (l:list T),
+    map (alpha_rename identity_permutation) l = l.
+Proof.
+  intros.
+  induction l;simpl;auto.
+  erewrite alpha_rename_refl.
+  f_equal. auto.
+Qed.
+
+Lemma map_alpha_sym {T: Type} {AT: Alpha T} : forall (l1 l2:list T) a1 a2,
+    map (alpha_rename a1) l1 = l2 ->
+    inverse_permutation a1 a2 ->
+    map (alpha_rename a2) l2 = l1.
+Proof.
+  unfold inverse_permutation.
+  intros.
+  generalize dependent l1.
+  induction l2;intros.
+  destruct l1;simpl in *;auto.
+  inversion H.
+  destruct l1;simpl in *;auto.
+  inversion H. inversion H.
+  f_equal. 
+  eapply alpha_rename_sym.
+  auto.
+  auto.
+  rewrite H3.
+  eapply IHl2. auto.
+Qed.
+
+Lemma map_alpha_trans {T: Type} {AT: Alpha T} : forall (l1 l2 l3:list T) a1 a2,
+    map (alpha_rename a1) l1 = l2 ->
+    map (alpha_rename a2) l2 = l3 ->
+    map (alpha_rename (compose_permutation a1 a2)) l1 = l3.
+Proof.
+  induction l1.
+  destruct l2;destruct l3;simpl;auto.
+  intros. inversion H.
+  destruct l2;destruct l3;intros;simpl in *;auto;try inversion H.
+  inversion H0.
+  f_equal.
+  eapply alpha_rename_trans;auto.
+  rewrite H2. inversion H0;auto.
+  eapply IHl1.
+  auto. inversion H0.
+  rewrite H3. auto.
+Qed.
 
 (* rename ident *)
 Program Instance Alpha_ident : Alpha ident :={
@@ -948,6 +998,33 @@ Proof.
 Qed.
 
 
+(** *rename buintin argument *)
+Fixpoint alpha_rename_builtin_arg {A: Type} (a: permutation) (ba: builtin_arg A) :=
+  match ba with
+  | BA_loadglobal m id ofs => BA_loadglobal m (alpha_rename a id) ofs
+  | BA_addrglobal id ofs => BA_addrglobal (alpha_rename a id) ofs
+  | BA_splitlong a1 a2 => BA_splitlong (alpha_rename_builtin_arg a a1) (alpha_rename_builtin_arg a a2)
+  | BA_addptr a1 a2 => BA_addptr (alpha_rename_builtin_arg a a1) (alpha_rename_builtin_arg a a2)
+  | _ => ba 
+  end.
+
+Program Instance Alpha_builtin_arg {A: Type} : Alpha (builtin_arg A) :=
+  { alpha_rename := alpha_rename_builtin_arg }.
+Next Obligation.
+  induction p;simpl;auto;rewrite IHp1;rewrite IHp2;auto.
+Defined.
+Next Obligation.
+  unfold inverse_permutation in H0.
+  induction p1;simpl;auto;try rewrite H0;auto.
+  1-2 : rewrite IHp1_1;rewrite IHp1_2;auto.
+Defined.
+Next Obligation.
+  induction p1;simpl;auto.
+  1-2 : rewrite IHp1_1;rewrite IHp1_2;auto.
+Defined.
+
+Global Opaque Alpha_builtin_arg.
+
 (* renaming program, we have Context AF which indicate F has alpha_equiv property *)
 
 (* rename function definition *)
@@ -988,10 +1065,33 @@ Defined.
 
 Global Opaque Alpha_fundef.
   (* variable renaming *)
-  
+
+Definition alpha_rename_initdata (a: permutation) (i : init_data) :=
+  match i with
+  | Init_addrof id ofs => Init_addrof (alpha_rename a id) ofs
+  | _ => i
+  end.
+
+Program Instance Alpha_initdata : Alpha init_data :=
+  { alpha_rename := alpha_rename_initdata }.
+Next Obligation.
+  destruct p;auto.
+Defined.
+Next Obligation.
+  unfold inverse_permutation in H0.
+  destruct p1;simpl;auto.
+  erewrite H0.
+  auto.
+Defined.
+Next Obligation.
+  destruct p1;simpl;auto.
+Defined.
+
+Global Opaque Alpha_initdata.
+
 Definition alpha_rename_vardef {V: Type} {AV: Alpha V} (a: permutation) (v: globvar V) :=
   {| gvar_info := alpha_rename a v.(gvar_info);
-     gvar_init := v.(gvar_init);
+     gvar_init := map (alpha_rename a) v.(gvar_init);
      gvar_readonly := v.(gvar_readonly);
      gvar_volatile := v.(gvar_volatile) |}.
 
@@ -999,16 +1099,19 @@ Program Instance Alpha_vardef {V: Type} {AV: Alpha V} : Alpha (globvar V) :=
   { alpha_rename := alpha_rename_vardef;
   }.
 Next Obligation.
+  
   unfold alpha_rename_vardef.
   destruct p;simpl.
+  erewrite map_alpha_refl.
   destruct AV.
   unfold alpha_rename in *.
   rewrite (alpha_rename_refl0 gvar_info0).
-  auto.
+  auto.  
 Defined.
 Next Obligation.
   unfold alpha_rename_vardef.
   destruct p1;simpl.
+  f_equal.   
   destruct AV. 
   unfold alpha_rename in *.
   rename gvar_info0 into f.
@@ -1016,15 +1119,18 @@ Next Obligation.
   generalize (alpha_rename_sym0 f (alpha_rename0 a1 f) _ _ H H0).
   intros. rewrite H1.
   auto.
+  eapply map_alpha_sym;auto.
 Defined.
 Next Obligation.
   unfold alpha_rename_vardef.
   destruct p1;simpl.
+  f_equal.
   destruct AV. 
   unfold alpha_rename in *.
   rename gvar_info0 into f.
   rewrite (alpha_rename_trans0 f (alpha_rename0 a1 f) (alpha_rename0 a2 (alpha_rename0 a1 f)) _ _) by auto.
   auto.
+  eapply map_alpha_trans;auto.
 Defined.
 
 Global Opaque Alpha_vardef.
@@ -1058,8 +1164,7 @@ Global Opaque Alpha_def.
 
 
 Definition alpha_rename_prog {F V: Type} {AF: Alpha F} {AV: Alpha V} (a: permutation) (p: program F V) :=
-  let idefs := map (fun (d:ident*globdef F V) => let (id, defs) := d in
-                        (alpha_rename a id, alpha_rename a defs)
+  let idefs := map (fun (d:ident*globdef F V) => (alpha_rename a (fst d), alpha_rename a (snd d))
                    ) p.(prog_defs) in
   {| prog_defs := idefs;
      prog_public := map (alpha_rename a) p.(prog_public);
