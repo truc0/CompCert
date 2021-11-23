@@ -588,7 +588,7 @@ Qed.
 Theorem c_semantic_preservation_real:
   forall p tp,
   match_prog_real p tp ->
-  backward_simulation (Csem.semantics (fn_stack_requirements tp) p) (RealAsm.semantics tp).
+  backward_simulation (Csem.semantics (fn_stack_requirements tp) p) (RealAsm.semantics RealAsm.instr_size_1 tp).
 Proof.
   intros.
   unfold match_prog_real in H.
@@ -634,7 +634,7 @@ Qed.
 Theorem transf_c_program_correct_real:
   forall p tp,
   transf_c_program_real p = OK tp ->
-  backward_simulation (Csem.semantics (fn_stack_requirements tp) p) (RealAsm.semantics tp).
+  backward_simulation (Csem.semantics (fn_stack_requirements tp) p) (RealAsm.semantics RealAsm.instr_size_1 tp).
 Proof.
   intros. apply c_semantic_preservation_real. apply transf_c_program_real_match; auto.
 Qed.
@@ -674,7 +674,7 @@ Theorem separate_transf_c_program_correct_real:
   link_list c_units = Some c_program ->
   exists asm_program,
       link_list asm_units = Some asm_program
-   /\ backward_simulation (Csem.semantics (fn_stack_requirements asm_program) c_program) (RealAsm.semantics asm_program).
+   /\ backward_simulation (Csem.semantics (fn_stack_requirements asm_program) c_program) (RealAsm.semantics RealAsm.instr_size_1 asm_program).
 Proof.
   intros.
   assert (nlist_forall2 match_prog_real c_units asm_units).

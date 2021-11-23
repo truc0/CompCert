@@ -15,7 +15,7 @@ Require Import Values.
 Require Import Conventions1.
 Require Import AsmFacts.
 Require Import SSAsm RealAsm RealAsmgen.
-Require Import AsmRegs.
+Require Import AsmRegs RealAsmRegs.
 Require Import Errors.
 Require Import Linking.
 
@@ -30,7 +30,7 @@ Require Import Linking.
     | Vptr b o =>
       match Genv.find_funct_ptr ge b with
       | Some (Internal f) =>
-        match find_instr (Ptrofs.unsigned o) (fn_code f) with
+        match find_instr instr_size_1 (Ptrofs.unsigned o) (fn_code f) with
         | Some i => Some (inl (f,i))
         | None => None
         end
@@ -185,8 +185,8 @@ Require Import Linking.
       SSAsm.exec_instr ge f i (rs_state s) (m_state s) = Next (rs_state s') (m_state s') /\ t = E0.
   Proof.
     unfold pc_at; intros s t s'  STEP; inv STEP.
-    - rewrite H, H0, H1. inversion 1; subst. simpl. eauto.
-    - rewrite H, H0, H1. intros f0 i A; inv A. intro NIB; exfalso; apply NIB. constructor.
+    - rewrite H, H0. setoid_rewrite H1. inversion 1; subst. simpl. eauto.
+    - rewrite H, H0. setoid_rewrite H1. intros f0 i A; inv A. intro NIB; exfalso; apply NIB. constructor.
     - rewrite H, H0. inversion 1.
   Qed.
 
@@ -286,34 +286,34 @@ Require Import Linking.
   Qed.
 
   Lemma exec_load_seq:
-    forall chunk m a r r' rd r0 m0,
+    forall chunk m a r r' rd r0 m0 sz,
       seq (State r m) (State r' m) ->
-      exec_load ge chunk m a r rd = Next r0 m0 ->
+      exec_load ge chunk m a r rd sz = Next r0 m0 ->
       exists r1 m1,
-        exec_load ge chunk m a r' rd = Next r1 m1.
+        exec_load ge chunk m a r' rd sz = Next r1 m1.
   Proof.
-    unfold exec_load; intros chunk m a r r' rd r0 m0 SEQ EL; repeat destr_in EL.
+    unfold exec_load; intros chunk m a r r' rd r0 m0 sz SEQ EL; repeat destr_in EL.
     erewrite eval_addrmode_seq in Heqo. rewrite Heqo. eauto. inv SEQ; auto.
   Qed.
 
   Lemma exec_store_seq:
-    forall chunk m a r r' rd lrd r0 m0,
+    forall chunk m a r r' rd lrd r0 m0 sz,
       seq (State r m) (State r' m) ->
-      exec_store ge chunk m a r rd lrd= Next r0 m0 ->
+      exec_store ge chunk m a r rd lrd sz = Next r0 m0 ->
       rd <> RA ->
       exists r1 m1,
-        exec_store ge chunk m a r' rd lrd = Next r1 m1.
+        exec_store ge chunk m a r' rd lrd sz = Next r1 m1.
   Proof.
-    unfold exec_store; intros chunk m a r r' rd lrd r0 m0 SEQ EL NRA; repeat destr_in EL.
+    unfold exec_store; intros chunk m a r r' rd lrd r0 m0 sz SEQ EL NRA; repeat destr_in EL.
     inv SEQ.
     erewrite eval_addrmode_seq in Heqo. rewrite <- REQ. rewrite Heqo. eauto. auto. auto.
   Qed.
 
   Lemma goto_label_seq:
     forall f l rs1 rs2 m rs' m'
-      (GL : goto_label ge f l rs1 m = Next rs' m')
+      (GL : goto_label instr_size_1 ge f l rs1 m = Next rs' m')
       (SEQ: rs1 PC = rs2 PC),
-    exists (rs2' : regset) (m2' : mem), goto_label ge f l rs2 m = Next rs2' m2'.
+    exists (rs2' : regset) (m2' : mem), goto_label instr_size_1 ge f l rs2 m = Next rs2' m2'.
   Proof.
     unfold goto_label. intros. destr. rewrite <- SEQ. destr. destr. eauto.
   Qed.
@@ -407,7 +407,7 @@ Require Import Linking.
       (RA_NOT_VUNDEF : ra <> Vundef)
       m' t
       (EXTCALL : external_call ef ge args m2 t res m'),
-    exists s2', step ge (State rs2 m2) t s2'.
+    exists s2', (step instr_size_1) ge (State rs2 m2) t s2'.
   Proof.
     intros.
     eexists.
@@ -421,12 +421,16 @@ Require Import Linking.
     auto. eauto. eauto.
   Qed.
 
+  Lemma find_instr_1_eq:
+    forall sz f, find_instr instr_size_1 sz f = Asm.find_instr sz f.
+  Proof. intros.  reflexivity. Qed.
+
   Lemma real_asm_progress:
     forall s1 s2,
       match_states s1 s2 ->
       safe (SSAsm.semantics prog) s1 ->
       real_asm_inv s2 ->
-      (exists r : int, final_state s2 r) \/ (exists (t : trace) (s2' : state), step (Genv.globalenv prog) s2 t s2').
+      (exists r : int, final_state s2 r) \/ (exists (t : trace) (s2' : state), (step instr_size_1) (Genv.globalenv prog) s2 t s2').
   Proof.
     intros s1 s2 MS SAFE SPAL.
     destruct (SAFE _  (star_refl _ _ _)) as [(r & FS)|(t & s2' & STEP)].
@@ -511,7 +515,8 @@ Require Import Linking.
       simpl in *. rewrite <- REQ in PC1 by congruence.
       repeat destr_in PC1; subst.
       repeat destr_in Heqo.
-      + inversion STEP; subst; rewrite_hyps.
+      + rewrite find_instr_1_eq in Heqo1.
+        inversion STEP; subst; rewrite_hyps.
         destruct (is_call_dec i1).
         {
           destruct (SAFE _ (star_one _ _ _ _ _ STEP)) as [(r & FS)|(t & s2' & STEP2)].
@@ -567,7 +572,7 @@ Require Import Linking.
               simpl. rewrite <- ! REQ. rewrite STORE. eauto. congruence. congruence. congruence.
         }
 
-        cut (exists rs2' m2', exec_instr ge f0 i1 rs2 m = Next rs2' m2').
+        cut (exists rs2' m2', exec_instr instr_size_1 ge f0 i1 rs2 m = Next rs2' m2').
         intros (rs2' & m2' & EI'). right; exists E0, (State rs2' m2').
         eapply exec_step_internal. rewrite <- REQ by congruence; eauto. eauto. eauto. eauto.
         destruct i1; simpl in H6; simpl; eauto using exec_load_seq, exec_store_seq.
@@ -601,7 +606,11 @@ Require Import Linking.
         right; do 2 eexists. eapply exec_step_builtin. rewrite <- REQ; eauto. congruence. all: eauto. congruence.
         eapply wf_asm_builtin_not_PC; eauto.
       + inv STEP; repeat destr_in Heqo.
+        inv H1. rewrite H2 in Heqo0. inv Heqo0. setoid_rewrite Heqo1 in H3. inv H3.
+        inv H1. rewrite H2 in Heqo0. inv Heqo0. setoid_rewrite Heqo1 in H3. inv H3.
     - inv STEP; simpl in *; repeat destr_in PCnone.
+      inv H. rewrite H0 in Heqo. inv Heqo. setoid_rewrite Heqo0 in H1. inv H1.
+      inv H. rewrite H0 in Heqo. inv Heqo. setoid_rewrite Heqo0 in H1. inv H1.
   Qed.
 
   Lemma ptrofs_cancel i f s:
@@ -632,8 +641,8 @@ Require Import Linking.
   Lemma goto_label_match:
     forall f l rs2 m2 rs2' m2' rs1,
       (forall r: preg, r<>RA -> rs1 r = rs2 r) ->
-      goto_label ge f l rs2 m2 = Next rs2' m2' ->
-      exists rs1' m1', goto_label ge f l rs1 m2 = Next rs1' m1' /\ seq (State rs1' m1') (State rs2' m2').
+      goto_label instr_size_1 ge f l rs2 m2 = Next rs2' m2' ->
+      exists rs1' m1', goto_label instr_size_1 ge f l rs1 m2 = Next rs1' m1' /\ seq (State rs1' m1') (State rs2' m2').
   Proof.
     intros f l rs2 m2 rs2' m2' rs1 REQ GL2.
     edestruct goto_label_seq as (rs1' & m1' & GL). eauto. symmetry; apply REQ. congruence. rewrite GL.
@@ -644,8 +653,8 @@ Require Import Linking.
   Qed.
 
   Lemma find_instr_same : forall c i1 i2 ofs1 ofs2,
-      find_instr ofs1 c = i1 ->
-      find_instr ofs2 c = i2 ->
+      find_instr instr_size_1 ofs1 c = i1 ->
+      find_instr instr_size_1 ofs2 c = i2 ->
       ofs1 = ofs2 ->
       i1 = i2.
   Proof.
@@ -653,7 +662,7 @@ Require Import Linking.
 
   Lemma goto_label_PC:
     forall f l r m r0 m0
-      (GL: goto_label ge f l r m = Next r0 m0)
+      (GL: goto_label instr_size_1 ge f l r m = Next r0 m0)
       b i
       (PCbef: r PC = Vptr b i)
       (FFP: Genv.find_funct_ptr ge b = Some (Internal f)) ,
@@ -680,15 +689,27 @@ Require Import Linking.
     intros POS II; inv II.
     {
       inv H. exploit wf_asm_alloc_only_at_beginning. eauto. apply Heqo0.
-      generalize (instr_size_positive (Plabel l)); lia.
+      lia.
     }
     {
       exploit wf_asm_ret_jmp_comes_after_freeframe. eauto. 2: apply H.
       rewrite EQz. eauto.
       intros (o' & ifree & FI & IFREE & RNG).
-      generalize (find_instr_same _ _ _ _ _ LPS FI). intro. exploit H0.
-      unfold instr_size. lia. intro. inv IFREE. congruence.
+      rewrite <- find_instr_1_eq in LPS.
+      generalize (find_instr_same  _ _ _ _ _ LPS FI). intro. exploit H0.
+      unfold instr_size_1 in *. lia.
+      intro. inv IFREE. congruence.
     }
+  Qed.
+
+  Lemma instr_size_1_repr : forall i, 0 <= instr_size_1 i <= Ptrofs.max_unsigned.
+  Proof.
+    intro. unfold instr_size_1. vm_compute. split; congruence.
+  Qed.
+
+  Lemma instr_size_1_positive :forall i, 0 < instr_size_1 i.
+  Proof.
+    intro. unfold instr_size_1. lia.
   Qed.
 
   Lemma exec_instr_normal:
@@ -696,8 +717,8 @@ Require Import Linking.
       seq (State rs1 m1) (State rs2 m2) ->
       rs2 PC = Vptr b ofs ->
       Genv.find_funct_ptr ge b = Some (Internal f) ->
-      find_instr (Ptrofs.unsigned ofs) (fn_code f) = Some i ->
-      exec_instr ge f i rs2 m2 = Next rs2' m2' ->
+      find_instr instr_size_1 (Ptrofs.unsigned ofs) (fn_code f) = Some i ->
+      exec_instr instr_size_1 ge f i rs2 m2 = Next rs2' m2' ->
       ~ intermediate_instruction i ->
       ~ is_call i ->
       ~ is_free i ->
@@ -724,31 +745,31 @@ Require Import Linking.
       contradict NIF. constructor.
     } clear EI; rename H into EI.
     split.
+    rewrite find_instr_1_eq in FI.
     {
-        destruct i; simpl in *; unfold exec_load, exec_store in *;
+          destruct i; simpl in *; unfold Asm.exec_load, Asm.exec_store in *;
           erewrite ? eval_addrmode_seq by eauto;
           repeat erewrite ?  eval_testcond_seq by eauto;
           erewrite ? REQ by congruence;
           repeat destr_in EI;
-          try (do 2 eexists; split; [eauto|constructor; intros; simpl; regs_eq;
+          try (do 2 eexists; split; [eauto|constructor; intros; simpl; AsmRegs.regs_eq; regs_eq;
                                            try eapply eval_addrmode64_seq ;
                                            try eapply eval_addrmode32_seq; now eauto
                                     ]; fail).
-        do 2 eexists; split; [eauto|constructor; intros; simpl; regs_eq; repeat destr; simpl; regs_eq].
-        do 2 eexists; split; [eauto|constructor; intros; simpl; regs_eq; repeat destr; simpl; regs_eq].
+        do 2 eexists; split; [eauto|constructor; intros; simpl; AsmRegs.regs_eq; repeat destr; simpl; regs_eq].
+        do 2 eexists; split; [eauto|constructor; intros; simpl; AsmRegs.regs_eq; repeat destr; simpl; regs_eq].
         eapply goto_label_match; eauto.
         eapply goto_label_match; eauto.
-
         erewrite eval_testcond_seq by eauto. rewrite Heqo0. eapply goto_label_match; eauto.
         erewrite eval_testcond_seq by eauto. rewrite Heqo0.
-        do 2 eexists; split; [eauto|constructor; intros; simpl; regs_eq; repeat destr; simpl; regs_eq].
+        do 2 eexists; split; [eauto|constructor; intros; simpl; AsmRegs.regs_eq; repeat destr; simpl; regs_eq].
         erewrite eval_testcond_seq by eauto. rewrite Heqo0.
-        do 2 eexists; split; [eauto|constructor; intros; simpl; regs_eq; repeat destr; simpl; regs_eq].
+        do 2 eexists; split; [eauto|constructor; intros; simpl; AsmRegs.regs_eq; repeat destr; simpl; regs_eq].
         eapply goto_label_match. 2: eauto. intros; regs_eq.
         contradict NII. constructor 2; auto.
         contradict NII. constructor. constructor.
     }
-    destruct (Val.eq (rs2' PC) (Val.offset_ptr (rs2 PC) (Ptrofs.repr (instr_size i)))).
+    destruct (Val.eq (rs2' PC) (Val.offset_ptr (rs2 PC) (Ptrofs.repr (instr_size_1 i)))).
     {
       rewrite e, PC2. simpl. rewrite FFP.
       destr. repeat destr_in Heqo. rename Heqo0 into FI'.
@@ -757,21 +778,23 @@ Require Import Linking.
       {
         inv H. exploit wf_asm_alloc_only_at_beginning. eauto. apply FI'.
         erewrite wf_asm_pc_repr; eauto.
-        generalize (Ptrofs.unsigned_range ofs) (instr_size_positive i); lia.
+        generalize (Ptrofs.unsigned_range ofs); unfold instr_size_1; lia.
+        eapply instr_size_1_repr. eapply instr_size_1_positive.
       }
       {
         exploit wf_asm_ret_jmp_comes_after_freeframe; eauto.
         intros (o' & ifree & FI2 & IFREE & RNG).
         erewrite wf_asm_pc_repr in RNG; eauto.
-        unfold instr_size in *.
+        unfold instr_size_1 in *.
         replace (Ptrofs.unsigned o') with (Ptrofs.unsigned  ofs) in FI2 by lia.
         rewrite FI in FI2. inv FI2. inv IFREE. contradiction NIF. constructor.
+        eapply instr_size_1_repr. eapply instr_size_1_positive.
       }
     }
-    destruct i; simpl in *; unfold exec_load, exec_store in EI; repeat destr_in EI;
+    destruct i; simpl in *; unfold Asm.exec_load, Asm.exec_store in EI; repeat destr_in EI;
       unfold compare_ints, compare_longs, compare_floats, compare_floats32 in n;
       repeat destr_in n;
-      simpl_regs_in n; unfold instr_size in n; unfold Ptrofs.one in n; try congruence.
+      simpl_regs_in n; unfold instr_size_1 in n; unfold Ptrofs.one in n; try congruence.
     generalize (goto_label_PC _ _ _ _ _ _ H0 _ _ PC2 FFP). simpl. intros (A & B); repeat destr; eauto.
     contradict NII. econstructor 2. right. econstructor.
     contradict NII. econstructor 2. right. econstructor.
@@ -787,30 +810,30 @@ Require Import Linking.
     forall c pos o,
       0 <= pos ->
       In o (offsets_after_call c pos) ->
-      exists oc icall, find_instr oc c = Some icall /\  is_call icall /\ oc + instr_size icall = o - pos.
+      exists oc icall, find_instr instr_size_1 oc c = Some icall /\  is_call icall /\ oc + instr_size_1 icall = o - pos.
   Proof.
     induction c; simpl; intros; eauto.
     easy.
     destr_in H0.
     - destruct H0.
       + subst.
-        exists 0, a. rewrite zeq_true. split; auto. split; auto. lia.
+        exists 0, a. rewrite zeq_true. split; auto. split; auto. unfold instr_size_1. lia.
       + destruct (fun pos => IHc _ _ pos H0) as (oc & icall & INSTR & ICALL & EQ).
-        generalize (instr_size_positive a). lia.
-        exists (oc + instr_size a).
+        generalize (instr_size_1_positive a). lia.
+        exists (oc + instr_size_1 a).
         rewrite pred_dec_false.
-        unfold instr_size in *.
+        unfold instr_size_1 in *.
         replace (oc + 1 - 1) with oc by lia. rewrite INSTR.
         eexists; split; eauto. split; auto. lia.
-        generalize (instr_size_positive a) (find_instr_ofs_pos _ _ _ INSTR). lia.
+        generalize (instr_size_1_positive a) (find_instr_ofs_pos _ _ _ INSTR). lia.
     - destruct (fun pos => IHc _ _ pos H0) as (oc & icall & INSTR & ICALL & EQ).
-      generalize (instr_size_positive a). lia.
-      exists (oc + instr_size a).
+      generalize (instr_size_1_positive a). lia.
+      exists (oc + instr_size_1 a).
       rewrite pred_dec_false.
-      unfold instr_size in *.
+      unfold instr_size_1 in *.
       replace (oc + 1 - 1) with oc by lia. rewrite INSTR.
       eexists; split; eauto. split; auto. lia.
-      generalize (instr_size_positive a) (find_instr_ofs_pos _ _ _ INSTR). lia.
+      generalize (instr_size_1_positive a) (find_instr_ofs_pos _ _ _ INSTR). lia.
   Qed.
 
   Lemma loadvv_bastck_storev:
@@ -827,7 +850,7 @@ Require Import Linking.
 
   Lemma real_asm_step:
     forall s2 t s2',
-      step (Genv.globalenv prog) s2 t s2' ->
+      step instr_size_1 (Genv.globalenv prog) s2 t s2' ->
       forall s1 : state,
         match_states s1 s2 ->
         real_asm_inv s2 ->
@@ -860,27 +883,26 @@ Require Import Linking.
       rewrite RRSP. rewrite Val.offset_ptr_assoc. f_equal.
       rewrite Ptrofs.sub_add_opp. rewrite Ptrofs.neg_add_distr. rewrite Ptrofs.add_commut.
       rewrite Ptrofs.neg_involutive. auto.
-      simpl. simpl_regs. rewrite Heqv. simpl. rewrite Heqo.
+      simpl. real_simpl_regs. rewrite Heqv. simpl. rewrite Heqo.
       destr. destr_in Heqo2. inv Heqo2.
       intro A.
+      generalize instr_size_1_positive instr_size_1_repr. intros POS REPR.
       inv A.
       {
         inv H. exploit wf_asm_alloc_only_at_beginning. eauto. apply Heqo0. intro I0.
         exploit wf_asm_alloc_only_at_beginning. eauto. apply Heqo3.
         rewrite Ptrofs.add_unsigned. rewrite I0.
-        rewrite Ptrofs.unsigned_repr. simpl. unfold Ptrofs.one. rewrite Ptrofs.unsigned_repr. lia. vm_compute. split; congruence.
-        unfold Ptrofs.one. rewrite Ptrofs.unsigned_repr.
-        vm_compute. split; congruence.
-        vm_compute. split; congruence.
+        rewrite Ptrofs.unsigned_repr. simpl. rewrite Ptrofs.unsigned_repr. unfold instr_size_1. lia. eauto.
+        rewrite Ptrofs.unsigned_repr; eauto.
       }
       {
         exploit wf_asm_ret_jmp_comes_after_freeframe; eauto.
         intros (o' & ifree & FI & IFREE & RNG).
         exploit wf_asm_alloc_only_at_beginning; eauto.
-        unfold Ptrofs.one in RNG.
-        replace 1 with (instr_size (Pallocframe sz ora olink)) in RNG by reflexivity.
+        unfold instr_size_1 in RNG.
+        replace 1 with (instr_size_1 (Pallocframe sz ora olink)) in RNG by reflexivity.
         erewrite wf_asm_pc_repr in RNG; eauto.
-        assert (Ptrofs.unsigned o' = Ptrofs.unsigned ofs). lia.
+        assert (Ptrofs.unsigned o' = Ptrofs.unsigned ofs).  lia.
         rewrite H0 in FI. rewrite FI in Heqo0. inv IFREE. inv Heqo0.
       }
     - (* external call *)
@@ -944,20 +966,21 @@ Require Import Linking.
       intro II; inv II.
       {
         inv H. exploit wf_asm_alloc_only_at_beginning. eauto. apply Heqo2.
-        generalize (find_instr_ofs_pos _ _ _ ICALL) (instr_size_positive icall). lia.
+        generalize (find_instr_ofs_pos _ _ _ ICALL) (instr_size_1_positive icall). lia.
       }
       {
         exploit wf_asm_ret_jmp_comes_after_freeframe; eauto.
         intros (o' & ifree & FI & IFREE & RNG).
         generalize (find_instr_same _ _ _ _ _ FI ICALL). intro. exploit H0.
-        unfold instr_size in *. simpl in *. lia.
+        unfold instr_size_1 in *. simpl in *. lia.
         inv IFREE. inv ISCALL; congruence.
       }
     - (*Pret*)
       simpl in PC1. repeat destr_in PC1.
       rewrite REQ in Heqv by congruence. inv STEP; rewrite_hyps.
-      assert (  RAC : ra_after_call ge (rs1 RA)).
+      assert (RAC : ra_after_call ge (rs1 RA)).
       {
+        rewrite find_instr_1_eq in Heqo0.
         destruct (SAFE _ (star_refl _ _ _)) as [(rr & FS)|(tt & s' & STEP)].
         simpl in FS. inv FS. contradict H1. rewrite REQ by congruence. rewrite Heqv. inversion 1.
         simpl in STEP.
@@ -985,13 +1008,13 @@ Require Import Linking.
         intro II; inv II.
         {
           inv H. exploit wf_asm_alloc_only_at_beginning. eauto. apply Heqo4.
-          generalize (find_instr_ofs_pos _ _ _ ICALL) (instr_size_positive icall). lia.
+          generalize (find_instr_ofs_pos _ _ _ ICALL) (instr_size_1_positive icall). lia.
         }
         {
           exploit wf_asm_ret_jmp_comes_after_freeframe; eauto.
           intros (o' & ifree & FI & IFREE & RNG).
           generalize (find_instr_same _ _ _ _ _ FI ICALL). intro. exploit H0.
-          unfold instr_size in *. simpl in *. lia.
+          unfold instr_size_1 in *. simpl in *. lia.
           inv IFREE. inv ISCALL; congruence.
         }
     -  (* Pjmp *)
@@ -1058,6 +1081,7 @@ Require Import Linking.
           inv i0.
           +(* Pcall_s *)
           simpl in H2.
+          rewrite find_instr_1_eq in H1.
           destruct (SAFE _ (star_refl _ _ _)) as [(rr & FS)|(t & s' & STEP)].
           simpl in FS. inv FS. contradict H3. inv SEQ. rewrite REQ by congruence. rewrite H. inversion 1.
           simpl in STEP. fold ge in STEP.
@@ -1067,7 +1091,7 @@ Require Import Linking.
             inv STEP; rewrite_hyps; auto.
           } subst.
           eexists; split. eauto.
-          edestruct step_internal; eauto. inv SEQ. simpl. rewrite REQ, H, H0, H1. eauto. congruence. inversion 1.
+          edestruct step_internal; eauto. inv SEQ. simpl. rewrite REQ, H, H0. setoid_rewrite  H1. eauto. congruence. inversion 1.
           simpl in H3. destr_in H3. inv H3.
           unfold Genv.find_funct in Heqo. repeat destr_in Heqo.
           inv SEQ. simpl in *. subst. destruct s'. simpl in *. subst.
@@ -1095,6 +1119,7 @@ Require Import Linking.
           simpl. rewrite H5. eauto.
           + (*Pcall_r*)
           simpl in H2.
+          rewrite find_instr_1_eq in H1.
           destruct (SAFE _ (star_refl _ _ _)) as [(rr & FS)|(t & s' & STEP)].
           simpl in FS. inv FS. contradict H3. inv SEQ. rewrite REQ by congruence. rewrite H. inversion 1.
           simpl in STEP. fold ge in STEP.
@@ -1104,7 +1129,7 @@ Require Import Linking.
             inv STEP; rewrite_hyps; auto.
           } subst.
           eexists; split. eauto.
-          edestruct step_internal; eauto. inv SEQ. simpl. rewrite REQ, H, H0, H1. eauto. congruence. inversion 1.
+          edestruct step_internal; eauto. inv SEQ. simpl. rewrite REQ, H, H0. setoid_rewrite H1. eauto. congruence. inversion 1.
           simpl in H3. destr_in H3. inv H3.
           unfold Genv.find_funct in Heqo. repeat destr_in Heqo.
           inv SEQ. simpl in *. subst. destruct s'. simpl in *. subst.
@@ -1141,6 +1166,7 @@ Require Import Linking.
           simpl in STEP. fold ge in STEP.
           assert (t = E0).
           {
+            rewrite find_instr_1_eq in H1.
             inv SEQ. rewrite <- REQ in H by congruence.
             inv STEP; rewrite_hyps; auto.
           } subst.
@@ -1157,7 +1183,7 @@ Require Import Linking.
             apply nextinstr_eq.
             rewrite (Pregmap.gso _ _ H3). simpl_regs. auto.
             rewrite REQ by congruence; auto.
-            simpl_regs.
+            real_simpl_regs.
             rewrite Val.offset_ptr_assoc. f_equal.
             generalize (Ptrofs.repr (align sz 8)).
             generalize (Ptrofs.repr (size_chunk Mptr)).
@@ -1168,14 +1194,14 @@ Require Import Linking.
             rewrite <- Heqo. f_equal.
             rewrite <- REQ by congruence; auto.
             eapply wf_asm_free_spec in H1; eauto. f_equal. destruct H1 as (SZ & ORA); subst. auto.
-            simpl. simpl_regs. rewrite REQ, H by congruence. simpl. rewrite H0. rewrite FI. subst; eauto.
+            simpl. simpl_regs. rewrite REQ, H by congruence. simpl. rewrite H0. setoid_rewrite FI. subst; eauto.
           - (*Pfree -> jmp *)
             eapply match_states_free_jmp.
             intros.
             apply nextinstr_eq.
             rewrite (Pregmap.gso _ _ H3). simpl_regs. auto.
             rewrite REQ by congruence; auto.
-            simpl_regs.
+            simpl_regs. real_simpl_regs.
             rewrite Val.offset_ptr_assoc. f_equal.
             generalize (Ptrofs.repr (align sz 8)).
             generalize (Ptrofs.repr (size_chunk Mptr)).
@@ -1188,7 +1214,7 @@ Require Import Linking.
             eapply wf_asm_free_spec in H1; eauto. f_equal. destruct H1 as (SZ & ORA); subst. auto.
             simpl_regs.
             unfold loadvv in Heqo. destr_in Heqo. destr_in Heqo.
-            simpl. simpl_regs. rewrite REQ, H by congruence. simpl. rewrite H0. rewrite FI. subst; eauto.
+            simpl. simpl_regs. rewrite REQ, H by congruence. simpl. rewrite H0. setoid_rewrite FI. subst; eauto.
             auto.
         }
         destruct s1. simpl in *. fold ge.
@@ -1205,7 +1231,7 @@ Require Import Linking.
         apply match_states_normal.
         constructor. intros. apply nextinstr_nf_eq.
         apply set_res_eq. apply undef_regs_eq. intros; auto.
-        simpl. simpl_regs. rewrite set_res_other.
+        simpl. real_simpl_regs. rewrite set_res_other.
         rewrite Asmgenproof0.undef_regs_other_2. rewrite H; simpl. rewrite H0.
         2: apply pc_not_destroyed_builtin.
         2: eapply wf_asm_builtin_not_PC; eauto.
@@ -1213,19 +1239,20 @@ Require Import Linking.
         intro II; inv II.
         {
           inv H4. exploit wf_asm_alloc_only_at_beginning. eauto. apply Heqo0.
-          unfold Ptrofs.one. replace 1 with (instr_size (Pbuiltin ef args res)) by reflexivity.
           erewrite wf_asm_pc_repr; eauto.
           apply not_eq_sym. apply Z.lt_neq.
-          generalize (Ptrofs.unsigned_range ofs) (instr_size_positive (Pbuiltin ef args res)). lia.
+          generalize (Ptrofs.unsigned_range ofs) (instr_size_1_positive (Pbuiltin ef args res)). lia.
+          eapply instr_size_1_repr. eapply instr_size_1_positive.
         }
         {
           exploit wf_asm_ret_jmp_comes_after_freeframe; eauto.
           intros (o' & ifree & FI & IFREE & RNG).
-          unfold Ptrofs.one in *.
-          replace 1 with (instr_size (Pbuiltin ef args res)) in RNG by reflexivity.
+          unfold instr_size_1 in *.
+          replace 1 with (instr_size_1 (Pbuiltin ef args res)) in RNG by reflexivity.
           erewrite wf_asm_pc_repr in RNG; eauto.
           generalize (find_instr_same _ _ _ _ _ FI H1). intro. exploit H5.
           lia. intro. inv IFREE. congruence.
+          eapply instr_size_1_repr. eapply instr_size_1_positive.
         }
       + easy.
     - destruct s1. simpl in *. rewrite PCeq in PCnone.
@@ -1235,7 +1262,7 @@ Require Import Linking.
   Hypothesis prog_no_rsp: asm_prog_no_rsp ge.
 
   Theorem real_asm_correct:
-    backward_simulation (SSAsm.semantics prog) (RealAsm.semantics prog).
+    backward_simulation (SSAsm.semantics prog) (RealAsm.semantics instr_size_1 prog).
   Proof.
     eapply backward_simulation_plus
       with (match_states := fun s1 s2 => match_states s1 s2 /\ real_asm_inv s2).
@@ -1350,7 +1377,7 @@ Qed.
   Hypothesis prog_no_rsp: asm_prog_no_rsp ge.
 
   Theorem real_asm_correct':
-    backward_simulation (SSAsm.semantics prog) (RealAsm.semantics tprog).
+    backward_simulation (SSAsm.semantics prog) (RealAsm.semantics instr_size_1 tprog).
   Proof.
     red in TRANSF.
     unfold transf_program in TRANSF.
@@ -1360,8 +1387,8 @@ Qed.
     intros (tf & FFP & TF).
     simpl in TF; monadInv  TF. unfold transf_function in EQ. destr_in EQ.
     eapply wf_asm_function_check_correct; eauto.
+    eapply instr_size_1_repr. eapply instr_size_1_positive.
   Qed.
-
 
   End PRESERVATION2.
 

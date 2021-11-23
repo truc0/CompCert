@@ -8,7 +8,7 @@ Local Open Scope string_scope.
 Local Open Scope error_monad_scope.
 
 Definition transf_function (f: Asm.function) : res Asm.function :=
-  if wf_asm_function_check f then
+  if wf_asm_function_check instr_size_1 f then
     OK f
   else
     Error (msg "asm_function_is_not_wellformed").
