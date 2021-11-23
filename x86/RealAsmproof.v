@@ -565,11 +565,11 @@ Require Import Linking.
               *
               simpl in H6. destr_in H6. inv H6. revert STORE. simpl_regs. intros.
               right; do 2 eexists. eapply exec_step_internal. rewrite <- REQ; eauto. congruence. eauto. eauto.
-              simpl. rewrite <- ! REQ. rewrite STORE. eauto. congruence. congruence.
+              simpl. rewrite <- ! REQ. setoid_rewrite STORE. eauto. congruence. congruence.
               *
               simpl in H6. destr_in H6. inv H6. revert STORE. simpl_regs. intros.
               right; do 2 eexists. eapply exec_step_internal. rewrite <- REQ; eauto. congruence. eauto. eauto.
-              simpl. rewrite <- ! REQ. rewrite STORE. eauto. congruence. congruence. congruence.
+              simpl. rewrite <- ! REQ. setoid_rewrite STORE. eauto. congruence. congruence. congruence.
         }
 
         cut (exists rs2' m2', exec_instr instr_size_1 ge f0 i1 rs2 m = Next rs2' m2').

@@ -552,19 +552,19 @@ Definition exec_instr_asm (f: function) (i: instruction) (rs: regset) (m: mem) :
       Next (nextinstr (rs#RSP <- sp) isz) m
     | Pcall_s i sg =>
       let sp := Val.offset_ptr (rs RSP) (Ptrofs.neg (Ptrofs.repr (size_chunk Mptr))) in
-      match Mem.storev Mptr m sp (Val.offset_ptr rs#PC Ptrofs.one) with
+      match Mem.storev Mptr m sp (Val.offset_ptr rs#PC isz) with
         |None => Stuck
         |Some m1 =>
-        Next (rs#RA <- (Val.offset_ptr rs#PC Ptrofs.one)
+        Next (rs#RA <- (Val.offset_ptr rs#PC isz)
                 #PC <- (Genv.symbol_address ge i Ptrofs.zero)
                 #RSP <- sp) m1
       end
     |Pcall_r r sg =>
       let sp := Val.offset_ptr (rs RSP) (Ptrofs.neg (Ptrofs.repr (size_chunk Mptr))) in
-      match Mem.storev Mptr m sp (Val.offset_ptr rs#PC Ptrofs.one) with
+      match Mem.storev Mptr m sp (Val.offset_ptr rs#PC isz) with
         |None => Stuck
         |Some m1 =>
-        Next (rs#RA <- (Val.offset_ptr rs#PC Ptrofs.one)
+        Next (rs#RA <- (Val.offset_ptr rs#PC isz)
                 #PC <- (rs r)
                 #RSP <- sp) m1
       end
