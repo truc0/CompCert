@@ -102,6 +102,20 @@ Inductive match_value: val -> val -> Prop :=
   |match_ptr_s : forall b o, is_stack b -> match_value (Vptr b o) (Vptr b o)
   |match_undef: match_value Vundef Vundef.
 
+Inductive match_vallist : list val -> list val -> Prop :=
+  match_vallist_nil : match_vallist nil nil
+ |match_vallist_cons : forall v1 v2 vl1 vl2,
+     match_value v1 v2 ->
+     match_vallist vl1 vl2 ->
+     match_vallist (v1::vl1) (v2::vl2).
+
+Lemma match_Vnullptr : forall v,
+    match_value Vnullptr v -> v = Vnullptr.
+Proof.
+  intros. unfold Vnullptr in *.
+  destruct (Archi.ptr64); inv H; auto.
+Qed.
+
 Inductive match_memval : memval -> memval -> Prop :=
   match_memval_byte : forall n : byte, match_memval (Byte n) (Byte n)
 | match_memval_frag : forall (v1 v2 : val) (q: quantity) (n:nat),
@@ -121,13 +135,25 @@ Inductive match_mem : mem -> mem -> Prop :=
     ) ->
     match_mem m1 m2.
 
+Definition match_rs (rs1 rs2:regset) : Prop :=
+  forall r, match_value (rs1 # r) (rs2 # r).
+
 Inductive match_states: state -> state -> Prop :=
   |match_states_gen: forall rs1 rs2 m1 m2,
-      (forall r, r <> PC -> r <> RA -> rs1 r = rs2 r) ->
-      match_value (rs1 # PC) (rs2 # PC) ->
-      match_value (rs1 # RA) (rs2 # RA) ->
+      match_rs rs1 rs2 ->
       match_mem m1 m2 ->
       match_states (State rs1 m1) (State rs2 m2).
+
+
+Lemma eval_builtin_args_match:
+  forall rs rs' sp m m' args vargs,
+    eval_builtin_args ge rs sp m args vargs ->
+    match_rs rs rs' ->
+    match_mem m m' ->
+    exists vargs',
+      eval_builtin_args ge rs' sp m args vargs' /\
+      match_vallist vargs vargs'.
+Admitted.
 
 Lemma step_simulation:
   forall S1 t S2, step instr_size_1 ge S1 t S2 ->
@@ -140,11 +166,18 @@ Proof.
       econstructor; eauto. split.
       econstructor; eauto.                                                                                *)
   - econstructor; eauto. split.
+    generalize (H7 PC). intro H8.
     rewrite H1 in H8. inv H8.
     econstructor. eauto. eauto.
     rewrite Ptrofs.unsigned_repr in H3. rewrite Ptrofs.unsigned_repr.
     eapply transf_find_instr; eauto. inv H0. rewrite H2 in H. inv H. auto.
-    admit. admit. (* wf? codesize < maxunsigned*)
+    admit. admit.
+
+
+
+ (* wf? codesize < maxunsigned*)
+    exploit eval_builtin_args_match; eauto.
+    intros [vargs' [A B]]. apply A.
     admit. (* eval_builtin *)
     admit. (* external_call *)
     admit.
@@ -164,6 +197,40 @@ Proof.
 
 Admitted.
 
+Lemma init_match_mem : forall m,
+    Genv.init_mem prog = Some m -> match_mem m m.
+Proof.
+  Admitted.
+
+Lemma alloc_match_mem : forall m1 m2 lo hi b m1',
+   match_mem m1 m2 ->
+   Mem.alloc m1 lo hi = (m1', b) ->
+   exists m2',
+   Mem.alloc m2 lo hi = (m2', b) /\
+   match_mem m1' m2'.
+Proof.
+  intros.
+  caseEq (Mem.alloc m2 lo hi). intros.
+  exists m. split.
+  apply Mem.alloc_result in H0.
+  apply Mem.alloc_result in H1. inv H. unfold Mem.nextblock. rewrite H2. auto.
+  inv H. constructor; auto.
+  + admit.
+  + admit.
+  + Search Mem.alloc.
+    Mem.extends'
+  Search Mem.alloc.
+Admitted.
+
+ Lemma storev_match_mem:
+   forall m1 m2 addr v1 v2 m1',
+     match_mem m1 m2 -> match_value v1 v2 ->
+     Mem.storev Mptr m1 addr v1 = Some m1' ->
+     exists m2',
+       Mem.storev Mptr m2 addr v2 = Some m2' /\
+         match_mem m1' m2'.
+Admitted.
+
 Lemma transf_initial_states:
   forall S1, initial_state prog S1 ->
   exists S2, initial_state prog S2 /\ match_states S1 S2.
@@ -174,8 +241,15 @@ Proof.
   apply Genv.genv_vars_eq in H3. rewrite H3.
   eapply match_ptr_gdef.
   unfold rs0. real_simpl_regs. constructor.
-  admit. (* init_mem_match *)
-Admitted.
+  exploit init_match_mem; eauto. intro.
+  exploit alloc_match_mem; eauto. intros [m3[ A B]].
+  rewrite A in H1. inv H1. unfold Vnullptr in H2.
+  destruct (Archi.ptr64).
+  exploit storev_match_mem; eauto. econstructor.
+  intros [m4 [C D]]. rewrite C in H2. inv H2. auto.
+  exploit storev_match_mem; eauto. econstructor.
+  intros [m4 [C D]]. rewrite C in H2. inv H2. auto.
+Qed.
 
 Lemma transf_final_states:
   forall S1 S2 r, match_states S1 S2 -> final_state S1 r -> final_state S2 r.
