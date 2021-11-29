@@ -453,6 +453,7 @@ Proof.
   rewrite EQ; simpl. auto.
 Qed.
 
+
 (** * External functions *)
 
 (** For most languages, the functions composing the program are either
@@ -1168,7 +1169,7 @@ Definition alpha_rename_prog {F V: Type} {AF: Alpha F} {AV: Alpha V} (a: permuta
                    ) p.(prog_defs) in
   {| prog_defs := idefs;
      prog_public := map (alpha_rename a) p.(prog_public);
-     prog_main := p.(prog_main)
+     prog_main := (alpha_rename a p.(prog_main))
  |}.
 
 Program Instance Alpha_prog (F: Type) (V: Type) {AF: Alpha F} {AV: Alpha V} : Alpha (program F V) :=
@@ -1194,21 +1195,22 @@ Next Obligation.
 Defined.
 Next Obligation.
   destruct p1. unfold alpha_rename_prog.
-  simpl.
+  simpl. unfold inverse_permutation in H0.
+  rewrite H0.
   induction prog_defs0.
   - induction prog_public0;auto;simpl.
     + injection IHprog_public0 as H. rewrite H in *.
-      unfold inverse_permutation in H0. rewrite (H0 _). auto. 
+       rewrite (H0 _). auto. 
   - induction prog_public0.
     + simpl in *. destruct a. injection IHprog_defs0.
       intros. rewrite H.
       erewrite alpha_rename_sym by auto.
-      unfold inverse_permutation in H0. rewrite H0.
+      rewrite H0.
       auto.
     + simpl in *. destruct a.  injection IHprog_defs0.
       intros. rewrite H.
       erewrite alpha_rename_sym by auto.
-      unfold inverse_permutation in H0. rewrite H0.
+      rewrite H0.
       rewrite H2. rewrite H0.
       auto. 
 Defined.
@@ -1362,3 +1364,60 @@ Class TransfAlpha {S T: Type} {AS: Alpha S} {AT: Alpha T} (transf: S -> T -> Pro
       alpha_equiv (g1 s) s s' ->
       transf s t ->
       exists t', transf s' t' /\ alpha_equiv (g2 t) t t'.
+
+
+Lemma transform_partial_program_alpha {A B V: Type} {ALA: Alpha A} {ALB: Alpha B} {ALV: Alpha V}:
+  forall  (transf_fun: A -> res B) (p p': program A V) (tp tp': program B V) ,
+    (forall a b permu, transf_fun a = OK b ->
+                  transf_fun (alpha_rename permu a) = OK (alpha_rename permu b)) ->
+    alpha_equiv (p.(prog_main) :: p.(prog_public)) p p' ->
+    transform_partial_program transf_fun p = OK tp ->
+    transform_partial_program transf_fun p' = OK tp' ->
+    alpha_equiv (tp.(prog_main) :: tp.(prog_public)) tp tp'.
+Proof.
+  (* destruct p. destruct p'. destruct tp. destruct tp'. *)
+  unfold alpha_equiv.
+  unfold transform_partial_program.
+  unfold transform_partial_program2.
+  intros.
+  monadInv H1. monadInv H2. 
+  destruct H0 as [a [? ?]].
+  exists a. simpl. split.
+  - simpl in H0. auto.
+  - Transparent Alpha_prog Alpha_def.
+    simpl. unfold alpha_rename_prog.
+    simpl. f_equal.
+    + rewrite <- H1 in *.      
+      destruct p.
+      simpl in *. clear H1.
+      generalize dependent x.
+      generalize dependent x0.
+      
+      induction prog_defs0;intros.
+      * simpl in *.
+        simpl in EQ0. monadInv EQ0.
+        monadInv EQ. simpl. auto.
+      * simpl in *.
+        destruct a0. simpl in *.        
+        destruct g. simpl in *.
+        -- destruct (transf_fun f) eqn:TF;try congruence.
+           destruct (transf_fun (alpha_rename a f)) eqn:TF';try congruence.
+           monadInv EQ. monadInv EQ0.
+           simpl. f_equal.
+           ++ eapply H in TF.
+              rewrite TF' in TF. monadInv TF.
+              auto.
+           ++ eapply IHprog_defs0.
+              auto. auto.           
+        -- simpl in *.
+           monadInv EQ0.
+           monadInv EQ.
+           simpl. f_equal.
+           eapply IHprog_defs0. auto.
+           auto.
+    + simpl in H0.
+      rewrite <- H1 in *. 
+      simpl. auto.
+    + rewrite <- H1 in *. 
+      simpl. auto.
+Qed.

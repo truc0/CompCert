@@ -1352,5 +1352,26 @@ Qed.
 
 End INLINING.
 
-Instance TransfInliningAlpha: TransfAlpha match_prog (@AST.prog_public _ _) (@AST.prog_public _ _).
-Admitted.
+Instance TransfInliningAlpha: TransfAlpha match_prog (fun p => p.(prog_main) :: p.(prog_public)) (fun p => p.(prog_main) :: p.(prog_public)).
+Proof.
+  red.
+  intros.
+  unfold match_prog in *.
+  unfold alpha_equiv in *. destruct H as [a [? ?]].
+  exists (alpha_rename a t).
+  split.
+  eapply alpha_partial_program_match_contextual.
+  admit.
+  apply H0.
+  apply H1.
+  auto.
+  
+  exists a. split;auto.
+  generalize H0.
+  apply match_program_main in H0.
+  intros.
+  unfold match_program in H2.
+  apply match_program_public in H2. 
+  apply H. rewrite H0 in H3. rewrite H2 in H3.
+  auto.
+  Admitted.

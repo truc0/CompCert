@@ -575,6 +575,55 @@ Proof.
   intros. apply match_transform_program_contextual. auto.
 Qed.
 
+(** *for static renaming *)
+
+Theorem match_partial_program_alpha:
+  forall {A B V: Type} {LA: Linker A} {LV: Linker V}
+    {ALA: Alpha A} {ALB: Alpha B} {ALV: Alpha V}
+    (transf_fun: A -> res B)
+    (p p': program A V) (tp tp': program B V) ,
+    (forall a b permu, transf_fun a = OK b ->
+                  transf_fun (alpha_rename permu a) = OK (alpha_rename permu b)) ->
+    match_program (fun cu f tf => transf_fun f = OK tf) eq p tp ->
+    match_program (fun cu f tf => transf_fun f = OK tf) eq p' tp' ->
+    alpha_equiv (tp.(prog_main) :: tp.(prog_public)) tp tp'.
+Admitted.
+
+Theorem alpha_partial_program_match:
+  forall {A B V: Type} {LA: Linker A} {LV: Linker V}
+    {ALA: Alpha A} {ALB: Alpha B} {ALV: Alpha V}
+    (transf_fun: A -> res B)
+    (p p': program A V) (tp tp': program B V) (al: permutation),
+    (forall a b permu, transf_fun a = OK b ->
+                  transf_fun (alpha_rename permu a) = OK (alpha_rename permu b)) ->
+    match_program (fun cu f tf => transf_fun f = OK tf) eq p tp ->
+    alpha_rename al p = p' ->
+    alpha_rename al tp = tp' ->
+    match_program (fun cu f tf => transf_fun f = OK tf) eq p' tp'.
+Proof.
+  intros.
+  rewrite <- H1. rewrite <- H2.
+  clear H1 H2.
+  Transparent Alpha_prog.
+  simpl.
+  unfold match_program in *. unfold match_program_gen in *.
+  destruct H0. destruct H1.
+  split.
+Admitted.
+
+Theorem alpha_partial_program_match_contextual:
+  forall {A B V: Type} {LA: Linker A} {LV: Linker V}
+    {ALA: Alpha A} {ALB: Alpha B} {ALV: Alpha V}
+    (transf_fun: program A V -> A -> res B)
+    (p p': program A V) (tp tp': program B V) (al: permutation),
+    (forall a b c permu, transf_fun c a = OK b ->
+                  transf_fun (alpha_rename permu c) (alpha_rename permu a) = OK (alpha_rename permu b)) ->
+    match_program (fun cu f tf => transf_fun cu f = OK tf) eq p tp ->
+    alpha_rename al p = p' ->
+    alpha_rename al tp = tp' ->
+    match_program (fun cu f tf => transf_fun cu f = OK tf) eq p' tp'.
+Admitted.
+  
 (** * Commutation between linking and program transformations *)
 
 Section LINK_MATCH_PROGRAM.
@@ -826,16 +875,30 @@ End LINK_LIST_MATCH.
 
 (* Alpha link commute *)
 
+
+(* Definition link_permu (dl1 dl2 pl1 pl2 dl' dl' pl': list ident) (x: ident) := *)
+(*   let sl1 := filter (fun x => Sumbool.sumbool_not _ _ (In_dec Pos.eq_dec x pl1)) dl1 in *)
+(*   let sl2 := filter (fun x => Sumbool.sumbool_not _ _ (In_dec Pos.eq_dec x pl2)) dl2 in *)
+(*   let sl' := filter (fun x => Sumbool.sumbool_not _ _ (In_dec Pos.eq_dec x pl')) dl' in *)
+(*   let sl := sl1 ++ sl2 in *)
+  
+
+
+
 Section ALPHA_PROG_PROPERTY.
   Context {F V: Type} {AF: Alpha F} {AV: Alpha V} {LF: Linker F} {LV: Linker V}.
 
   Theorem alpha_link_commute: forall (p1 p2 p1' p2' p p': program F V),
-      alpha_equiv p1.(prog_public) p1 p1' ->
-      alpha_equiv p2.(prog_public) p2 p2' ->
+      alpha_equiv (p1.(prog_main) :: p1.(prog_public)) p1 p1' ->
+      alpha_equiv (p2.(prog_main) :: p2.(prog_public)) p2 p2' ->
       link p1 p2 = Some p ->
       link p1' p2' = Some p' ->
-      alpha_equiv p.(prog_public) p p'.
-Admitted.
+      alpha_equiv (p.(prog_main) :: p.(prog_public)) p p'.
+  Proof.
+
+
+
+  Admitted.
 
 End ALPHA_PROG_PROPERTY.
 

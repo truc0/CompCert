@@ -1455,8 +1455,13 @@ Definition rename_wset a w base :=
 
 Lemma rename_wset_inverse : forall a b w,
     inverse_permutation a b ->
-    rename_wset b (rename_wset a w IS.empty) IS.empty = w.
+    IS.eq w (rename_wset b (rename_wset a w IS.empty) IS.empty).
 Proof.
+  unfold rename_wset.
+  
+  (* ISP *)
+  (* ISF. *)
+  (* IS.equal *)
   Admitted.
 
 Lemma In_fold_base: forall id w1 a b,
@@ -1483,7 +1488,8 @@ Qed.
     
 Lemma In_rename_wset : forall id1 id2 w1 w2 a b, IS.In id1 w1 ->
                                     alpha_rename a id1 = id2 ->
-                                    w2 = rename_wset a w1 b ->
+                                    (* w2 = rename_wset a w1 b -> *)
+                                    IS.eq w2 (rename_wset a w1 b) ->
                                     IS.In id2 w2.
 Proof.
   intros.
@@ -1491,7 +1497,7 @@ Proof.
   (* unfold rename_wset in H1. *)
   simpl in *.
   destruct w1. 
-  cbv delta in H. rewrite H1.
+  cbv delta in H. (* rewrite H1. *)
   simpl in H.
   (* unfold IS.In. unfold IS.MSet.In. *)
   generalize dependent b.
@@ -1505,9 +1511,14 @@ Proof.
     inversion is_ok;subst.
     apply IS.MSet.Raw.bst_Ok in H6.
     apply IS.MSet.Raw.bst_Ok in H7.
+    (* use the eq hypothesis *)
+    unfold IS.eq, IS.MSet.eq, IS.MSet.Equal in H1.
+    eapply H1.
     inversion H;subst.
+    (* In: 3 situation *)
+    (* first: in the root *)
     + generalize (In_fold_base). intros Inbase.
-       unfold rename_wset in Inbase. simpl in Inbase.
+      unfold rename_wset in Inbase. simpl in Inbase.
       (* unfold IS.fold, IS.MSet.fold, IS.MSet.Raw.fold, IS.In, IS.MSet.In in Inbase . *)
       clear H1.
       unfold rename_wset.
@@ -1530,11 +1541,12 @@ Proof.
       eapply Inbase.
       eapply IS.MSet.Raw.add_spec;auto.
       destruct b'. auto.
+    (* second : In left tree *)
     + generalize (In_fold_base). intros Inbase.
       unfold rename_wset in Inbase. simpl in Inbase.
       unfold rename_wset in *.
       unfold IS.fold, IS.MSet.fold, IS.MSet.Raw.fold in * .
-      simpl in *. clear IHthis2.  
+      simpl in *. clear IHthis2. 
       set (b' := (IS.add (permu a t0)
           ((fix fold
               (A : Type) (f : IS.MSet.Raw.elt -> A -> A)
@@ -1546,11 +1558,11 @@ Proof.
               end) IS.t
              (fun (id : IS.elt) (acc : IS.t) =>
                 IS.add (permu a id) acc) this1 b))).
-       inversion is_ok;subst. apply IS.MSet.Raw.bst_Ok in H7.
+      (* inversion is_ok;subst. apply IS.MSet.Raw.bst_Ok in H7. *)
       set (w2' :=  {| IS.MSet.this := this2; IS.MSet.is_ok := H7 |}).
       assert (this2 = IS.MSet.this w2') by auto. rewrite H0.
       eapply Inbase.
-      apply IS.MSet.Raw.bst_Ok in H6.
+      (* apply IS.MSet.Raw.bst_Ok in H6. *)
       set (w3' := {| IS.MSet.this := this1; IS.MSet.is_ok := H6|}).
       assert (this1 = IS.MSet.this w3') by auto.
       eapply IS.MSet.Raw.add_spec.
@@ -1566,7 +1578,7 @@ Proof.
           this1 b)).
       auto.
       right.
-      eapply IHthis1;auto.
+      eapply IHthis1;auto. apply IS.eq_refl. 
     + generalize (In_fold_base). intros Inbase.
       unfold rename_wset in Inbase. simpl in Inbase.
       unfold rename_wset in *.
@@ -1587,7 +1599,7 @@ Proof.
        inversion is_ok;subst. apply IS.MSet.Raw.bst_Ok in H7.
       set (w2' :=  {| IS.MSet.this := this2; IS.MSet.is_ok := H7 |}).
       auto. auto.
-      eauto.
+      eauto. apply IS.eq_refl.
 Qed.
 
 (* a general lemma for PTree, hard to prove! *)
@@ -1898,13 +1910,14 @@ Proof.
     (* here we need to prove a lemma: a has a inverse permutation *)
     generalize (exists_inverse_permutation a). intros.
     destruct H0 as [b ?].
+    
     apply (In_rename_wset (alpha_rename b id') id' w w' a IS.empty).
     apply (used_closed0 (alpha_rename b id) (alpha_rename b gd) (alpha_rename b id')).
     (* use In_rename_wset lemma*)
     eapply In_rename_wset. 
     apply H3.
     auto.
-    unfold w'. erewrite rename_wset_inverse. auto. auto.
+    unfold w'. eapply rename_wset_inverse. auto.
     (* use rename_program_remain_gd lemma *)
     eapply alpha_rename_sym in H2. 2: apply H0.
     rewrite <- H2. eapply rename_program_remain_gd;auto.
@@ -1912,7 +1925,7 @@ Proof.
     eapply rename_gd_remain_ref;auto.
     eapply alpha_rename_sym. auto.
     eapply inverse_permutation_sym. auto.
-    auto. }
+    unfold w'. apply IS.eq_refl. }
 
   assert (used_main' : IS.In (prog_main s') w').
   { admit. }
