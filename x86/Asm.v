@@ -297,18 +297,65 @@ Record function : Type := mkfunction { fn_sig: signature; fn_code: code; fn_stac
 Definition fundef := AST.fundef function.
 Definition program := AST.program fundef unit.
 
-(** * Operational semantics *)
+Inductive is_call: instruction -> Prop :=
+| is_calls_intro:
+    forall i sg,
+      is_call (Pcall_s i sg)
+| is_callr_intro:
+    forall r sg,
+      is_call (Pcall_r r sg).
 
-Fixpoint code_size (c:code) : Z :=
+Lemma is_call_dec:
+  forall i,
+    {is_call i} + {~ is_call i}.
+Proof.
+  destruct i; try now (right; intro A; inv A).
+  left; econstructor; eauto.
+  left; econstructor; eauto.
+Qed.
+
+Fixpoint offsets_after_call (c: code) (p: Z) : list Z :=
   match c with
-  |nil => 0
-  |i::c' => code_size c' + 1
+    nil => nil
+  | i::c => let r := offsets_after_call c (p + 1) in
+           if is_call_dec i then (p + 1)::r
+           else r
   end.
 
-Lemma code_size_non_neg: forall c, 0 <= code_size c.
+Definition is_after_call (f: fundef) (o: Z) : Prop :=
+  match f with
+    Internal f => In o (offsets_after_call (fn_code f) 0)
+  | External ef => False
+  end.
+
+Definition check_is_after_call f o : {is_after_call f o} + {~ is_after_call f o}.
 Proof.
-  intros. induction c; simpl; lia.
+  unfold is_after_call.
+  destruct f; auto.
+  apply In_dec. apply zeq.
 Qed.
+
+Definition ra_after_call (ge: Genv.t fundef unit) v:=
+  v <> Vundef /\ forall b o,
+    v = Vptr b o ->
+    forall f,
+      Genv.find_funct_ptr ge b = Some f ->
+      is_after_call f (Ptrofs.unsigned o).
+
+Definition check_ra_after_call (ge': Genv.t fundef unit) v:
+  {ra_after_call ge' v} + { ~ ra_after_call ge' v}.
+Proof.
+  unfold ra_after_call.
+  destruct v; try now (left; split; intros; congruence).
+  right; intuition congruence.
+  destruct (Genv.find_funct_ptr ge' b) eqn:FFP.
+  2: left; split; [congruence|]; intros b0 o A; inv A; rewrite FFP; congruence.
+  destruct (check_is_after_call f (Ptrofs.unsigned i)).
+  left. split. congruence. intros b0 o A; inv A; rewrite FFP; congruence.
+  right; intros (B & A); specialize (A _ _ eq_refl _ FFP). congruence.
+Defined.
+
+(** * Operational semantics *)
 
 Lemma preg_eq: forall (x y: preg), {x=y} + {x<>y}.
 Proof. decide equality. apply ireg_eq. apply freg_eq. decide equality. Defined.
@@ -384,7 +431,6 @@ Proof.
   intro. destruct l1 in H; inv H. inv H. congruence .
 Qed.
 
-(* we have to ignore the root node*)
 Definition sp_of_stack (s:stree) : list fid * path :=
   let (lf,path) := (sp_of_stack' s) in (removelast lf,path).
 
@@ -404,147 +450,27 @@ Definition top_sp_stree (st:stree) : val :=
     |_ => Vptr (Stack None nil 1) Ptrofs.zero
   end.
 
-Lemma sp_of_stack_pspnull : forall st fid idx,
-    sp_of_stack st = (fid::nil,idx::nil) -> parent_sp_stree st = Vptr (Stack None nil 1) Ptrofs.zero.
-Proof.
-  intros. unfold parent_sp_stree. rewrite H. auto.
-Qed.
-
-Lemma append_nil_right : forall A (l:list A),
-    l++nil = l.
-Proof.
-  induction l. auto. simpl. congruence.
-Qed.
-
-Lemma sp_of_stack_pspsome : forall st f1 lf path idx2 idx1 id,
-    sp_of_stack st = (f1::(Some id)::lf, (path++(idx2::nil))++(idx1::nil)) ->
-    parent_sp_stree st = Vptr (Stack (Some id) (path++(idx2::nil)) 1%positive) Ptrofs.zero.
-Proof.
-  intros. unfold parent_sp_stree. rewrite H. simpl.
-  destruct path. auto. destruct path. auto. rewrite removelast_app. simpl.
-  rewrite append_nil_right. auto. congruence.
-Qed.
-
-Lemma sp_of_stack_tspsome : forall st id lf path idx,
-    sp_of_stack st = ((Some id)::lf,path++(idx::nil)) ->
-    top_sp_stree st = Vptr (Stack (Some id) (path++(idx::nil)) 1%positive) Ptrofs.zero.
-Proof.
-  intros. unfold top_sp_stree. rewrite H. simpl.
-  destr. destruct path; inv Heql.
-Qed.
-
-Lemma sp_of_stack_return' : forall st st' p' fid lf path idx root,
-    return_stree st = Some (st',p') ->
-    sp_of_stack' st = (fid::lf++(root::nil),path++(idx::nil)) ->
-    sp_of_stack' st' = (lf++(root::nil),path).
-Proof.
-  induction st. intros. destruct st. destruct o.
-  - destruct st'. destruct s. destruct o0.
-    + remember (Node f1 l3 l4 (Some s)) as st1.
-      simpl in H0. destr_in H0. destr_in H0. subst p.
-      simpl in H1. destr_in H1. inv H1.
-      destruct l5. inv H3. destruct lf; inv H5.
-      assert (l5<>nil).
-      {destruct l5.
-      simpl in Heqp. destr_in Heqp. destruct s. destruct o0; simpl in Heqp1.
-      -- destr_in Heqp1. inv Heqp1. destruct l8; inv Heqp. simpl in H5. destruct l8; inv H5.
-      -- inv Heqp1. inv Heqp.
-      -- congruence.
-      }
-      apply exists_last in H1. destruct H1 as (l' & root' & H1). subst.
-      assert (p<> nil).
-      {
-        simpl in Heqp. destr_in Heqp.
-      }
-      apply exists_last in H1. destruct H1 as (path0 & idx' & H1). subst.
-      exploit H; eauto. simpl. auto. intro.
-      inv H0. simpl. rewrite H1.
-      assert (removelast ((Datatypes.length l2 :: path0) ++ idx'::nil) = removelast (path++idx::nil)).
-      setoid_rewrite H4. auto.
-      rewrite removelast_app in H0. simpl in H0. rewrite removelast_app in H0. simpl in H0.
-      repeat rewrite append_nil_right in H0. subst.
-      assert (tl ((f2::l'++root'::nil)++f0::nil) = tl (fid::lf++root::nil)).
-      setoid_rewrite H3. auto. simpl in H0. rewrite H0. auto. congruence. congruence.
-      rewrite Heqst1 in Heqo0. inv Heqo0. repeat destr_in H3.
-    + simpl in H1. simpl in H0. inv H0.
-      simpl in *.  inv H1. destruct path; inv H4. auto.
-      destruct path; inv H2.
-  - inv H1. destruct lf; inv H4.
-Qed.
-
-Lemma sp_of_stack_return : forall m1 m2 fid lf path idx,
-    Mem.return_frame m1 = Some m2 ->
-    sp_of_stack (Mem.stack (Mem.support m1)) = (fid::lf,path++(idx::nil)) ->
-    sp_of_stack (Mem.stack (Mem.support m2)) = (lf,path).
-Proof.
-  intros. apply Mem.support_return_frame in H. unfold Mem.sup_return_frame in H.
-  destr_in H. destr_in H. unfold sp_of_stack in *. destr_in H0. inv H0.
-  destruct l. inv H2. assert (l<>nil).
-  destruct (Mem.stack (Mem.support m1)). destruct o.
-  simpl in Heqp1. destr_in Heqp1. inv Heqp1. apply sp_of_stack'_nonempty in Heqp.
-  destruct l2. congruence. inv H1. intro. destruct l2; inv H0.
-  inv Heqo.
-  apply exists_last in H0. destruct H0 as (l' & idx' & H0). subst.
-  exploit sp_of_stack_return'; eauto. intro. inv H. simpl. rewrite H0.
-  simpl in H2. destr_in H2. inv H2. auto.
-Qed.
-
-Lemma sp_of_stack_alloc' : forall st st' st'' path path0 path1 f lf pos id root,
-    next_stree st id = (st',path) ->
-    next_block_stree st' = (f,pos,path0,st'') ->
-    sp_of_stack' st = (lf++root::nil,path1) ->
-    exists idx,
-    sp_of_stack' st'' = (f::lf++root::nil,path0) /\ path0 = path1 ++ (idx::nil).
-Proof.
-  induction st. intros. destruct st. destruct o.
-  - simpl in H0. destr_in H0. inv H0. simpl in H1. repeat destr_in H1.
-    simpl in H2. destr_in H2.
-    apply sp_of_stack'_nonempty in Heqp1 as H0.
-    apply exists_last in H0. destruct H0 as (l' & a & H0). subst.
-    exploit H; eauto. simpl. auto.
-    intros (idx & A & B). exists idx. split. simpl. rewrite A.
-    inv H2. auto. inv H2. auto.
-  - simpl in H0. inv H0. simpl in H1. inv H1. simpl in H2. inv H2. simpl.
-    exists (length l0). auto.
-Qed.
-
-Lemma sp_of_stack_alloc : forall m1 m2 m3 id path lo hi b lf path',
-    Mem.alloc_frame m1 id = (m2,path) ->
-    Mem.alloc m2 lo hi = (m3,b) ->
-    sp_of_stack (Mem.stack (Mem.support m1)) = (lf,path') ->
-    exists idx, b = Stack (Some id) (path'++(idx::nil)) 1%positive /\
-    sp_of_stack (Mem.stack (Mem.support m3)) = ((Some id)::lf,path'++(idx::nil)).
-Proof.
-  intros.
-  exploit Mem.alloc_frame_alloc; eauto. intro.
-  apply Mem.path_alloc_frame in H as H'. unfold Mem.sup_npath in H'. unfold npath in H'.
-  apply Mem.support_alloc_frame in H. unfold Mem.sup_incr_frame in H.
-  destr_in H.
-  apply Mem.support_alloc in H0. unfold Mem.sup_incr in H0. destr_in H0.
-  rewrite H in Heqp0. simpl in Heqp0. destruct p0. destruct p0.
-  unfold sp_of_stack in *. destr_in H1.
-  apply sp_of_stack'_nonempty in Heqp2 as H3.
-  edestruct (exists_last H3) as (a & l' & H4). subst.
-  exploit sp_of_stack_alloc'; eauto. intros (idx & A& B).
-  exploit next_stree_next_block_stree; eauto. intros (X & Y & Z).
-  subst.
-  exists idx. split. inv H1. auto.
-  rewrite H0. simpl. rewrite A. simpl. inv H1. destr.
-Qed.
-
-(* external call will not change the active stack frames*)
-Axiom sp_of_stack_external : forall m1 m2 ge ef vargs t vres,
-      external_call ef ge vargs m1 t vres m2 ->
-      sp_of_stack (Mem.stack (Mem.support m2)) = sp_of_stack (Mem.stack (Mem.support m1)).
+Section INSTRSIZE.
+(** Since we need to eliminate the pseudo instructions to get real assembly programs, it is
+necessary to define specific size for each instruction instead of the constant 1.
+*)
+Variable instr_size : instruction -> Z.
+Hypothesis instr_size_bound : forall i, 0 < instr_size i <= Ptrofs.max_unsigned.
 
 Section RELSEM.
+
+Fixpoint code_size (c:code) : Z :=
+  match c with
+  |nil => 0
+  |i::c' => code_size c' + instr_size i
+  end.
 
 (** Looking up instructions in a code sequence by position. *)
 
 Fixpoint find_instr (pos: Z) (c: code) {struct c} : option instruction :=
   match c with
   | nil => None
-  | i :: il => if zeq pos 0 then Some i else find_instr (pos - 1) il
+  | i :: il => if zeq pos 0 then Some i else find_instr (pos - instr_size i) il
   end.
 
 (** Position corresponding to a label *)
@@ -567,8 +493,13 @@ Fixpoint label_pos (lbl: label) (pos: Z) (c: code) {struct c} : option Z :=
   match c with
   | nil => None
   | instr :: c' =>
-      if is_label lbl instr then Some (pos + 1) else label_pos lbl (pos + 1) c'
+      if is_label lbl instr then Some (pos + instr_size instr) else label_pos lbl (pos + instr_size instr) c'
   end.
+
+Lemma code_size_non_neg: forall c, 0 <= code_size c.
+Proof.
+  intros. induction c; simpl. lia. generalize (instr_size_bound a); lia.
+Qed.
 
 Lemma label_pos_rng:
   forall lbl c pos z,
@@ -577,8 +508,10 @@ Lemma label_pos_rng:
     0 <= z - pos <= code_size c.
 Proof.
   induction c; simpl; intros; eauto. congruence. repeat destr_in H.
-  generalize (code_size_non_neg c); lia.
-  apply IHc in H2. lia. lia.
+  generalize (code_size_non_neg c) (instr_size_bound a); lia.
+  apply IHc in H2.
+  generalize(instr_size_bound a); lia.
+  generalize(instr_size_bound a); lia.
 Qed.
 
 Lemma label_pos_repr:
@@ -599,7 +532,8 @@ Lemma find_instr_ofs_pos:
     0 <= o.
 Proof.
   induction c; simpl; intros; repeat destr_in H.
-  lia. apply IHc in H1. lia.
+  lia. apply IHc in H1.
+  generalize(instr_size_bound a); lia.
 Qed.
 
 Lemma label_pos_spec:
@@ -607,15 +541,16 @@ Lemma label_pos_spec:
     code_size c + pos <= Ptrofs.max_unsigned ->
     0 <= pos ->
     label_pos lbl pos c = Some z ->
-    find_instr ((z - pos) - 1) c = Some (Plabel lbl).
+    find_instr ((z - pos) - (instr_size (Plabel lbl))) c = Some (Plabel lbl).
 Proof.
   induction c; simpl; intros; repeat destr_in H1.
   destruct a; simpl in Heqb; try congruence. repeat destr_in Heqb.
   apply pred_dec_true. lia.
+  generalize(instr_size_bound (Plabel lbl)).  generalize(instr_size_bound a). intro.
   eapply IHc in H3. 3: lia. 2: lia.
   generalize (find_instr_ofs_pos _ _ _ H3). intro.
   rewrite pred_dec_false. 2: lia.
-  rewrite <- H3. f_equal. lia.
+  rewrite <- H3. intro. f_equal. lia.
 Qed.
 
 Variable ge: genv.
@@ -797,11 +732,11 @@ Inductive outcome: Type :=
   [nextinstr_nf] is a variant of [nextinstr] that sets condition flags
   to [Vundef] in addition to incrementing the [PC]. *)
 
-Definition nextinstr (rs: regset) :=
-  rs#PC <- (Val.offset_ptr rs#PC Ptrofs.one).
+Definition nextinstr (sz:ptrofs) (rs: regset):=
+  rs#PC <- (Val.offset_ptr rs#PC sz).
 
-Definition nextinstr_nf (rs: regset) : regset :=
-  nextinstr (undef_regs (CR ZF :: CR CF :: CR PF :: CR SF :: CR OF :: nil) rs).
+Definition nextinstr_nf (sz:ptrofs) (rs: regset): regset :=
+  nextinstr sz (undef_regs (CR ZF :: CR CF :: CR PF :: CR SF :: CR OF :: nil) rs).
 
 Definition goto_label (f: function) (lbl: label) (rs: regset) (m: mem) :=
   match label_pos lbl 0 (fn_code f) with
@@ -819,18 +754,18 @@ Definition goto_label (f: function) (lbl: label) (rs: regset) (m: mem) :=
 
 (** Auxiliaries for memory accesses. *)
 
-Definition exec_load (chunk: memory_chunk) (m: mem)
-                     (a: addrmode) (rs: regset) (rd: preg) :=
+Definition exec_load (sz:ptrofs) (chunk: memory_chunk) (m: mem)
+                     (a: addrmode) (rs: regset) (rd: preg):=
   match Mem.loadv chunk m (eval_addrmode a rs) with
-  | Some v => Next (nextinstr_nf (rs#rd <- v)) m
+  | Some v => Next (nextinstr_nf sz (rs#rd <- v)) m
   | None => Stuck
   end.
 
-Definition exec_store (chunk: memory_chunk) (m: mem)
+Definition exec_store (sz:ptrofs) (chunk: memory_chunk) (m: mem)
                       (a: addrmode) (rs: regset) (r1: preg)
-                      (destroyed: list preg) :=
+                      (destroyed: list preg):=
   match Mem.storev chunk m (eval_addrmode a rs) (rs r1) with
-  | Some m' => Next (nextinstr_nf (undef_regs destroyed rs)) m'
+  | Some m' => Next (nextinstr_nf sz (undef_regs destroyed rs)) m'
   | None => Stuck
   end.
 
@@ -853,63 +788,6 @@ Definition exec_store (chunk: memory_chunk) (m: mem)
     but we do not need to model this precisely.
 *)
 
-Inductive is_call: instruction -> Prop :=
-| is_calls_intro:
-    forall i sg,
-      is_call (Pcall_s i sg)
-| is_callr_intro:
-    forall r sg,
-      is_call (Pcall_r r sg).
-
-Lemma is_call_dec:
-  forall i,
-    {is_call i} + {~ is_call i}.
-Proof.
-  destruct i; try now (right; intro A; inv A).
-  left; econstructor; eauto.
-  left; econstructor; eauto.
-Qed.
-
-Fixpoint offsets_after_call (c: code) (p: Z) : list Z :=
-  match c with
-    nil => nil
-  | i::c => let r := offsets_after_call c (p + 1) in
-           if is_call_dec i then (p + 1)::r
-           else r
-  end.
-
-Definition is_after_call (f: fundef) (o: Z) : Prop :=
-  match f with
-    Internal f => In o (offsets_after_call (fn_code f) 0)
-  | External ef => False
-  end.
-
-Definition check_is_after_call f o : {is_after_call f o} + {~ is_after_call f o}.
-Proof.
-  unfold is_after_call.
-  destruct f; auto.
-  apply In_dec. apply zeq.
-Qed.
-
-Definition ra_after_call (ge: Genv.t fundef unit) v:=
-  v <> Vundef /\ forall b o,
-    v = Vptr b o ->
-    forall f,
-      Genv.find_funct_ptr ge b = Some f ->
-      is_after_call f (Ptrofs.unsigned o).
-
-Definition check_ra_after_call (ge': Genv.t fundef unit) v:
-  {ra_after_call ge' v} + { ~ ra_after_call ge' v}.
-Proof.
-  unfold ra_after_call.
-  destruct v; try now (left; split; intros; congruence).
-  right; intuition congruence.
-  destruct (Genv.find_funct_ptr ge' b) eqn:FFP.
-  2: left; split; [congruence|]; intros b0 o A; inv A; rewrite FFP; congruence.
-  destruct (check_is_after_call f (Ptrofs.unsigned i)).
-  left. split. congruence. intros b0 o A; inv A; rewrite FFP; congruence.
-  right; intros (B & A); specialize (A _ _ eq_refl _ FFP). congruence.
-Defined.
 
 (*ra from mem shound not be Vundef*)
 Definition loadvv chunk m v : option val:=
@@ -928,6 +806,11 @@ Proof.
 Qed.
 
 Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : outcome :=
+  let sz := Ptrofs.repr (instr_size i) in
+  let nextinstr := nextinstr sz in
+  let nextinstr_nf := nextinstr_nf sz in
+  let exec_load := exec_load sz in
+  let exec_store := exec_store sz in
   match i with
   (** Moves *)
   | Pmov_rr rd r1 =>
@@ -1483,7 +1366,7 @@ Inductive step: state -> trace -> state -> Prop :=
       eval_builtin_args ge rs (rs RSP) m args vargs ->
       external_call ef ge vargs m t vres m' ->
       ~ in_builtin_res res RSP ->
-      rs' = nextinstr_nf
+      rs' = nextinstr_nf (Ptrofs.repr (instr_size (Pbuiltin ef args res)))
              (set_res res vres
                (undef_regs (map preg_of (destroyed_by_builtin ef)) rs)) ->
       step (State rs m) t (State rs' m')
@@ -1591,6 +1474,8 @@ Ltac Equalities :=
   inv H; inv H0. congruence.
 Qed.
 
+End INSTRSIZE.
+
 (** Classification functions for processor registers (used in Asmgenproof). *)
 
 Definition data_preg (r: preg) : bool :=
@@ -1649,3 +1534,137 @@ Proof.
   - simpl. auto.
   - simpl. auto.
 Qed.
+
+Lemma sp_of_stack_pspnull : forall st fid idx,
+    sp_of_stack st = (fid::nil,idx::nil) -> parent_sp_stree st = Vptr (Stack None nil 1) Ptrofs.zero.
+Proof.
+  intros. unfold parent_sp_stree. rewrite H. auto.
+Qed.
+
+Lemma append_nil_right : forall A (l:list A),
+    l++nil = l.
+Proof.
+  induction l. auto. simpl. congruence.
+Qed.
+
+Lemma sp_of_stack_pspsome : forall st f1 lf path idx2 idx1 id,
+    sp_of_stack st = (f1::(Some id)::lf, (path++(idx2::nil))++(idx1::nil)) ->
+    parent_sp_stree st = Vptr (Stack (Some id) (path++(idx2::nil)) 1%positive) Ptrofs.zero.
+Proof.
+  intros. unfold parent_sp_stree. rewrite H. simpl.
+  destruct path. auto. destruct path. auto. rewrite removelast_app. simpl.
+  rewrite append_nil_right. auto. congruence.
+Qed.
+
+Lemma sp_of_stack_tspsome : forall st id lf path idx,
+    sp_of_stack st = ((Some id)::lf,path++(idx::nil)) ->
+    top_sp_stree st = Vptr (Stack (Some id) (path++(idx::nil)) 1%positive) Ptrofs.zero.
+Proof.
+  intros. unfold top_sp_stree. rewrite H. simpl.
+  destr. destruct path; inv Heql.
+Qed.
+
+Lemma sp_of_stack_return' : forall st st' p' fid lf path idx root,
+    return_stree st = Some (st',p') ->
+    sp_of_stack' st = (fid::lf++(root::nil),path++(idx::nil)) ->
+    sp_of_stack' st' = (lf++(root::nil),path).
+Proof.
+  induction st. intros. destruct st. destruct o.
+  - destruct st'. destruct s. destruct o0.
+    + remember (Node f1 l3 l4 (Some s)) as st1.
+      simpl in H0. destr_in H0. destr_in H0. subst p.
+      simpl in H1. destr_in H1. inv H1.
+      destruct l5. inv H3. destruct lf; inv H5.
+      assert (l5<>nil).
+      {destruct l5.
+      simpl in Heqp. destr_in Heqp. destruct s. destruct o0; simpl in Heqp1.
+      -- destr_in Heqp1. inv Heqp1. destruct l8; inv Heqp. simpl in H5. destruct l8; inv H5.
+      -- inv Heqp1. inv Heqp.
+      -- congruence.
+      }
+      apply exists_last in H1. destruct H1 as (l' & root' & H1). subst.
+      assert (p<> nil).
+      {
+        simpl in Heqp. destr_in Heqp.
+      }
+      apply exists_last in H1. destruct H1 as (path0 & idx' & H1). subst.
+      exploit H; eauto. simpl. auto. intro.
+      inv H0. simpl. rewrite H1.
+      assert (removelast ((Datatypes.length l2 :: path0) ++ idx'::nil) = removelast (path++idx::nil)).
+      setoid_rewrite H4. auto.
+      rewrite removelast_app in H0. simpl in H0. rewrite removelast_app in H0. simpl in H0.
+      repeat rewrite append_nil_right in H0. subst.
+      assert (tl ((f2::l'++root'::nil)++f0::nil) = tl (fid::lf++root::nil)).
+      setoid_rewrite H3. auto. simpl in H0. rewrite H0. auto. congruence. congruence.
+      rewrite Heqst1 in Heqo0. inv Heqo0. repeat destr_in H3.
+    + simpl in H1. simpl in H0. inv H0.
+      simpl in *.  inv H1. destruct path; inv H4. auto.
+      destruct path; inv H2.
+  - inv H1. destruct lf; inv H4.
+Qed.
+
+Lemma sp_of_stack_return : forall m1 m2 fid lf path idx,
+    Mem.return_frame m1 = Some m2 ->
+    sp_of_stack (Mem.stack (Mem.support m1)) = (fid::lf,path++(idx::nil)) ->
+    sp_of_stack (Mem.stack (Mem.support m2)) = (lf,path).
+Proof.
+  intros. apply Mem.support_return_frame in H. unfold Mem.sup_return_frame in H.
+  destr_in H. destr_in H. unfold sp_of_stack in *. destr_in H0. inv H0.
+  destruct l. inv H2. assert (l<>nil).
+  destruct (Mem.stack (Mem.support m1)). destruct o.
+  simpl in Heqp1. destr_in Heqp1. inv Heqp1. apply sp_of_stack'_nonempty in Heqp.
+  destruct l2. congruence. inv H1. intro. destruct l2; inv H0.
+  inv Heqo.
+  apply exists_last in H0. destruct H0 as (l' & idx' & H0). subst.
+  exploit sp_of_stack_return'; eauto. intro. inv H. simpl. rewrite H0.
+  simpl in H2. destr_in H2. inv H2. auto.
+Qed.
+
+Lemma sp_of_stack_alloc' : forall st st' st'' path path0 path1 f lf pos id root,
+    next_stree st id = (st',path) ->
+    next_block_stree st' = (f,pos,path0,st'') ->
+    sp_of_stack' st = (lf++root::nil,path1) ->
+    exists idx,
+    sp_of_stack' st'' = (f::lf++root::nil,path0) /\ path0 = path1 ++ (idx::nil).
+Proof.
+  induction st. intros. destruct st. destruct o.
+  - simpl in H0. destr_in H0. inv H0. simpl in H1. repeat destr_in H1.
+    simpl in H2. destr_in H2.
+    apply sp_of_stack'_nonempty in Heqp1 as H0.
+    apply exists_last in H0. destruct H0 as (l' & a & H0). subst.
+    exploit H; eauto. simpl. auto.
+    intros (idx & A & B). exists idx. split. simpl. rewrite A.
+    inv H2. auto. inv H2. auto.
+  - simpl in H0. inv H0. simpl in H1. inv H1. simpl in H2. inv H2. simpl.
+    exists (length l0). auto.
+Qed.
+
+Lemma sp_of_stack_alloc : forall m1 m2 m3 id path lo hi b lf path',
+    Mem.alloc_frame m1 id = (m2,path) ->
+    Mem.alloc m2 lo hi = (m3,b) ->
+    sp_of_stack (Mem.stack (Mem.support m1)) = (lf,path') ->
+    exists idx, b = Stack (Some id) (path'++(idx::nil)) 1%positive /\
+    sp_of_stack (Mem.stack (Mem.support m3)) = ((Some id)::lf,path'++(idx::nil)).
+Proof.
+  intros.
+  exploit Mem.alloc_frame_alloc; eauto. intro.
+  apply Mem.path_alloc_frame in H as H'. unfold Mem.sup_npath in H'. unfold npath in H'.
+  apply Mem.support_alloc_frame in H. unfold Mem.sup_incr_frame in H.
+  destr_in H.
+  apply Mem.support_alloc in H0. unfold Mem.sup_incr in H0. destr_in H0.
+  rewrite H in Heqp0. simpl in Heqp0. destruct p0. destruct p0.
+  unfold sp_of_stack in *. destr_in H1.
+  apply sp_of_stack'_nonempty in Heqp2 as H3.
+  edestruct (exists_last H3) as (a & l' & H4). subst.
+  exploit sp_of_stack_alloc'; eauto. intros (idx & A& B).
+  exploit next_stree_next_block_stree; eauto. intros (X & Y & Z).
+  subst.
+  exists idx. split. inv H1. auto.
+  rewrite H0. simpl. rewrite A. simpl. inv H1. destr.
+Qed.
+
+(* external call will not change the active stack frames*)
+Axiom sp_of_stack_external : forall m1 m2 ge ef vargs t vres,
+      external_call ef ge vargs m1 t vres m2 ->
+      sp_of_stack (Mem.stack (Mem.support m2)) = sp_of_stack (Mem.stack (Mem.support m1)).
+
