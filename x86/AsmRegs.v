@@ -8,23 +8,23 @@ Require Import AST.
 Require Import Values Memdata Memtype.
 Require Import Asmgenproof0 Conventions1.
 
-Lemma nextinstr_nf_pc: forall rs, nextinstr_nf rs PC = Val.offset_ptr (rs PC) Ptrofs.one.
+Lemma nextinstr_nf_pc: forall sz rs, nextinstr_nf sz rs PC = Val.offset_ptr (rs PC) sz.
 Proof.
   unfold nextinstr_nf. simpl.
   intros. rewrite Asmgenproof0.nextinstr_pc. f_equal.
 Qed.
 
 Lemma nextinstr_rsp:
-  forall rs,
-    nextinstr rs RSP = rs RSP.
+  forall sz rs,
+    nextinstr sz rs RSP = rs RSP.
 Proof.
   unfold nextinstr.
   intros; rewrite Pregmap.gso; congruence.
 Qed.
 
 Lemma nextinstr_nf_rsp:
-  forall rs,
-    nextinstr_nf rs RSP = rs RSP.
+  forall sz rs,
+    nextinstr_nf sz rs RSP = rs RSP.
 Proof.
   unfold nextinstr_nf.
   intros. rewrite nextinstr_rsp.
@@ -115,9 +115,9 @@ Proof.
 Qed.
 
 Lemma nextinstr_eq:
-  forall rs rs' r,
+  forall sz rs rs' r,
     rs r = rs' r ->
-      nextinstr rs r = nextinstr rs' r.
+      nextinstr sz rs r = nextinstr sz rs' r.
 Proof.
   unfold nextinstr. intros.
   setoid_rewrite Pregmap.gsspec. destr.
@@ -143,9 +143,9 @@ Proof.
 Qed.
 
 Lemma nextinstr_nf_eq:
-  forall rs rs' r,
+  forall sz rs rs' r,
     rs r = rs' r ->
-    nextinstr_nf rs r = nextinstr_nf rs' r.
+    nextinstr_nf sz rs r = nextinstr_nf sz rs' r.
 Proof.
   unfold nextinstr_nf. intros.
   apply nextinstr_eq.

@@ -1,6 +1,7 @@
 Require Import Coqlib Coqlib Maps.
 Require Import AST Integers Floats Values Memory Events Globalenvs Smallstep.
 Require Import Asm Asmgen Asmgenproof0.
+Require Import AsmRegs.
 Require Import Errors.
 
 (** instructions which have no relationship with stack *)
@@ -17,14 +18,14 @@ Definition stk_unrelated_instr (i: instruction) :=
 (** modify RSP register *)
 (* Useful Lemmas *)
 Lemma nextinstr_rsp:
-  forall rs, nextinstr rs RSP = rs RSP.
+  forall sz rs, nextinstr sz rs RSP = rs RSP.
 Proof.
   unfold nextinstr.
   intros; rewrite Pregmap.gso; congruence.
 Qed.
 
 Lemma nextinstr_nf_rsp:
-  forall rs, nextinstr_nf rs RSP = rs RSP.
+  forall sz rs, nextinstr_nf sz rs RSP = rs RSP.
 Proof.
   unfold nextinstr_nf.
   intros. rewrite nextinstr_rsp.
@@ -32,15 +33,19 @@ Proof.
   simpl; intuition subst; congruence.
 Qed.
 
+Section INSTRSIZE.
+Variable instr_size : instruction -> Z.
+Hypothesis instr_size_bound : forall i, 0 < instr_size i <= Ptrofs.max_unsigned.
+
 Definition asm_instr_unchange_rsp (i : instruction) : Prop :=
   forall ge f rs m rs' m',
     stk_unrelated_instr i = true ->
-    Asm.exec_instr ge f i rs m = Next rs' m' ->
+    Asm.exec_instr instr_size  ge f i rs m = Next rs' m' ->
     rs # RSP = rs' # RSP.
 
  Lemma find_instr_eq:
   forall code ofs i,
-     find_instr ofs code = Some i -> In i code.
+     find_instr instr_size ofs code = Some i -> In i code.
  Proof.
    intro code. induction code.
    - intros. inv H.
@@ -53,32 +58,33 @@ Definition asm_instr_unchange_rsp (i : instruction) : Prop :=
 
  Lemma in_find_instr:
    forall code i,
-     In i code -> exists ofs, find_instr ofs code = Some i.
+     In i code -> exists ofs, find_instr instr_size ofs code = Some i.
   Proof.
     induction code; intros.
     - inv H.
     - destruct H. exists 0. simpl. congruence.
-      apply IHcode in H. destruct H. exists (x+1).
+      apply IHcode in H. destruct H. exists (x+instr_size a).
       simpl. destr.
-      apply find_instr_ofs_pos in H. extlia.
-      replace (x+1-1) with x by lia. auto.
+      apply find_instr_ofs_pos in H; eauto.
+      generalize (instr_size_bound a). extlia.
+      replace (x + instr_size a - instr_size a) with x by lia. auto.
 Qed.
 
 Definition asm_internal_unchange_rsp (ge: Genv.t Asm.fundef unit) : Prop :=
   forall b ofs f i,
     Genv.find_funct_ptr ge b = Some (Internal f) ->
-    find_instr ofs (fn_code f) = Some i ->
+    find_instr instr_size ofs (fn_code f) = Some i ->
     asm_instr_unchange_rsp i.
 
 (* Builtin Step *)
 Definition asm_builtin_unchange_rsp (ge: Genv.t Asm.fundef unit) : Prop :=
   forall b ofs f ef args res (rs: regset) m vargs t vres rs' m',
     Genv.find_funct_ptr ge b = Some (Internal f) ->
-    find_instr ofs f.(fn_code) = Some (Pbuiltin ef args res) ->
+    find_instr instr_size ofs f.(fn_code) = Some (Pbuiltin ef args res) ->
     eval_builtin_args ge rs (rs RSP) m args vargs ->
     external_call ef ge vargs m t vres m' ->
     ~ in_builtin_res res RSP ->
-    rs' = nextinstr_nf
+    rs' = nextinstr_nf (Ptrofs.repr (instr_size (Pbuiltin ef args res)))
               (set_res res vres
                        (undef_regs (map preg_of (Machregs.destroyed_by_builtin ef)) rs)) ->
     rs # RSP = rs' # RSP.
@@ -279,8 +285,6 @@ Definition written_regs i : list preg :=
     | _ => nil
     end.
 
-  Require Import AsmRegs.
-
   Ltac simpl_not_in NIN :=
     let H1 := fresh in
     let H2 := fresh in
@@ -288,13 +292,13 @@ Definition written_regs i : list preg :=
           | idtac ].
 
   Lemma exec_load_rsp:
-    forall(ge: genv) K m1 am rs1 f0 rs2 m2,
-      exec_load ge K m1 am rs1 f0 = Next rs2 m2 ->
+    forall(ge: genv) sz K m1 am rs1 f0 rs2 m2,
+      exec_load ge sz K m1 am rs1 f0 = Next rs2 m2 ->
       forall r,
         ~ In  r (PC :: RA :: CR ZF :: CR CF :: CR PF :: CR SF :: CR OF :: f0 :: nil) ->
       rs2 r = rs1 r.
   Proof.
-    intros ge' K m1 am rs1 f0 rs2 m2 LOAD.
+    intros ge' sz K m1 am rs1 f0 rs2 m2 LOAD.
     unfold exec_load in LOAD. destr_in LOAD. inv LOAD.
     simpl.
     unfold nextinstr_nf.
@@ -304,25 +308,25 @@ Definition written_regs i : list preg :=
   Qed.
 
   Lemma exec_store_rsp:
-    forall  (ge:genv)  K m1 am rs1 f0 rs2 m2 (l: list preg),
-      exec_store ge K m1 am rs1 f0 l = Next rs2 m2 ->
+    forall  (ge:genv) sz K m1 am rs1 f0 rs2 m2 (l: list preg),
+      exec_store ge sz K m1 am rs1 f0 l = Next rs2 m2 ->
       forall r,
         ~ In  r (PC :: RA :: CR ZF :: CR CF :: CR PF :: CR SF :: CR OF :: l) ->
       rs2 r = rs1 r.
   Proof.
-    intros ge' K m1 am rs1 f0 rs2 m2 l  STORE.
+    intros ge' sz K m1 am rs1 f0 rs2 m2 l  STORE.
     unfold exec_store in STORE. repeat destr_in STORE.
     simpl.
     unfold nextinstr_nf.
     intros.
     simpl_not_in H.
-    simpl. simpl_regs. 
+    simpl. simpl_regs.
     rewrite Asmgenproof0.undef_regs_other. auto. intros; intro; subst. congruence.
   Qed.
   
   Lemma exec_instr_only_written_regs:
     forall (ge: Genv.t Asm.fundef unit) rs1 m1 rs2 m2 f i r,
-      Asm.exec_instr ge f i rs1 m1 = Next rs2 m2 ->
+      Asm.exec_instr instr_size ge f i rs1 m1 = Next rs2 m2 ->
       ~ In  r (PC :: RA :: CR ZF :: CR CF :: CR PF :: CR SF :: CR OF :: written_regs i) ->
       rs2 # r = rs1 # r.
   Proof.
@@ -333,9 +337,9 @@ Definition written_regs i : list preg :=
       unfold nextinstr_nf, compare_ints, compare_longs, compare_floats, compare_floats32; simpl; simpl_not_in NIN;
         simpl_regs; eauto;
           match goal with
-            H: exec_load _ _ _ _ _ _  = _ |- _ =>
+            H: exec_load _ _ _ _ _ _ _  = _ |- _ =>
             eapply exec_load_rsp; simpl; eauto; intuition
-          | H: exec_store _ _ _ _ _ _ _  = _ |- _ =>
+          | H: exec_store _ _ _ _ _ _ _ _  = _ |- _ =>
             try now (eapply exec_store_rsp; simpl; eauto; simpl; intuition)
           | _ => idtac
           end.
@@ -753,7 +757,7 @@ End AsmgenFacts.
 
 Lemma asmgen_no_change_rsp:
     forall f tf,
-      transf_function f = OK tf ->
+      transf_function instr_size f = OK tf ->
       check_asm_code_no_rsp (fn_code tf) = true.
   Proof.
     unfold check_asm_code_no_rsp.
@@ -827,17 +831,17 @@ Proof.
 Definition asm_instr_unchange_sup (i : instruction) : Prop :=
   stk_unrelated_instr i = true ->
   forall ge rs m rs' m' f,
-    Asm.exec_instr ge f i rs m = Next rs' m' ->
+    Asm.exec_instr instr_size ge f i rs m = Next rs' m' ->
     Mem.support m = Mem.support m' /\
     (forall b o k p, Mem.perm m b o k p <-> Mem.perm m' b o k p).
 
 
 Lemma exec_store_support:
-    forall (ge: Genv.t Asm.fundef unit) k m1 a rs1 rs l rs2 m2,
-      exec_store ge k m2 a rs1 rs l = Next rs2 m1 ->
+    forall (ge: Genv.t Asm.fundef unit) sz k m1 a rs1 rs l rs2 m2,
+      exec_store ge sz k m2 a rs1 rs l = Next rs2 m1 ->
       Mem.support m2 = Mem.support m1 /\ (forall b o k p, Mem.perm m2 b o k p <-> Mem.perm m1 b o k p).
 Proof.
-    intros ge k m1 a rs1 rs l rs2 m2  STORE.
+    intros ge sz k m1 a rs1 rs l rs2 m2  STORE.
     unfold exec_store in STORE; repeat destr_in STORE.
     unfold Mem.storev in Heqo; destr_in Heqo; inv Heqo.
     erewrite <- Mem.support_store. 2: eauto.
@@ -848,17 +852,17 @@ Proof.
 Qed.
 
 Lemma exec_load_support:
-    forall (ge: Genv.t Asm.fundef unit) k m1 a rs1 rs rs2 m2,
-      exec_load ge k m2 a rs1 rs = Next rs2 m1 ->
+    forall (ge: Genv.t Asm.fundef unit) sz k m1 a rs1 rs rs2 m2,
+      exec_load ge sz k m2 a rs1 rs = Next rs2 m1 ->
       Mem.support m2 = Mem.support m1 /\ (forall b o k p, Mem.perm m2 b o k p <-> Mem.perm m1 b o k p).
 Proof.
-    intros ge k m1 a rs1 rs rs2 m2 LOAD.
+    intros ge sz k m1 a rs1 rs rs2 m2 LOAD.
     unfold exec_load in LOAD; destr_in LOAD.
 Qed.
 
 Lemma goto_label_support:
   forall (ge: Genv.t Asm.fundef unit) f l m1 rs1 rs2 m2,
-    goto_label ge f l rs1 m2 = Next rs2 m1 ->
+    goto_label instr_size ge f l rs1 m2 = Next rs2 m1 ->
     Mem.support m2 = Mem.support m1 /\
     (forall b o k p, Mem.perm m2 b o k p <-> Mem.perm m1 b o k p).
 Proof.
@@ -878,34 +882,34 @@ Proof.
                 | now (eapply exec_store_support; eauto)
                 | now ( eapply goto_label_support; eauto)
                 | idtac ].
-    Unshelve. all: auto.
+    Unshelve. all: auto. exact (Ptrofs.repr (instr_size (Pmov_mr_a a rs))).
     exact Mint32. exact PC.
 Qed.
 
 (** modify memory *)
 Lemma exec_store_unchange_support:
-  forall ge k a rs m r l rs' m',
-    Asm.exec_store ge k m a rs r l = Next rs' m' ->
+  forall ge sz k a rs m r l rs' m',
+    Asm.exec_store ge sz k m a rs r l = Next rs' m' ->
     Mem.sup_include (Mem.support m) (Mem.support m').
 Proof.
-  intros ge k a rs m r l rs' m' STORE.
+  intros ge sz k a rs m r l rs' m' STORE.
   unfold exec_store in STORE. repeat destr_in STORE.
   apply Mem.support_storev in Heqo.
   rewrite Heqo. apply Mem.sup_include_refl.
 Qed.
 
 Lemma exec_load_unchange_support:
-  forall ge k a m rs rd rs' m',
-    exec_load ge k m a rs rd = Next rs' m' ->
+  forall ge sz k a m rs rd rs' m',
+    exec_load ge sz k m a rs rd = Next rs' m' ->
     Mem.sup_include (Mem.support m) (Mem.support m').
 Proof.
-  intros ge k a m rs rd rs' m' LOAD.
+  intros ge sz k a m rs rd rs' m' LOAD.
   unfold exec_load in LOAD. destr_in LOAD.
 Qed.
 
 Definition asm_instr_unchange_support (i : instruction) : Prop :=
   forall ge rs m rs' m' f,
-    Asm.exec_instr ge f i rs m = Next rs' m' ->
+    Asm.exec_instr instr_size ge f i rs m = Next rs' m' ->
     Mem.sup_include (Mem.support m) (Mem.support m').
 
 Lemma asm_prog_unchange_support (i : instruction) :
@@ -973,3 +977,4 @@ Qed.
     Qed.
 
     End WITH_SAEQ.
+End INSTRSIZE.
