@@ -15,15 +15,18 @@ Proof.
 Qed.
 
 Definition max_stacksize' := max_stacksize + align (size_chunk Mptr) 8.
+
 Section PRESERVATION.
 
 Variable prog: Asm.program.
+Variable instr_size : instruction -> Z.
+Hypothesis instr_size_bound : forall i, 0 < instr_size i <= Ptrofs.max_unsigned.
 
 Let ge := Genv.globalenv prog.
 
 (** this hypothesis can be promised by asmgen *)
 
-Hypothesis prog_unchange_rsp: asm_prog_unchange_rsp ge.
+Hypothesis prog_unchange_rsp: asm_prog_unchange_rsp instr_size ge.
 
 (** Memory Injection Lemmas *)
 Record meminj_preserves_globals (j: meminj) : Prop := {
@@ -103,9 +106,9 @@ Proof.
 Qed.
 
 Lemma val_inject_nextinstr:
-  forall j rs1 rs2
+  forall j sz rs1 rs2
     (RINJ: forall r, Val.inject j (rs1 r) (rs2 r)) r,
-    Val.inject j (nextinstr rs1 r) (nextinstr rs2 r).
+    Val.inject j (nextinstr sz rs1 r) (nextinstr sz rs2 r).
 Proof.
   unfold nextinstr.
   intros.
@@ -114,9 +117,9 @@ Proof.
 Qed.
 
 Lemma val_inject_nextinstr_nf:
-  forall j rs1 rs2
+  forall j sz rs1 rs2
     (RINJ: forall r, Val.inject j (rs1 r) (rs2 r)) r,
-    Val.inject j (nextinstr_nf rs1 r) (nextinstr_nf rs2 r).
+    Val.inject j (nextinstr_nf sz rs1 r) (nextinstr_nf sz rs2 r).
 Proof.
   unfold nextinstr_nf.
   intros.
@@ -1008,18 +1011,18 @@ Proof.
 Qed.
 
 Lemma exec_load_inject:
-  forall κ m1 a rs1 rd rs1' m1' rs2 m2 j,
+  forall κ m1 a rs1 rd rs1' m1' rs2 m2 j sz,
     meminj_preserves_globals j ->
     Mem.inject j m1 m2 ->
     (forall r, Val.inject j (rs1 r) (rs2 r)) ->
-    exec_load ge κ m1 a rs1 rd = Next rs1' m1' ->
+    exec_load ge sz κ m1 a rs1 rd = Next rs1' m1' ->
     exists rs2' m2',
-      exec_load ge κ m2 a rs2 rd = Next rs2' m2' /\
+      exec_load ge sz κ m2 a rs2 rd = Next rs2' m2' /\
       Mem.inject j m1' m2' /\
       forall r, Val.inject j (rs1' r) (rs2' r).
 Proof.
   unfold exec_load.
-  intros κ m1 a rs1 rd rs1' m1' rs2 m2 j MPG MINJ RINJ EL.
+  intros κ m1 a rs1 rd rs1' m1' rs2 m2 j sz MPG MINJ RINJ EL.
   destr_in EL. inv EL.
   edestruct Mem.loadv_inject as (v2 & LD & VINJ); eauto.
   apply eval_addrmode_inject; auto.
@@ -1029,17 +1032,17 @@ Proof.
 Qed.
 
 Lemma exec_store_inject:
-  forall κ m1 a rs1 rd rs1' m1' rs2 m2 j destroyed,
+  forall κ m1 a rs1 rd rs1' m1' rs2 m2 j destroyed sz,
     meminj_preserves_globals j ->
     Mem.inject j m1 m2 ->
     (forall r, Val.inject j (rs1 r) (rs2 r)) ->
-    exec_store ge κ m1 a rs1 rd destroyed = Next rs1' m1' ->
+    exec_store ge sz κ m1 a rs1 rd destroyed = Next rs1' m1' ->
     exists rs2' m2',
-      exec_store ge κ m2 a rs2 rd destroyed = Next rs2' m2' /\
+      exec_store ge sz κ m2 a rs2 rd destroyed = Next rs2' m2' /\
       Mem.inject j m1' m2' /\
       forall r, Val.inject j (rs1' r) (rs2' r).
 Proof.
-  unfold exec_store. intros κ m1 a rs1 rd rs1' m1' rs2 m2 j destroyed MPG MINJ RINJ ES.
+  unfold exec_store. intros κ m1 a rs1 rd rs1' m1' rs2 m2 j sz destroyed MPG MINJ RINJ ES.
   destr_in ES. inv ES.
   edestruct Mem.storev_mapped_inject as (m2' & ST & MINJ'); eauto.
   apply eval_addrmode_inject; auto.
@@ -1193,9 +1196,9 @@ Lemma goto_label_inject:
     (GLOBFUN_INJ: forall b f, Genv.find_funct_ptr ge b = Some f -> j b = Some (b,0))
     (RINJ : forall r : PregEq.t, Val.inject j (rs1 r) (rs2 r))
     l f rs1' m1',
-    Asm.goto_label ge f l rs1 m1 = Next rs1' m1' ->
+    Asm.goto_label instr_size ge f l rs1 m1 = Next rs1' m1' ->
     exists rs2' m2',
-      Asm.goto_label ge f l rs2 m2 = Next rs2' m2' /\
+      Asm.goto_label instr_size ge f l rs2 m2 = Next rs2' m2' /\
       Mem.inject j m1' m2' /\
       forall r, Val.inject j (rs1' r) (rs2' r).
 Proof.
@@ -1212,9 +1215,9 @@ Lemma exec_instr_inject_normal:
     (GLOBINJ: meminj_preserves_globals j)
     (RINJ: forall r, Val.inject j (rs1 # r) (rs2 # r))
     (NOTSTKINSTR: stk_unrelated_instr i = true)
-    (EI: Asm.exec_instr ge f i rs1 m1 = Next rs1' m1'),
+    (EI: Asm.exec_instr instr_size ge f i rs1 m1 = Next rs1' m1'),
   exists rs2' m2',
-    Asm.exec_instr ge f i rs2 m2 = Next rs2' m2'
+    Asm.exec_instr instr_size ge f i rs2 m2 = Next rs2' m2'
     /\ Mem.inject j m1' m2'
     /\ (forall r, Val.inject j (rs1' # r) (rs2' # r)).
 Proof.
@@ -1293,7 +1296,7 @@ Proof.
 Qed.
 
 Lemma allocframe_inject:
-  forall j stkb m0 m m1 m2 m3 m4 m' id path rs rs' sz ofs_ra ofs_link
+  forall j stkb m0 m m1 m2 m3 m4 m' id path rs rs' sz ofs_ra ofs_link isz
     (MS: match_states j (State rs m0) (State rs' m'))
     (ALLOCF: Mem.alloc_frame m0 id = (m,path))
     (SZPOS: sz>=0)
@@ -1303,8 +1306,8 @@ Lemma allocframe_inject:
     (STORERA: Mem.store Mptr m2 stkb ofs_ra (rs RA) = Some m3)
     (LINKPOS: 0 <= ofs_link <= Ptrofs.max_unsigned)
     (STORELINK: Mem.store Mptr m3 stkb ofs_link (rs RSP) = Some m4),
-    let rs1 := (nextinstr (rs # RAX <- (rs RSP)) # RSP <- (Vptr stkb Ptrofs.zero)) in
-    let rs1' := (nextinstr (rs' # RAX <- (rs' RSP)) # RSP <- (Val.offset_ptr (rs' RSP) (Ptrofs.neg (Ptrofs.repr (align sz 8))))) in
+    let rs1 := (nextinstr isz (rs # RAX <- (rs RSP)) # RSP <- (Vptr stkb Ptrofs.zero)) in
+    let rs1' := (nextinstr isz (rs' # RAX <- (rs' RSP)) # RSP <- (Val.offset_ptr (rs' RSP) (Ptrofs.neg (Ptrofs.repr (align sz 8))))) in
     exists j', inject_incr j j' /\
     exists m1', Mem.storev Mptr m' (Val.offset_ptr (Val.offset_ptr (rs' RSP) (Ptrofs.neg (Ptrofs.repr (align sz 8)))) (Ptrofs.repr ofs_ra)) (rs' RA)= Some m1' /\
     exists m2', Mem.storev Mptr m1' (Val.offset_ptr (Val.offset_ptr (rs' RSP) (Ptrofs.neg (Ptrofs.repr (align sz 8)))) (Ptrofs.repr ofs_link)) (rs' RSP) = Some m2' /\
@@ -1696,8 +1699,8 @@ Qed.
 Lemma ra_after_call_inj:
   forall j rs1 m1 rs2 m2,
     match_states j (State rs1 m1) (State rs2 m2) ->
-    ra_after_call ge (rs1 RA) ->
-    ra_after_call ge (rs2 RA).
+    ra_after_call instr_size ge (rs1 RA) ->
+    ra_after_call instr_size ge (rs2 RA).
 Proof.
   red. intros j rs1 m1 rs2 m2 MS (RAU & IAC). inv MS.
   generalize (RINJ RA). intro RAINJ.
@@ -1713,12 +1716,12 @@ Qed.
 
 Lemma exec_instr_inject:
   forall j m m' rs rs' f i m1 rs1
-    (EI: Asm.exec_instr ge f i rs m = Next rs1 m1)
+    (EI: Asm.exec_instr instr_size ge f i rs m = Next rs1 m1)
     (MS: match_states j (State rs m) (State rs' m'))
-    (AINR: asm_instr_unchange_rsp i)
-    (AINS: asm_instr_unchange_sup i),
+    (AINR: asm_instr_unchange_rsp instr_size i)
+    (AINS: asm_instr_unchange_sup instr_size i),
   exists j' m1' rs1',
-    exec_instr ge f i rs' m' = Next rs1' m1'
+    exec_instr instr_size ge f i rs' m' = Next rs1' m1'
     /\ match_states j' (State rs1 m1) (State rs1' m1')
     /\ inject_incr j j'.
 Proof.
@@ -1731,7 +1734,7 @@ Proof.
     exists j, m1', rs1'; split; [|split]; eauto.
     destruct i; simpl in *; eauto; try congruence.
     subst.
-    generalize (asm_prog_unchange_support i). intro AIUS. red in AIUS.
+    generalize (asm_prog_unchange_support instr_size i). intro AIUS. red in AIUS.
     edestruct (AINS NOTSTKINSTR _ _ _ _ _ _ EI) as (SUPEQ & STKPERMEQ).
     edestruct (AINS NOTSTKINSTR _ _ _ _ _ _ EI') as (SUPEQ' & STKPERMEQ').
     eapply match_states_intro; eauto.
@@ -2145,10 +2148,10 @@ Proof. unfold max_stacksize. vm_compute. split; congruence. Qed.
 (** Step Simulation *)
 Theorem step_simulation:
   forall S1 t S2,
-    Asm.step ge S1 t S2 ->
+    Asm.step instr_size ge S1 t S2 ->
     forall j S1' (MS: match_states j S1 S1'),
     exists j' S2',
-      step ge S1' t S2' /\
+      step instr_size ge S1' t S2' /\
       match_states j' S2 S2'.
 Proof.
   destruct 1; intros; inversion MS; subst.
@@ -2160,11 +2163,11 @@ Proof.
       eapply GLOBFUN_INJ. eauto.
     }
     rewrite JB in H7; inv H7.
-    assert (asm_instr_unchange_rsp i).
+    assert (asm_instr_unchange_rsp instr_size i).
     {
       eapply prog_unchange_rsp; eauto.
     }
-    destruct (exec_instr_inject _ _ _ _ _ _ _ _ _ H2 MS H4 (asm_prog_unchange_sup i)) as ( j' & rs2' & m2' & EI' & MS' & INCR).
+    destruct (exec_instr_inject _ _ _ _ _ _ _ _ _ H2 MS H4 (asm_prog_unchange_sup instr_size i)) as ( j' & rs2' & m2' & EI' & MS' & INCR).
     do 2 eexists; split.
     eapply exec_step_internal; eauto.
     rewrite Ptrofs.add_zero. eauto.
@@ -2205,7 +2208,8 @@ Proof.
       ++ intros. exploit symbol_inject; eauto.
     + eapply Mem.sup_include_trans. apply ENVSUP. auto.
     + eapply Mem.sup_include_trans. apply ENVSUP'. auto.
-    + remember (nextinstr_nf (set_res res vres (undef_regs (map preg_of (Machregs.destroyed_by_builtin ef)) rs))) as rs'.
+    + remember (nextinstr_nf  (Ptrofs.repr (instr_size (Pbuiltin ef args res)))
+                  (set_res res vres (undef_regs (map preg_of (Machregs.destroyed_by_builtin ef)) rs))) as rs'.
       destruct prog_unchange_rsp as (INT & BUILTIN & EXTCALL).
       red in BUILTIN.
       destruct (BUILTIN b2 (Ptrofs.unsigned ofs) f ef args res rs m vargs t vres rs' m'); eauto.
@@ -2235,7 +2239,8 @@ Proof.
       eapply inject_stack_inv; eauto. intros. symmetry.
       exploit STKCIN; eauto. intros [A B].
       eapply external_perm_stack; eauto.
-    + remember (nextinstr_nf (set_res res vres' (undef_regs (map preg_of (Machregs.destroyed_by_builtin ef)) rs'0))) as rs'.
+    + remember (nextinstr_nf (Ptrofs.repr (instr_size (Pbuiltin ef args res)))
+                  (set_res res vres' (undef_regs (map preg_of (Machregs.destroyed_by_builtin ef)) rs'0))) as rs'.
       destruct prog_unchange_rsp as (INT & BUILTIN & EXTCALL).
       red in BUILTIN.
       destruct (BUILTIN b2 (Ptrofs.unsigned ofs) f ef args res rs'0 m'0 vargs' t vres' rs' m2'); eauto.
@@ -2557,7 +2562,7 @@ Proof.
 Qed.
 
 Theorem transf_program_correct:
-  forward_simulation (Asm.semantics prog) (SSAsm.semantics prog).
+  forward_simulation (Asm.semantics instr_size prog) (SSAsm.semantics instr_size prog).
 Proof.
   eapply forward_simulation_step with (fun s1 s2 => exists j o, match_states j s1 s2).
   - simpl. reflexivity.

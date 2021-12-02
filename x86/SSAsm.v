@@ -5,6 +5,10 @@ Require Import Asm.
 
 Definition stkblock := Stack None nil 1.
 
+Section INSTRSIZE.
+
+Variable instr_size : instruction -> Z.
+
 Section SSASM.
 
 Variable ge: genv.
@@ -19,7 +23,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
     | Some m1 =>
       match Mem.storev Mptr m1 (Val.offset_ptr sp ofs_link) rs#RSP with
       | None => Stuck
-      | Some m2 => Next (nextinstr (rs #RAX <- (rs#RSP) #RSP <- sp)) m2
+      | Some m2 => Next (nextinstr (Ptrofs.repr (instr_size i)) (rs #RAX <- (rs#RSP) #RSP <- sp)) m2
       end
     end
   | Pfreeframe sz ofs_ra ofs_link =>
@@ -27,9 +31,9 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
     let sp := Val.offset_ptr rs#RSP (Ptrofs.repr aligned_sz) in
     match loadvv Mptr m (Val.offset_ptr rs#RSP ofs_ra) with
     | None => Stuck
-    | Some ra => Next (nextinstr (rs#RSP <- sp #RA <- ra)) m
+    | Some ra => Next (nextinstr  (Ptrofs.repr (instr_size i)) (rs#RSP <- sp #RA <- ra)) m
     end
-  | _ => Asm.exec_instr ge f i rs m
+  | _ => Asm.exec_instr instr_size ge f i rs m
   end.
 
 Inductive step  : state -> trace -> state -> Prop :=
@@ -37,17 +41,17 @@ Inductive step  : state -> trace -> state -> Prop :=
     forall b ofs f i rs m rs' m',
       rs PC = Vptr b ofs ->
       Genv.find_funct_ptr ge b = Some (Internal f) ->
-      find_instr (Ptrofs.unsigned ofs) (fn_code f) = Some i ->
+      find_instr instr_size (Ptrofs.unsigned ofs) (fn_code f) = Some i ->
       exec_instr f i rs m = Next rs' m' ->
       step (State rs m) E0 (State rs' m')
 | exec_step_builtin:
     forall b ofs f ef args res rs m vargs t vres rs' m',
       rs PC = Vptr b ofs ->
       Genv.find_funct_ptr ge b = Some (Internal f) ->
-      find_instr (Ptrofs.unsigned ofs) f.(fn_code) = Some (Pbuiltin ef args res) ->
+      find_instr instr_size (Ptrofs.unsigned ofs) f.(fn_code) = Some (Pbuiltin ef args res) ->
       eval_builtin_args ge rs (rs RSP) m args vargs ->
       external_call ef ge vargs m t vres m' ->
-      rs' = nextinstr_nf
+      rs' = nextinstr_nf (Ptrofs.repr (instr_size (Pbuiltin ef args res)))
               (set_res res vres
                        (undef_regs (map preg_of (destroyed_by_builtin ef)) rs)) ->
       step (State rs m) t (State rs' m')
@@ -63,7 +67,7 @@ Inductive step  : state -> trace -> state -> Prop :=
         (SP_NOT_VUNDEF: rs RSP <> Vundef)
         (RA_NOT_VUNDEF: rs RA <> Vundef),
       external_call ef ge args m1 t res m' ->
-      ra_after_call ge (rs # RA) ->
+      ra_after_call instr_size ge (rs # RA) ->
       rs' = (set_pair (loc_external_result (ef_sig ef)) res (undef_caller_save_regs rs))
               #PC <- (rs RA)
               #RA <- Vundef
@@ -91,6 +95,8 @@ Inductive initial_state (p: program): state -> Prop :=
 Definition semantics (p: program) :=
   Semantics step (initial_state p) final_state (Genv.globalenv p).
 
+End INSTRSIZE.
+
 Ltac rewrite_hyps :=
   repeat
     match goal with
@@ -102,7 +108,7 @@ Ltac trim H :=
     ?a -> ?b => let x := fresh in assert a as x; [ clear H | specialize (H x); clear x]
   end.
 
-Lemma semantics_determinate: forall p, determinate (semantics p).
+Lemma semantics_determinate: forall isz p, determinate (semantics isz p).
 Proof.
 Ltac Equalities :=
   match goal with
@@ -137,3 +143,4 @@ Ltac Equalities :=
 - (* final states *)
   inv H; inv H0. congruence.
 Qed.
+

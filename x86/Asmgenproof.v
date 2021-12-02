@@ -23,7 +23,7 @@ Section INSTRSIZE.
 Variable instr_size : instruction -> Z.
 Hypothesis instr_size_bound : forall i, 0 < instr_size i <= Ptrofs.max_unsigned.
 
-Notation code_size := (code_size instr_size).
+(* Notation code_size := (code_size instr_size). *)
 
 Definition match_prog (p: Mach.program) (tp: Asm.program) :=
   match_program (fun _ f tf => transf_fundef instr_size f = OK tf) eq p tp.
@@ -471,8 +471,8 @@ Qed.
 
 Lemma has_code_parent_ra_after_call:
   forall s
-    (HC: callstack_function_defined return_address_offset ge s),
-    ra_after_call tge (parent_ra s).
+    (HC: callstack_function_defined (return_address_offset instr_size) ge s),
+    ra_after_call instr_size tge (parent_ra s).
 Proof.
   intros s HC.
   destruct s; simpl. constructor.
@@ -504,8 +504,7 @@ Proof.
   rewrite offsets_after_call_app.
   apply in_app. right.  unfold offsets_after_call. rewrite pred_dec_true.
   left. rewrite EQSZ.
-  rewrite code_size_app. f_equal.
-  rewrite Z.add_comm. f_equal. auto.
+  rewrite code_size_app. simpl. lia. auto.
 Qed.
 
 Inductive wf_ra: list stackframe -> Prop :=
@@ -515,11 +514,11 @@ Inductive wf_ra: list stackframe -> Prop :=
 Inductive match_states: Mach.state -> Asm.state -> Prop :=
   | match_states_intro:
       forall s fb sp c ep ms m m' rs f tf tc
-        (STACKS: match_stack ge s)
+        (STACKS: match_stack instr_size ge s)
         (FIND: Genv.find_funct_ptr ge fb = Some (Internal f))
         (MEXT: Mem.extends m m')
-        (AT: transl_code_at_pc ge (rs PC) fb f c ep tf tc)
-        (CODE: callstack_function_defined return_address_offset ge s)
+        (AT: transl_code_at_pc instr_size ge (rs PC) fb f c ep tf tc)
+        (CODE: callstack_function_defined (return_address_offset instr_size) ge s)
         (TAIL: exists l, Mach.fn_code f = l ++ c)
         (WFRA: wf_ra s)
         (AG: agree ms sp rs)
@@ -532,9 +531,9 @@ Inductive match_states: Mach.state -> Asm.state -> Prop :=
                    (Asm.State rs m')
   | match_states_call:
       forall s fb ms m m' rs id
-        (STACKS: match_stack ge s)
+        (STACKS: match_stack instr_size ge s)
         (MEXT: Mem.extends m m')
-        (CODE: callstack_function_defined return_address_offset ge s)
+        (CODE: callstack_function_defined (return_address_offset instr_size) ge s)
         (WFRA: wf_ra s)
         (AG: agree ms (parent_sp s) rs)
         (SC: size_consistency (size_of_callstack s) (Mem.astack(Mem.support m)))
@@ -546,9 +545,9 @@ Inductive match_states: Mach.state -> Asm.state -> Prop :=
                    (Asm.State rs m')
   | match_states_return:
       forall s ms m m' rs
-        (STACKS: match_stack ge s)
+        (STACKS: match_stack instr_size ge s)
         (MEXT: Mem.extends m m')
-        (CODE: callstack_function_defined return_address_offset ge s)
+        (CODE: callstack_function_defined (return_address_offset instr_size) ge s)
         (WFRA: wf_ra s)
         (AG: agree ms (parent_sp s) rs)
         (SC: size_consistency (size_of_callstack s) (Mem.astack(Mem.support m)))
@@ -559,23 +558,23 @@ Inductive match_states: Mach.state -> Asm.state -> Prop :=
 
 Lemma exec_straight_steps:
   forall s fb f rs1 i c ep tf tc m1' m2 m2' sp ms2 (WFRA: wf_ra s),
-  match_stack ge s ->
+  match_stack instr_size ge s ->
   Mem.extends m2 m2' ->
   Genv.find_funct_ptr ge fb = Some (Internal f) ->
-  callstack_function_defined return_address_offset ge s ->
+  callstack_function_defined (return_address_offset instr_size) ge s ->
   (exists l, Mach.fn_code f = l ++ c )->
   size_consistency
     ((Some (Mach.fn_stacksize f))::(size_of_callstack s))
     (Mem.astack(Mem.support m2)) ->
   sp_consistency (sp_of_stack (Mem.stack (Mem.support m2))) (sp:: sp_of_callstack s) ->
-  transl_code_at_pc ge (rs1 PC) fb f (i :: c) ep tf tc ->
+  transl_code_at_pc instr_size ge (rs1 PC) fb f (i :: c) ep tf tc ->
   (forall k c (TR: transl_instr f i ep k = OK c),
    exists rs2,
-       exec_straight tge tf c rs1 m1' k rs2 m2'
+       exec_straight instr_size tge tf c rs1 m1' k rs2 m2'
     /\ agree ms2 sp rs2
     /\ (it1_is_parent ep i = true -> rs2#RAX = parent_sp s)) ->
   exists st',
-  plus step tge (State rs1 m1') E0 st' /\
+  plus (step instr_size) tge (State rs1 m1') E0 st' /\
   match_states (Mach.State s fb sp c ms2 m2) st'.
 Proof.
   intros. inversion H6. subst. monadInv H11.
@@ -587,25 +586,25 @@ Qed.
 
 Lemma exec_straight_steps_goto:
   forall s fb f rs1 i c ep tf tc m1' m2 m2' sp ms2 lbl c' (WFRA: wf_ra s),
-  match_stack ge s ->
+  match_stack instr_size ge s ->
   Mem.extends m2 m2' ->
   Genv.find_funct_ptr ge fb = Some (Internal f) ->
-  callstack_function_defined return_address_offset ge s ->
+  callstack_function_defined (return_address_offset instr_size) ge s ->
   (exists l, Mach.fn_code f = l ++ c )->
   size_consistency
     (Some (Mach.fn_stacksize f)::(size_of_callstack s))
     (Mem.astack(Mem.support m2)) ->
   sp_consistency (sp_of_stack (Mem.stack (Mem.support m2))) (sp:: sp_of_callstack s) ->
   Mach.find_label lbl f.(Mach.fn_code) = Some c' ->
-  transl_code_at_pc ge (rs1 PC) fb f (i :: c) ep tf tc ->
+  transl_code_at_pc instr_size ge (rs1 PC) fb f (i :: c) ep tf tc ->
   it1_is_parent ep i = false ->
   (forall k c (TR: transl_instr f i ep k = OK c),
    exists jmp, exists k', exists rs2,
-       exec_straight tge tf c rs1 m1' (jmp :: k') rs2 m2'
+       exec_straight instr_size tge tf c rs1 m1' (jmp :: k') rs2 m2'
     /\ agree ms2 sp rs2
-    /\ exec_instr tge tf jmp rs2 m2' = goto_label tge tf lbl rs2 m2') ->
+    /\ exec_instr instr_size tge tf jmp rs2 m2' = goto_label instr_size tge tf lbl rs2 m2') ->
   exists st',
-  plus step tge (State rs1 m1') E0 st' /\
+  plus (step instr_size) tge (State rs1 m1') E0 st' /\
   match_states (Mach.State s fb sp c' ms2 m2) st'.
 Proof.
   intros. inversion H7. subst. monadInv H13.
@@ -620,7 +619,7 @@ Proof.
   eapply plus_right'.
   eapply exec_straight_steps_1; eauto.
   econstructor; eauto.
-  eapply find_instr_tail. eauto.
+  eapply find_instr_tail; eauto.
   rewrite C. eexact GOTO.
   traceEq.
   econstructor; eauto.
@@ -657,9 +656,9 @@ Qed.
 (** This is the simulation diagram.  We prove it by case analysis on the Mach transition. *)
 
 Theorem step_simulation:
-  forall S1 t S2, Mach.step return_address_offset ge S1 t S2 ->
+  forall S1 t S2, Mach.step (return_address_offset instr_size) ge S1 t S2 ->
   forall S1' (MS: match_states S1 S1'),
-  (exists S2', plus step tge S1' t S2' /\ match_states S2 S2')
+  (exists S2', plus (step instr_size) tge S1' t S2' /\ match_states S2 S2')
   \/ (measure S2 < measure S1 /\ t = E0 /\ match_states S2 S1')%nat.
 Proof.
   induction 1; intros; inv MS.
@@ -771,7 +770,7 @@ Opaque loadind.
 - (* Mcall *)
   assert (f0 = f) by congruence.  subst f0.
   inv AT.
-  assert (NOOV: list_length_z tf.(fn_code) <= Ptrofs.max_unsigned).
+  assert (NOOV: code_size instr_size tf.(fn_code) <= Ptrofs.max_unsigned).
     eapply transf_function_no_overflow; eauto.
   destruct H1 as (fd' & FFPcalled).
   destruct ros as [rf|fid]; simpl in H0; monadInv H6.
@@ -781,8 +780,8 @@ Opaque loadind.
     revert H0; predSpec Ptrofs.eq Ptrofs.eq_spec i Ptrofs.zero; intros; congruence.
   assert (rs0 x0 = Vptr (Global id) Ptrofs.zero).
     exploit ireg_val; eauto. rewrite H1; intros LD; inv LD; auto.
-  generalize (code_tail_next_int _ _ _ _ NOOV H7). intro CT1.
-  assert (TCA: transl_code_at_pc ge (Vptr fb (Ptrofs.add ofs Ptrofs.one)) fb f c false tf x).
+  generalize (code_tail_next_int instr_size instr_size_bound _ _ _ _ NOOV H7). intro CT1.
+  assert (TCA: transl_code_at_pc instr_size ge (Vptr fb (Ptrofs.add ofs (Ptrofs.repr (instr_size (Pcall_r x0 sig))))) fb f c false tf x).
     econstructor; eauto.
   exploit return_address_offset_correct; eauto. intros; subst ra.
   left; econstructor; split.
@@ -800,8 +799,8 @@ Opaque loadind.
   simpl. intros. eapply agree_exten; eauto. intros. Simplifs.
   simpl. rewrite H2. auto. Simplifs. rewrite <- H. auto.
 + (* Direct call *)
-  generalize (code_tail_next_int _ _ _ _ NOOV H7). intro CT1.
-  assert (TCA: transl_code_at_pc ge (Vptr fb (Ptrofs.add ofs Ptrofs.one)) fb f c false tf x).
+  generalize (code_tail_next_int instr_size instr_size_bound _ _ _ _ NOOV H7). intro CT1.
+  assert (TCA: transl_code_at_pc instr_size ge (Vptr fb (Ptrofs.add ofs (Ptrofs.repr (instr_size (Pcall_s fid sig))))) fb f c false tf x).
     econstructor; eauto.
   exploit return_address_offset_correct; eauto. intros; subst ra.
   left; econstructor; split.
@@ -822,7 +821,7 @@ Opaque loadind.
 - (* Mtailcall *)
   assert (f0 = f) by congruence.  subst f0.
   inv AT.
-  assert (NOOV: list_length_z tf.(fn_code) <= Ptrofs.max_unsigned).
+  assert (NOOV: code_size instr_size tf.(fn_code) <= Ptrofs.max_unsigned).
     eapply transf_function_no_overflow; eauto.
   rewrite (sp_val _ _ _ AG) in *. unfold load_stack in *.
   destruct H1 as (fd & FFPcalled).
@@ -859,7 +858,7 @@ Opaque loadind.
   assert (rs0 x0 = Vptr (Global id) Ptrofs.zero).
     exploit ireg_val; eauto. rewrite H1; intros LD; inv LD; auto.
 
-  generalize (code_tail_next_int _ _ _ _ NOOV H11). intro CT1.
+  generalize (code_tail_next_int instr_size instr_size_bound _ _ _ _ NOOV H11). intro CT1.
   left; econstructor; split.
   eapply plus_left. eapply exec_step_internal. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
@@ -871,7 +870,8 @@ Opaque loadind.
   rewrite (sp_val _ _ _ AG). rewrite pred_dec_true.
   rewrite E. eauto. rewrite G. rewrite J. eauto. eauto.  eauto.
   apply star_one. eapply exec_step_internal.
-  transitivity (Val.offset_ptr rs0#PC Ptrofs.one). auto.
+  transitivity (Val.offset_ptr rs0#PC (Ptrofs.repr (instr_size
+              (Pfreeframe (Mach.fn_stacksize f)(fn_retaddr_ofs f)(fn_link_ofs f))))). eauto.
   rewrite <- H. simpl. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
   simpl. rewrite nextinstr_inv. 2: congruence.
@@ -890,7 +890,7 @@ Opaque loadind.
   Simplifs. rewrite Pregmap.gso; auto.
   generalize (preg_of_not_SP rf). rewrite (ireg_of_eq _ _ EQ1). congruence.
 + (* Direct call *)
-  generalize (code_tail_next_int _ _ _ _ NOOV H11). intro CT1.
+  generalize (code_tail_next_int instr_size instr_size_bound _ _ _ _ NOOV H11). intro CT1.
   left; econstructor; split.
   eapply plus_left. eapply exec_step_internal. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
@@ -901,7 +901,9 @@ Opaque loadind.
   rewrite (sp_val _ _ _ AG). rewrite pred_dec_true.
   rewrite E. eauto. rewrite G. rewrite J. eauto. eauto. eauto.
   apply star_one. eapply exec_step_internal.
-  transitivity (Val.offset_ptr rs0#PC Ptrofs.one). auto. rewrite <- H. simpl. eauto.
+  transitivity (Val.offset_ptr rs0#PC (Ptrofs.repr (instr_size
+              (Pfreeframe (Mach.fn_stacksize f)(fn_retaddr_ofs f)(fn_link_ofs f))))). eauto.
+  rewrite <- H. simpl. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
   simpl. exploit functions_translated. apply FFPcalled. intros (tf' & FFPcalled' & TF).
   simpl in H0. rewrite <- symbols_preserved in H0.
@@ -966,7 +968,7 @@ Opaque loadind.
   exploit eval_condition_lessdef. eapply preg_vals; eauto. eauto. eauto. intros EC.
   left; eapply exec_straight_steps_goto. 10 : apply AT. all: eauto. eapply code_move; eauto.
   intros. simpl in TR.
-  destruct (transl_cond_correct tge tf cond args _ _ rs0 m' TR)
+  destruct (transl_cond_correct tge tf instr_size cond args _ _ rs0 m' TR)
   as [rs' [A [B C]]].
   rewrite EC in B. destruct B as [B _].
   destruct (testcond_for_condition cond); simpl in *.
@@ -985,7 +987,7 @@ Opaque loadind.
   split. eapply agree_exten; eauto.
   simpl. rewrite TC1. auto.
   (* second jcc jumps *)
-  exists (Pjcc c2 lbl); exists k; exists (nextinstr rs').
+  exists (Pjcc c2 lbl); exists k; exists (nextinstr (Ptrofs.repr (instr_size (Pjcc c1 lbl))) rs').
   split. eapply exec_straight_trans. eexact A.
   eapply exec_straight_one. simpl. rewrite TC1. auto. auto.
   split. eapply agree_exten; eauto.
@@ -1004,7 +1006,7 @@ Opaque loadind.
 - (* Mcond false *)
   exploit eval_condition_lessdef. eapply preg_vals; eauto. eauto. eauto. intros EC.
   left; eapply exec_straight_steps; eauto. eapply code_move; eauto. intros. simpl in TR.
-  destruct (transl_cond_correct tge tf cond args _ _ rs0 m' TR)
+  destruct (transl_cond_correct tge tf instr_size cond args _ _ rs0 m' TR)
   as [rs' [A [B C]]].
   rewrite EC in B. destruct B as [B _].
   destruct (testcond_for_condition cond); simpl in *.
@@ -1027,7 +1029,7 @@ Opaque loadind.
 (* jcc2 *)
   destruct (eval_testcond c1 rs') as [b1|] eqn:TC1;
   destruct (eval_testcond c2 rs') as [b2|] eqn:TC2; inv B.
-  exists (nextinstr rs'); split.
+  exists (nextinstr (Ptrofs.repr (instr_size (Pjcc2 c1 c2 lbl))) rs'); split.
   eapply exec_straight_trans. eexact A.
   apply exec_straight_one. simpl.
   rewrite TC1; rewrite TC2.
@@ -1058,7 +1060,7 @@ Transparent destroyed_by_jumptable.
 - (* Mreturn *)
   assert (f0 = f) by congruence. subst f0.
   inv AT.
-  assert (NOOV: list_length_z tf.(fn_code) <= Ptrofs.max_unsigned).
+  assert (NOOV: code_size instr_size tf.(fn_code) <= Ptrofs.max_unsigned).
     eapply transf_function_no_overflow; eauto.
   rewrite (sp_val _ _ _ AG) in *. unfold load_stack in *.
   replace (chunk_of_type Tptr) with Mptr in * by (unfold Tptr, Mptr; destruct Archi.ptr64; auto).
@@ -1093,7 +1095,8 @@ Transparent destroyed_by_jumptable.
   rewrite (sp_val _ _ _ AG). rewrite pred_dec_true.
   rewrite E. eauto. rewrite G. rewrite J. eauto. eauto. eauto.
   apply star_one. eapply exec_step_internal.
-  transitivity (Val.offset_ptr rs0#PC Ptrofs.one). auto. rewrite <- H5. simpl. eauto.
+  transitivity (Val.offset_ptr rs0#PC (Ptrofs.repr (instr_size (Pfreeframe (Mach.fn_stacksize f)(fn_retaddr_ofs f)(fn_link_ofs f))))).
+  auto. rewrite <- H5. simpl. eauto.
   eapply functions_transl; eauto. eapply find_instr_tail; eauto.
   simpl. rewrite pred_dec_true. eauto. rewrite nextinstr_inv by congruence.
   setoid_rewrite Pregmap.gss. eapply has_code_parent_ra_after_call; eauto.
@@ -1113,7 +1116,7 @@ Transparent destroyed_by_jumptable.
 - (* internal function *)
   exploit functions_translated; eauto. intros [tf [A B]]. monadInv B.
   generalize EQ; intros EQ'. monadInv EQ'.
-  destruct (zlt Ptrofs.max_unsigned (list_length_z (fn_code x0))); inv EQ1.
+  destruct (zlt Ptrofs.max_unsigned (code_size instr_size (fn_code x0))); inv EQ1.
   monadInv EQ0. rewrite transl_code'_transl_code in EQ1. destr_in EQ2. inv EQ2.
   unfold store_stack in *.
   exploit Mem.alloc_frame_extends; eauto. intros [m0' [A' B']].
@@ -1137,7 +1140,7 @@ Transparent destroyed_by_jumptable.
   econstructor; eauto.
   unfold nextinstr. rewrite Pregmap.gss. repeat rewrite Pregmap.gso; auto with asmgen.
   rewrite ATPC. simpl. constructor; eauto.
-  unfold fn_code. eapply code_tail_next_int. simpl in g. lia.
+  unfold fn_code. eapply code_tail_next_int; eauto. simpl in g. simpl. lia.
   constructor. exists nil. eauto.
   apply agree_nextinstr. eapply agree_change_sp; eauto.
 Transparent destroyed_at_function_entry.
@@ -1240,7 +1243,7 @@ Proof.
 Qed.
 
 Theorem transf_program_correct:
-  forward_simulation (Mach.semantics return_address_offset prog) (Asm.semantics tprog).
+  forward_simulation (Mach.semantics (return_address_offset instr_size) prog) (Asm.semantics instr_size tprog).
 Proof.
   eapply forward_simulation_star with (measure := measure).
   apply senv_preserved.
@@ -1251,7 +1254,7 @@ Qed.
 
 Theorem transf_program_unchange_rsp:
   (forall b, Genv.find_funct_ptr ge b = None -> Genv.find_funct_ptr tge b = None) ->
-  asm_prog_unchange_rsp tge.
+  asm_prog_unchange_rsp instr_size tge.
 Proof.
   intros.
   red. split.
@@ -1259,7 +1262,7 @@ Proof.
   destruct (Genv.find_funct_ptr ge b ) eqn:?.
   exploit functions_translated; eauto. intros (tf & FFP & TF).
   destruct f0; simpl in TF; monadInv  TF; try congruence. rewrite H0 in FFP. inv FFP.
-  assert (asm_code_no_rsp (fn_code x)).
+  assert (asm_code_no_rsp instr_size (fn_code x)).
   apply check_asm_code_no_rsp_correct.
   eapply asmgen_no_change_rsp; eauto.
   apply H2. eapply find_instr_eq; eauto.
@@ -1269,4 +1272,4 @@ Proof.
 Qed.
 
 End PRESERVATION.
-
+End INSTRSIZE.
