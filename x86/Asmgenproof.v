@@ -18,11 +18,18 @@ Require Import Values Memory Events Globalenvs Smallstep.
 Require Import Op Locations Mach Conventions Asm AsmFacts.
 Require Import Asmgen Asmgenproof0 Asmgenproof1.
 
+
+Section INSTRSIZE.
+Variable instr_size : instruction -> Z.
+Hypothesis instr_size_bound : forall i, 0 < instr_size i <= Ptrofs.max_unsigned.
+
+Notation code_size := (code_size instr_size).
+
 Definition match_prog (p: Mach.program) (tp: Asm.program) :=
-  match_program (fun _ f tf => transf_fundef f = OK tf) eq p tp.
+  match_program (fun _ f tf => transf_fundef instr_size f = OK tf) eq p tp.
 
 Lemma transf_program_match:
-  forall p tp, transf_program p = OK tp -> match_prog p tp.
+  forall p tp, transf_program instr_size p = OK tp -> match_prog p tp.
 Proof.
   intros. eapply match_transform_partial_program; eauto.
 Qed.
@@ -47,13 +54,13 @@ Lemma functions_translated:
   forall b f,
   Genv.find_funct_ptr ge b = Some f ->
   exists tf,
-  Genv.find_funct_ptr tge b = Some tf /\ transf_fundef f = OK tf.
+  Genv.find_funct_ptr tge b = Some tf /\ transf_fundef instr_size f = OK tf.
 Proof (Genv.find_funct_ptr_transf_partial TRANSF).
 
 Lemma functions_transl:
   forall fb f tf,
   Genv.find_funct_ptr ge fb = Some (Internal f) ->
-  transf_function f = OK tf ->
+  transf_function instr_size f = OK tf ->
   Genv.find_funct_ptr tge fb = Some (Internal tf).
 Proof.
   intros. exploit functions_translated; eauto. intros [tf' [A B]].
@@ -64,17 +71,17 @@ Qed.
 
 Lemma transf_function_no_overflow:
   forall f tf,
-  transf_function f = OK tf -> list_length_z (fn_code tf) <= Ptrofs.max_unsigned.
+  transf_function instr_size f = OK tf -> code_size instr_size (fn_code tf) <= Ptrofs.max_unsigned.
 Proof.
-  intros. monadInv H. destruct (zlt Ptrofs.max_unsigned (list_length_z (fn_code x))); monadInv EQ0.
+  intros. monadInv H. destruct (zlt Ptrofs.max_unsigned (code_size instr_size (fn_code x))); monadInv EQ0.
   lia.
 Qed.
 
 Lemma exec_straight_exec:
   forall fb f c ep tf tc c' rs m rs' m',
-  transl_code_at_pc ge (rs PC) fb f c ep tf tc ->
-  exec_straight tge tf tc rs m c' rs' m' ->
-  plus step tge (State rs m) E0 (State rs' m').
+  transl_code_at_pc instr_size ge (rs PC) fb f c ep tf tc ->
+  exec_straight instr_size tge tf tc rs m c' rs' m' ->
+  plus (step instr_size) tge (State rs m) E0 (State rs' m').
 Proof.
   intros. inv H.
   eapply exec_straight_steps_1; eauto.
@@ -84,10 +91,10 @@ Qed.
 
 Lemma exec_straight_at:
   forall fb f c ep tf tc c' ep' tc' rs m rs' m',
-  transl_code_at_pc ge (rs PC) fb f c ep tf tc ->
+  transl_code_at_pc instr_size ge (rs PC) fb f c ep tf tc ->
   transl_code f c' ep' = OK tc' ->
-  exec_straight tge tf tc rs m tc' rs' m' ->
-  transl_code_at_pc ge (rs' PC) fb f c' ep' tf tc'.
+  exec_straight instr_size tge tf tc rs m tc' rs' m' ->
+  transl_code_at_pc instr_size ge (rs' PC) fb f c' ep' tf tc'.
 Proof.
   intros. inv H.
   exploit exec_straight_steps_2; eauto.
@@ -116,6 +123,21 @@ Qed.
 *)
 
 Section TRANSL_LABEL.
+
+Hint Resolve tail_nolabel_refl: labels.
+
+Ltac TailNoLabel :=
+  eauto with labels;
+  match goal with
+  | [ |- tail_nolabel _ (_ :: _) ] => apply tail_nolabel_cons; [auto; exact I | TailNoLabel]
+  | [ H: Error _ = OK _ |- _ ] => discriminate
+  | [ H: assertion_failed = OK _ |- _ ] => discriminate
+  | [ H: OK _ = OK _ |- _ ] => inv H; TailNoLabel
+  | [ H: bind _ _ = OK _ |- _ ] => monadInv H;  TailNoLabel
+  | [ H: (if ?x then _ else _) = OK _ |- _ ] => destruct x; TailNoLabel
+  | [ H: match ?x with nil => _ | _ :: _ => _ end = OK _ |- _ ] => destruct x; TailNoLabel
+  | _ => idtac
+  end.
 
 Remark mk_mov_label:
   forall rd rs k c, mk_mov rd rs k = OK c -> tail_nolabel k c.
@@ -226,13 +248,13 @@ Proof.
   destruct (Int.eq_dec n Int.zero); TailNoLabel.
   destruct (Int64.eq_dec n Int64.zero); TailNoLabel.
   destruct (Float.eq_dec n Float.zero); TailNoLabel.
-  destruct (Float32.eq_dec n Float32.zero); TailNoLabel.
+  destruct (Float32.eq_dec n Float32.zero); TailNoLabel.  admit. admit.
   destruct (normalize_addrmode_64 x) as [am' [delta|]]; TailNoLabel.
   eapply tail_nolabel_trans. eapply transl_cond_label; eauto. eapply mk_setcc_label.
   unfold transl_sel in EQ2. destruct (ireg_eq x x0); monadInv EQ2.
   TailNoLabel.
   eapply tail_nolabel_trans. eapply transl_cond_label; eauto. eapply mk_sel_label; eauto.
-Qed.
+Admitted.
 
 Remark transl_load_label:
   forall chunk addr args dest k c,
@@ -298,13 +320,13 @@ Qed.
 
 Lemma transl_find_label:
   forall lbl f tf,
-  transf_function f = OK tf ->
+  transf_function instr_size f = OK tf ->
   match Mach.find_label lbl f.(Mach.fn_code) with
   | None => find_label lbl tf.(fn_code) = None
   | Some c => exists tc, find_label lbl tf.(fn_code) = Some tc /\ transl_code f c false = OK tc
   end.
 Proof.
-  intros. monadInv H. destruct (zlt Ptrofs.max_unsigned (list_length_z (fn_code x))); inv EQ0.
+  intros. monadInv H. destruct (zlt Ptrofs.max_unsigned (code_size instr_size (fn_code x))); inv EQ0.
   monadInv EQ. destr_in EQ1. inv EQ1. simpl. eapply transl_code_label; eauto. rewrite transl_code'_transl_code in EQ0; eauto.
 Qed.
 
@@ -316,12 +338,12 @@ End TRANSL_LABEL.
 Lemma find_label_goto_label:
   forall f tf lbl rs m c' b ofs,
   Genv.find_funct_ptr ge b = Some (Internal f) ->
-  transf_function f = OK tf ->
+  transf_function instr_size f = OK tf ->
   rs PC = Vptr b ofs ->
   Mach.find_label lbl f.(Mach.fn_code) = Some c' ->
   exists tc', exists rs',
-    goto_label tge tf lbl rs m = Next rs' m
-  /\ transl_code_at_pc ge (rs' PC) b f c' false tf tc'
+    goto_label instr_size tge tf lbl rs m = Next rs' m
+  /\ transl_code_at_pc instr_size ge (rs' PC) b f c' false tf tc'
   /\ forall r, r <> PC -> rs'#r = rs#r.
 Proof.
   intros. exploit (transl_find_label lbl f tf); eauto. rewrite H2.
@@ -342,13 +364,13 @@ Qed.
 
 Lemma return_address_exists:
   forall f sg ros c, is_tail (Mcall sg ros :: c) f.(Mach.fn_code) ->
-  exists ra, return_address_offset f c ra.
+  exists ra, return_address_offset instr_size f c ra.
 Proof.
   intros. eapply Asmgenproof0.return_address_exists; eauto.
 - intros. exploit transl_instr_label; eauto.
   destruct i; try (intros [A B]; apply A). intros. subst c0. repeat constructor.
 - intros. monadInv H0.
-  destruct (zlt Ptrofs.max_unsigned (list_length_z (fn_code x))); inv EQ0.
+  destruct (zlt Ptrofs.max_unsigned (code_size instr_size (fn_code x))); inv EQ0.
   monadInv EQ. destr_in EQ1. inv EQ1. rewrite transl_code'_transl_code in EQ0.
   exists x; exists true; split; auto. unfold fn_code. repeat constructor.
 - exact transf_function_no_overflow.
@@ -416,8 +438,8 @@ Inductive astack_consistency : Mach.state -> Prop :=
 
 Lemma code_tail_code_size:
   forall a b sz,
-    code_tail sz (a ++ b) b ->
-    sz = code_size a.
+    code_tail instr_size sz (a ++ b) b ->
+    sz = code_size instr_size a.
 Proof.
   intros a b sz.
   remember (a++b).
@@ -432,7 +454,7 @@ Qed.
 
 Lemma offsets_after_call_app:
   forall y z pos,
-    offsets_after_call (y ++ z) pos =  offsets_after_call y pos ++ offsets_after_call z (pos + code_size y).
+    offsets_after_call instr_size (y ++ z) pos =  offsets_after_call instr_size y pos ++ offsets_after_call instr_size z (pos + code_size instr_size y).
 Proof.
   induction y; simpl; intros; eauto. rewrite Z.add_0_r. auto.
   rewrite ! IHy. destr. simpl. rewrite Z.add_assoc.  f_equal.
@@ -442,7 +464,7 @@ Qed.
 
 Lemma code_size_app:
   forall c1 c2,
-    code_size (c1 ++ c2) = code_size c1 + code_size c2.
+    code_size instr_size (c1 ++ c2) = code_size instr_size c1 + code_size instr_size c2.
 Proof.
   induction c1; simpl; intros; rewrite ? IHc1; lia.
 Qed.

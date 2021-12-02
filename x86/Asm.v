@@ -314,47 +314,6 @@ Proof.
   left; econstructor; eauto.
 Qed.
 
-Fixpoint offsets_after_call (c: code) (p: Z) : list Z :=
-  match c with
-    nil => nil
-  | i::c => let r := offsets_after_call c (p + 1) in
-           if is_call_dec i then (p + 1)::r
-           else r
-  end.
-
-Definition is_after_call (f: fundef) (o: Z) : Prop :=
-  match f with
-    Internal f => In o (offsets_after_call (fn_code f) 0)
-  | External ef => False
-  end.
-
-Definition check_is_after_call f o : {is_after_call f o} + {~ is_after_call f o}.
-Proof.
-  unfold is_after_call.
-  destruct f; auto.
-  apply In_dec. apply zeq.
-Qed.
-
-Definition ra_after_call (ge: Genv.t fundef unit) v:=
-  v <> Vundef /\ forall b o,
-    v = Vptr b o ->
-    forall f,
-      Genv.find_funct_ptr ge b = Some f ->
-      is_after_call f (Ptrofs.unsigned o).
-
-Definition check_ra_after_call (ge': Genv.t fundef unit) v:
-  {ra_after_call ge' v} + { ~ ra_after_call ge' v}.
-Proof.
-  unfold ra_after_call.
-  destruct v; try now (left; split; intros; congruence).
-  right; intuition congruence.
-  destruct (Genv.find_funct_ptr ge' b) eqn:FFP.
-  2: left; split; [congruence|]; intros b0 o A; inv A; rewrite FFP; congruence.
-  destruct (check_is_after_call f (Ptrofs.unsigned i)).
-  left. split. congruence. intros b0 o A; inv A; rewrite FFP; congruence.
-  right; intros (B & A); specialize (A _ _ eq_refl _ FFP). congruence.
-Defined.
-
 (** * Operational semantics *)
 
 Lemma preg_eq: forall (x y: preg), {x=y} + {x<>y}.
@@ -458,6 +417,48 @@ Variable instr_size : instruction -> Z.
 Hypothesis instr_size_bound : forall i, 0 < instr_size i <= Ptrofs.max_unsigned.
 
 Section RELSEM.
+
+
+Fixpoint offsets_after_call (c: code) (p: Z) : list Z :=
+  match c with
+    nil => nil
+  | i::c => let r := offsets_after_call c (p + instr_size i) in
+           if is_call_dec i then (p + instr_size i)::r
+           else r
+  end.
+
+Definition is_after_call (f: fundef) (o: Z) : Prop :=
+  match f with
+    Internal f => In o (offsets_after_call (fn_code f) 0)
+  | External ef => False
+  end.
+
+Definition check_is_after_call f o : {is_after_call f o} + {~ is_after_call f o}.
+Proof.
+  unfold is_after_call.
+  destruct f; auto.
+  apply In_dec. apply zeq.
+Qed.
+
+Definition ra_after_call (ge: Genv.t fundef unit) v:=
+  v <> Vundef /\ forall b o,
+    v = Vptr b o ->
+    forall f,
+      Genv.find_funct_ptr ge b = Some f ->
+      is_after_call f (Ptrofs.unsigned o).
+
+Definition check_ra_after_call (ge': Genv.t fundef unit) v:
+  {ra_after_call ge' v} + { ~ ra_after_call ge' v}.
+Proof.
+  unfold ra_after_call.
+  destruct v; try now (left; split; intros; congruence).
+  right; intuition congruence.
+  destruct (Genv.find_funct_ptr ge' b) eqn:FFP.
+  2: left; split; [congruence|]; intros b0 o A; inv A; rewrite FFP; congruence.
+  destruct (check_is_after_call f (Ptrofs.unsigned i)).
+  left. split. congruence. intros b0 o A; inv A; rewrite FFP; congruence.
+  right; intros (B & A); specialize (A _ _ eq_refl _ FFP). congruence.
+Defined.
 
 Fixpoint code_size (c:code) : Z :=
   match c with
