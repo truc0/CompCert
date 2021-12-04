@@ -694,10 +694,12 @@ Require Import Linking.
       exploit wf_asm_ret_jmp_comes_after_freeframe. eauto. 2: apply H.
       rewrite EQz. eauto.
       intros (o' & ifree & FI & IFREE & RNG).
-      generalize (find_instr_same  _ _ _ _ _ LPS FI). intro. exploit H0.
-      rewrite RNG.
-      admit.
-      intro. inv IFREE. congruence.
+      generalize (find_instr_no_overlap' instr_size instr_size_bound _ _ _ _ _ LPS FI). intros [H0|H0].
+      inv IFREE. inv H1. destruct H0.
+      replace (z-0) with z in H0 by lia.
+      replace (z - instr_size (Plabel l) + instr_size (Plabel l)) with z in H0 by lia.
+      generalize (instr_size_bound ifree). extlia.
+      generalize (instr_size_bound (Plabel l) ). extlia.
     }
   Qed.
 
@@ -712,7 +714,7 @@ Require Import Linking.
       ~ is_call i ->
       ~ is_free i ->
       (exists rs1' m1',
-        SSAsm.exec_instr ge f i rs1 m1 = Next rs1' m1' /\
+        SSAsm.exec_instr instr_size ge f i rs1 m1 = Next rs1' m1' /\
         seq (State rs1' m1') (State rs2' m2')) /\
         match pc_at (State rs2' m2') with
         | Some (inl (_, i)) => ~ intermediate_instruction i
@@ -723,7 +725,7 @@ Require Import Linking.
     intros rs1 rs2 m1 m2 b ofs f i rs2' m2' SEQ PC2 FFP FI EI NII NIC NIF.
     simpl.
     inv SEQ.
-    assert (SSAsm.exec_instr ge f i rs2 m2 = Next rs2' m2').
+    assert (SSAsm.exec_instr instr_size ge f i rs2 m2 = Next rs2' m2').
     {
       rewrite <- EI.
       destruct i; auto.
@@ -734,14 +736,13 @@ Require Import Linking.
       contradict NIF. constructor.
     } clear EI; rename H into EI.
     split.
-    rewrite find_instr_1_eq in FI.
     {
-          destruct i; simpl in *; unfold Asm.exec_load, Asm.exec_store in *;
+          destruct i; simpl in *; unfold exec_load, exec_store in *;
           erewrite ? eval_addrmode_seq by eauto;
           repeat erewrite ?  eval_testcond_seq by eauto;
           erewrite ? REQ by congruence;
           repeat destr_in EI;
-          try (do 2 eexists; split; [eauto|constructor; intros; simpl; AsmRegs.regs_eq; regs_eq;
+          try (do 2 eexists; split; [eauto|constructor; intros; simpl; regs_eq;
                                            try eapply eval_addrmode64_seq ;
                                            try eapply eval_addrmode32_seq; now eauto
                                     ]; fail).

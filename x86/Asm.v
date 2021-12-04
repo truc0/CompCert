@@ -502,6 +502,41 @@ Proof.
   intros. induction c; simpl. lia. generalize (instr_size_bound a); lia.
 Qed.
 
+Lemma find_instr_pos_positive:
+  forall l o i,
+    find_instr o l = Some i -> 0 <= o.
+Proof.
+  induction l; simpl; intros; eauto. congruence.
+  destr_in H. lia. apply IHl in H.
+  generalize (instr_size_bound a). lia.
+Qed.
+
+Lemma find_instr_no_overlap:
+  forall l o1 o2 i1 i2,
+    find_instr o1 l = Some i1 ->
+    find_instr o2 l = Some i2 ->
+    o1 <> o2 ->
+    o1 + instr_size i1 <= o2 \/ o2 + instr_size i2 <= o1.
+Proof.
+  induction l; simpl; intros; eauto. congruence.
+  repeat destr_in H; repeat destr_in H0.
+  - apply find_instr_pos_positive in H2. lia.
+  - apply find_instr_pos_positive in H3. lia.
+  - specialize (IHl _ _ _ _ H3 H2). lia.
+Qed.
+
+Lemma find_instr_no_overlap':
+  forall l o1 o2 i1 i2,
+    find_instr o1 l = Some i1 ->
+    find_instr o2 l = Some i2 ->
+    i1 = i2 \/ o1 + instr_size i1 <= o2 \/ o2 + instr_size i2 <= o1.
+Proof.
+  intros l o1 o2 i1 i2 FI1 FI2.
+  destruct (zeq o1 o2). subst. rewrite FI1 in FI2; inv FI2; auto.
+  right.
+  eapply find_instr_no_overlap; eauto.
+Qed.
+
 Lemma label_pos_rng:
   forall lbl c pos z,
     label_pos lbl pos c = Some z ->
