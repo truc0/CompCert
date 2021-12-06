@@ -1144,23 +1144,6 @@ Proof.
   intros. f_equalrewrite Asmgenproof0.nextinstr_pc. f_equal.
 Qed. *)
 
-Lemma nextinstr_rsp:
-  forall sz rs,
-    nextinstr sz rs RSP= rs RSP.
-Proof.
-  unfold nextinstr.
-  intros; rewrite Pregmap.gso; congruence.
-Qed.
-
-Lemma nextinstr_nf_rsp:
-  forall sz rs,
-    nextinstr_nf sz rs RSP = rs RSP.
-Proof.
-  unfold nextinstr_nf.
-  intros. rewrite nextinstr_rsp.
-  rewrite Asmgenproof0.undef_regs_other; auto.
-  simpl; intuition subst; congruence.
-Qed.
 
     Lemma real_asm_inv_inv:
       forall (prog_no_rsp: asm_prog_no_rsp ge) (WF: wf_asm_prog ge) s1 t s2,

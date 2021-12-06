@@ -29,6 +29,10 @@ Qed.
 
 Section PRESERVATION.
 
+  Variable instr_size: instruction -> Z.
+  Hypothesis instr_size_bound : forall i, 0 < instr_size i <= Ptrofs.max_unsigned.
+  Hypothesis transf_instr_size : forall i, instr_size i = code_size instr_size (transf_instr i).
+
   Variable prog tprog: Asm.program.
   Hypothesis TRANSF: Linking.match_program (fun _ f1 f2 => f2 = transf_fundef f1) eq prog tprog.
   Let ge := Genv.globalenv prog.
@@ -42,10 +46,11 @@ Section PRESERVATION.
     Senv.equiv ge tge.
   Proof (Genv.senv_match TRANSF).
 
-(*  Lemma genv_next_preserved:
-    Genv.genv_next tge = Genv.genv_next ge.
-  Proof. apply senv_preserved. Qed. *)
-
+(*
+  Lemma genv_next_preserved:
+    Genv.genv_sup tge = Genv.genv_sup ge.
+  Proof. apply senv_preserved. Qed.
+*)
   Lemma functions_translated:
     forall b f,
       Genv.find_funct_ptr ge b = Some f ->
@@ -65,8 +70,8 @@ Section PRESERVATION.
   Proof.
     apply senv_preserved.
   Qed.
-(* Does this matters?
-  Lemma transf_instr_size:
+
+(*  Lemma transf_instr_size:
     forall i,
       instr_size i = code_size (transf_instr i).
   Proof.
@@ -80,29 +85,22 @@ Section PRESERVATION.
   Inductive code_at: Z -> code -> code -> Prop :=
   | code_at_nil o c: code_at o c nil
   | code_at_cons o c i c':
-      find_instr o c = Some i ->
+      find_instr instr_size o c = Some i ->
       code_at (o + instr_size i) c c' ->
       code_at o c (i::c').
 
-  Lemma code_size_app:
-    forall c1 c2,
-      code_size (c1 ++ c2) = code_size c1 + code_size c2.
-  Proof.
-    induction c1; simpl; intros; eauto. rewrite IHc1. omega.
-  Qed.
-
   Lemma code_at_app:
-    forall b a c, code_at (code_size a) (a ++ (b ++ c)) b.
+    forall b a c, code_at (code_size instr_size a) (a ++ (b ++ c)) b.
   Proof.
     induction b; intros.
     - constructor.
-    - constructor. 
-      replace (code_size a0) with (0 + code_size a0) by omega.
-      rewrite find_instr_app by omega. reflexivity.
+    - constructor.
+      replace (code_size instr_size a0) with (0 + code_size instr_size a0) by lia.
+      rewrite find_instr_app; eauto. lia.
       replace (a0 ++ (a::b) ++ c) with ((a0 ++ a::nil) ++ b ++ c).
-      replace (code_size a0 + instr_size a) with (code_size (a0 ++ a::nil)).
+      replace (code_size instr_size a0 + instr_size a) with (code_size instr_size (a0 ++ a::nil)).
       apply IHb.
-      rewrite code_size_app. simpl. omega.
+      rewrite code_size_app. simpl. lia.
       simpl. rewrite app_ass. simpl. reflexivity.
   Qed.
 
@@ -115,33 +113,34 @@ Section PRESERVATION.
 
   Lemma code_at_shift:
     forall i a c o,
-      code_at (o - code_size a) c i -> code_at o (a ++ c) i.
+      code_at (o - code_size instr_size a) c i -> code_at o (a ++ c) i.
   Proof.
     induction i; simpl; intros b c o CA. constructor.
     inv CA. constructor.
-    replace o with ((o - code_size b) + code_size b) by omega.
-    rewrite find_instr_app. auto. eapply find_instr_pos_positive; eauto.
+    replace o with ((o - code_size instr_size b) + code_size instr_size b) by lia.
+    rewrite find_instr_app; eauto. eapply find_instr_pos_positive; eauto.
     apply IHi.
-    replace (o + instr_size a - code_size b) with (o - code_size b + instr_size a). auto. omega.
+    replace (o + instr_size a - code_size instr_size b) with (o - code_size instr_size b + instr_size a). auto. lia.
   Qed.
-(*
+
   Lemma find_instr_transl:
     forall c o i,
-      find_instr o c = Some i ->
+      find_instr instr_size o c = Some i ->
       code_at o (transf_code c) (transf_instr i).
   Proof.
     induction c; simpl; intros; eauto. easy.
     repeat destr_in H.
     - unfold transf_code. simpl.
       destruct transf_instr eqn:TI.
-      apply (f_equal code_size) in TI. rewrite <- transf_instr_size in TI. simpl in TI. generalize (instr_size_positive i); omega.
+      apply (f_equal (code_size instr_size)) in TI. rewrite <- transf_instr_size in TI. simpl in TI.
+      generalize (instr_size_bound i); lia.
       simpl. constructor. simpl. auto.
       simpl. apply code_at_next.
     - specialize (IHc _ _ H1).
       unfold transf_code. simpl. fold (transf_code c).
       eapply code_at_shift. rewrite <- transf_instr_size; auto.
   Qed.
-*)
+
   Definition id_instr (i: instruction) : bool :=
     match i with
     | Pallocframe _ _ _
@@ -149,13 +148,13 @@ Section PRESERVATION.
     | _ => true
     end.
 
-  Hypothesis WF: wf_asm_prog ge.
-  Hypothesis prog_no_rsp: asm_prog_no_rsp ge.
+  Hypothesis WF: wf_asm_prog instr_size ge.
+  Hypothesis prog_no_rsp: asm_prog_no_rsp instr_size ge.
 
   Lemma exec_instr_Plea:
     forall ge f r a (rs: regset) m,
-      exec_instr ge f (Plea r a) rs m =
-      Next (nextinstr (rs # r <- (eval_addrmode ge a rs))) m.
+      exec_instr instr_size ge f (Plea r a) rs m =
+      Next (nextinstr (Ptrofs.repr (instr_size (Plea r a))) (rs # r <- (eval_addrmode ge a rs))) m.
   Proof.
     unfold Plea, eval_addrmode.
     intros. destr.
@@ -243,22 +242,21 @@ Section PRESERVATION.
     intros; erewrite eval_addrmode_senv_equiv; eauto.
   Qed.
 
-  (* About label, maybe the reason why we need instr_size before *)
   Lemma label_pos_app:
     forall a b l o,
       ~ In (Plabel l) a ->
-      label_pos l o (a ++ b) = label_pos l (o + code_size a) b.
+      label_pos instr_size l o (a ++ b) = label_pos instr_size l (o + code_size instr_size a) b.
   Proof.
     induction a; simpl; intros; eauto.
     rewrite Z.add_0_r; auto.
     destr. destruct a; simpl in Heqb0; try congruence. destr_in Heqb0.
-    rewrite IHa; auto. f_equal. unfold instr_size.  lia.
+    rewrite IHa; auto. f_equal. lia.
   Qed.
-(*
+
   Lemma label_pos_transf:
     forall c l o,
-      label_pos l o c =
-      label_pos l o (transf_code c).
+      label_pos instr_size l o c =
+      label_pos instr_size l o (transf_code c).
   Proof.
     induction c; simpl; intros; eauto.
     unfold transf_code. simpl. fold (transf_code c).
@@ -271,14 +269,14 @@ Section PRESERVATION.
       destruct a; try now (simpl in *; unfold Padd, Psub, Plea in *; simpl in *; repeat destr_in IN; try intuition congruence).
       simpl in *. destr_in Heqb.
       simpl in *. unfold Padd, Psub, Plea in *. simpl in *. repeat destr_in IN. intuition congruence.
-      unfold Padd, Psub, Plea in *. repeat destr_in H. intuition congruence.
-      unfold Padd, Psub, Plea in *. repeat destr_in H.
+      unfold Padd, Psub, Plea in *. repeat destr_in H. intuition congruence. inv H0. inv H. auto. inv H.
+      unfold Padd, Psub, Plea in *. repeat destr_in H. congruence. inv H0. inv H. auto.
   Qed.
 
   Lemma goto_label_senv_equiv:
     forall f l rs m rs' m',
-      goto_label ge f l rs m = Next rs' m' ->
-      goto_label tge (transf_function f) l rs m = Next rs' m'.
+      goto_label instr_size ge f l rs m = Next rs' m' ->
+      goto_label instr_size tge (transf_function f) l rs m = Next rs' m'.
   Proof.
     unfold goto_label.
     intros.
@@ -286,7 +284,6 @@ Section PRESERVATION.
     destr.
     destr_in H. inv H. erewrite functions_translated; eauto.
   Qed.
-*)
 (*
   Lemma goto_ofs_senv_equiv:
     forall sz ofs rs m rs' m',
@@ -326,28 +323,27 @@ Section PRESERVATION.
     {
       reflexivity.
     } *)
-    Admitted.
-(*
-    revert REC NEXT.
+    revert REC.
     generalize (Genv.empty_genv Asm.fundef unit (prog_public prog)) (Genv.empty_genv Asm.fundef unit (prog_public tprog)).
     revert A.
     simpl.
     unfold Asm.fundef.
     generalize (@prog_defs (fundef function) unit prog) (@prog_defs (fundef function) unit tprog).
     induction 1; simpl. eauto.
-    intros t t0 REC NEXT. apply IHA.
-    simpl. intro b. inv H. inv H1. auto.
-    rewrite ! Maps.PTree.gsspec.
-    rewrite NEXT. destruct (peq b (Genv.genv_next t0)). inv H3. congruence. auto. auto.
-    simpl. congruence.
+    intros t t0 REC. apply IHA.
+    simpl. intro b. inv H. inv H1.
+    +
+    rewrite ! NMap.gsspec. rewrite H0.
+    destruct (NMap.elt_eq b (Global (fst b1))). inv H3. congruence. auto.
+    +
+    rewrite ! NMap.gsspec. rewrite H0.
+    destruct (NMap.elt_eq b (Global (fst b1))). inv H3. congruence. auto.
   Qed.
-  *)
 
-(*
   Lemma goto_label_senv_equiv':
     forall f l rs m,
-      goto_label ge f l rs m = Stuck ->
-      goto_label tge (transf_function f) l rs m = Stuck.
+      goto_label instr_size ge f l rs m = Stuck ->
+      goto_label instr_size tge (transf_function f) l rs m = Stuck.
   Proof.
     unfold goto_label.
     intros.
@@ -355,7 +351,7 @@ Section PRESERVATION.
     destr.
     destr_in H. erewrite functions_only_translated; eauto.
   Qed.
-
+(*
   Lemma goto_ofs_senv_equiv':
     forall sz ofs rs m,
       goto_ofs ge sz ofs rs m = Stuck ->
@@ -366,18 +362,18 @@ Section PRESERVATION.
     destr.
     destr_in H. erewrite functions_only_translated; eauto.
   Qed.
-
+*)
   Lemma goto_label_eq:
     forall f l rs m,
-      goto_label ge f l rs m =
-      goto_label tge (transf_function f) l rs m.
+      goto_label instr_size ge f l rs m =
+      goto_label instr_size tge (transf_function f) l rs m.
   Proof.
     intros.
-    destruct (goto_label ge f l rs m) eqn:GL.
+    destruct (goto_label instr_size ge f l rs m) eqn:GL.
     symmetry; eapply goto_label_senv_equiv; eauto.
     symmetry; eapply goto_label_senv_equiv'; eauto.
   Qed.
-
+(*
   Lemma goto_ofs_eq:
     forall sz ofs rs m,
       goto_ofs ge sz ofs rs m =
@@ -399,52 +395,42 @@ Section PRESERVATION.
     destruct senv_preserved as (A & B & C & D). simpl in *; rewrite B. auto.
   Qed.
   *)
+
   Lemma exec_instr_senv_equiv:
     forall f i rs m (ID : id_instr i = true),
-      exec_instr ge f i rs m = exec_instr tge (transf_function f) i rs m.
+      exec_instr instr_size ge f i rs m = exec_instr instr_size tge (transf_function f) i rs m.
   Proof.
     generalize senv_preserved as EQ.
-    destruct i; simpl; intros; eauto using exec_load_senv_equiv, exec_store_senv_equiv;
-      inversion EQ as (A & B & C); simpl in *.
+    destruct i; simpl; intros; eauto; try (erewrite exec_load_senv_equiv; eauto); try (erewrite exec_store_senv_equiv; eauto).
+    - unfold Genv.symbol_address.
+    destruct EQ as (A & B & C).  simpl in *. rewrite A. auto.
+    - erewrite eval_addrmode32_senv_equiv; eauto.
+    - erewrite eval_addrmode64_senv_equiv; eauto.
+    - eapply goto_label_eq; eauto.
+    - unfold Genv.find_funct.
+      unfold Genv.symbol_address.
+      rewrite symbols_preserved.
+      destruct (Genv.find_symbol ge symb); auto. rewrite pred_dec_true; auto.
+      destr. erewrite functions_translated; eauto. erewrite functions_only_translated; eauto.
+    - unfold Genv.find_funct. destruct (rs r); auto.
+      destruct (Ptrofs.eq_dec i Ptrofs.zero); auto.
+      destr. erewrite functions_translated; eauto. erewrite functions_only_translated; eauto.
     -
-    unfold Genv.symbol_address. rewrite A. auto.
+    destr. destr. eapply goto_label_eq; eauto.
     -
-    erewrite eval_addrmode32_senv_equiv; eauto.
+    destr. destr. destr. destr. eapply goto_label_eq; eauto.
     -
-    erewrite eval_addrmode64_senv_equiv; eauto.
+    destr. destr. eapply goto_label_eq; eauto.
     -
-    admit.
-(*    eapply goto_label_eq; eauto. *)
-    -
-      unfold Genv.find_funct. unfold Genv.symbol_address. rewrite A.
-      repeat destr.
-      destr_in Heqo. exploit functions_translated; eauto. intro. congruence.
-      destr_in Heqo. exploit functions_only_translated; eauto. intro. congruence.
-    -
-      unfold Genv.find_funct. repeat destr.
-      repeat destr_in Heqo. exploit functions_translated; eauto. intro. congruence.
-      repeat destr_in Heqo. exploit functions_only_translated; eauto. intro. congruence.
-    -
-      destr. destr. admit. (*label*)
-    -
-      destr. destr. destr. destr. admit. (* eapply goto_label_eq; eauto. *)
-    -
-    destr. destr. admit.  (*eapply goto_label_eq; eauto. *)
-    -
-    destr. f_equal. f_equal. f_equal.  unfold Genv.symbol_address. rewrite A. auto.
-(*
-    eapply goto_ofs_eq; eauto.
-    destr. destr. eapply goto_ofs_eq; eauto.
-    destr. destr. destr. destr. eapply goto_ofs_eq; eauto.
-    destr. destr. eapply goto_ofs_eq; eauto.
-*)
- Admitted.
+    destr. f_equal. f_equal. f_equal.       unfold Genv.symbol_address.
+      rewrite symbols_preserved. auto.
+Qed.
 
   Lemma pseudo_instructions_step:
     forall s1 t s2
-           (STEP : step (Genv.globalenv prog) s1 t s2)
+           (STEP :step instr_size (Genv.globalenv prog) s1 t s2)
            (INV: real_asm_inv s1),
-      plus step (Genv.globalenv tprog) s1 t s2.
+      plus (step instr_size ) (Genv.globalenv tprog) s1 t s2.
   Proof.
     intros s1 t s2 STEP INV.
     inv STEP.
@@ -455,23 +441,63 @@ Section PRESERVATION.
         rewrite NORMAL in CA. inv CA.  inv H8. eapply plus_one.
         econstructor. eauto. eapply FFP. eauto.
         erewrite <- exec_instr_senv_equiv; eauto.
-      + subst; simpl in *. inv H2. inv CA. inv H7. inv H9.
-        eapply plus_two.
+      + (* Pallocframe -> Padd;Psub;Pstoreptr*)
+        subst; simpl in *. inv H2. inv CA. inv H8. inv H10.
+        eapply plus_three.
+        (*Padd*)
         econstructor. eauto. eapply FFP. eauto.
         unfold Padd. apply exec_instr_Plea.
-        econstructor. rewrite Asmgenproof0.nextinstr_pc. repeat rewrite Pregmap.gso by congruence.
-        rewrite H. simpl. eauto.
-        eauto. erewrite wf_asm_pc_repr'; eauto.
-        erewrite (instr_size_alloc sz pubrange ofs_ra (align sz 8 - size_chunk Mptr)
-                                   (size_chunk Mptr)).
-        generalize (instr_size_positive (Psub RSP RSP (align sz 8 - size_chunk Mptr))).
+        (*Psub*)
+        econstructor.
+        rewrite Asmgenproof0.nextinstr_pc. repeat rewrite Pregmap.gso by congruence.
+        rewrite H. simpl. eauto. eauto.
+        erewrite wf_asm_pc_repr'; eauto.
+        generalize (transf_instr_size (Pallocframe sz ofs_ra ofs_link)). intro PSIZE.
+        simpl in PSIZE. rewrite PSIZE.
+        generalize (instr_size_bound (Psub RSP RSP (align sz 8 - size_chunk Mptr))).
         unfold Padd.
-        generalize (instr_size_positive (Plea RAX (linear_addr RSP (size_chunk Mptr)))).
-        omega.
+        generalize (instr_size_bound (Plea RAX (linear_addr RSP (size_chunk Mptr)))).
+        generalize (instr_size_bound (Pstoreptr (linear_addr RSP (Ptrofs.unsigned ofs_link)) RAX)).
+        lia.
         unfold Psub, Padd. rewrite exec_instr_Plea. f_equal.
+        (*Pstoreptr*)
+        econstructor. simpl_regs. rewrite H. simpl. eauto. eauto.
+        erewrite code_bounded_repr; eauto.
+        erewrite code_bounded_repr; eauto.
+        admit. unfold Padd.
+        generalize (instr_size_bound (Plea RAX (linear_addr RSP (size_chunk Mptr)))). lia.
+        admit.
+        erewrite code_bounded_repr; eauto.
+        admit.
+        unfold Padd.
+        generalize (instr_size_bound (Plea RAX (linear_addr RSP (size_chunk Mptr)))). lia.
+        unfold Psub, Padd.
+        generalize (instr_size_bound (Plea RSP (linear_addr RSP (-(align sz 8 - size_chunk Mptr))))). lia.
+        unfold Pstoreptr.
+        destruct ptr64 eqn:PTR64.
+        * simpl. unfold exec_store.  unfold eval_addrmode. rewrite PTR64.
+          unfold eval_addrmode64. simpl.
+          simpl_regs.
+          inv INV. inv RSPPTR. destruct H2. simpl in H2. rewrite H2. rewrite H2 in H4.
+          unfold Val.offset_ptr, Mptr in *. simpl in *.
+          repeat (rewrite PTR64 in *; simpl in *).
+          assert (
+              (Ptrofs.unsigned
+              (Ptrofs.add (Ptrofs.add x (Ptrofs.neg (Ptrofs.sub (Ptrofs.repr (align sz 8)) (Ptrofs.repr 8)))) ofs_link))
+                =
+(Ptrofs.unsigned
+         (Ptrofs.add (Ptrofs.add x (Ptrofs.of_int64 (Int64.add Int64.zero (Int64.repr (- (align sz 8 - 8))))))
+            (Ptrofs.of_int64 (Int64.add Int64.zero (Int64.repr (Ptrofs.unsigned ofs_link))))))
+            ). admit.
+         assert ( (Vptr bstack (Ptrofs.add x (Ptrofs.repr 8)))=
+                (Vptr bstack (Ptrofs.add x (Ptrofs.of_int64 (Int64.add Int64.zero (Int64.repr 8)))))
+           ). admit.
+           rewrite H5, H6 in H4. destr_in H4.
+                  inv H4. f_equal.
         apply Axioms.extensionality. intro r.
         destruct (preg_eq r PC).
-        * subst. simpl_regs. rewrite H. simpl. f_equal.
+        ++
+          subst. simpl_regs. rewrite H. simpl. f_equal.
           generalize (wf_asm_pc_repr' _ (WF _ _ H0) _ _ H1). intro REPR.
           apply ptrofs_eq_unsigned. 
           rewrite Ptrofs.add_assoc. rewrite (Ptrofs.add_unsigned (Ptrofs.repr _)).
@@ -491,27 +517,20 @@ Section PRESERVATION.
           unfold Ptrofs.neg. f_equal. f_equal.
           eapply wf_allocframe_repr; eauto.
         * traceEq.
-      + subst; simpl in *. inv H2. inv CA. inv H7.
+        *)
+      + (*Pfreeframe*)
+        subst; simpl in *. inv H2. inv CA. inv H7.
         eapply plus_one.
         econstructor. eauto. eapply FFP. eauto.
         unfold Padd. rewrite exec_instr_Plea.
         f_equal. apply Axioms.extensionality. intro r.
-        erewrite (instr_size_free). unfold Padd.
+        generalize (transf_instr_size (Pfreeframe sz ofs_ra ofs_link)). intro. simpl in H2.
+        rewrite H2. unfold Padd.
         regs_eq. auto.
         rewrite eval_addrmode_offset_ptr.
         2: inv INV; edestruct RSPPTR as ( bb & oo & EQ & _); eauto.
         f_equal.
         eapply wf_freeframe_repr; eauto.
-      + subst; simpl in *. inv H2. inv CA. inv H7.
-        eapply plus_one.
-        econstructor. eauto. eapply FFP. eauto.
-        unfold Padd. rewrite exec_instr_Plea.
-        f_equal. apply Axioms.extensionality. intro r.
-        setoid_rewrite Pregmap.gsspec. destr. repeat rewrite Pregmap.gso by congruence.
-        (* setoid_rewrite <- instr_size_load_parent_pointer. eauto. *)
-        setoid_rewrite Pregmap.gsspec. destr.
-        apply eval_addrmode_offset_ptr.
-        inv INV. edestruct RSPPTR as ( bb & oo & EQ & _); eauto.
     - exploit functions_transl. eauto. intros FFP.
       exploit find_instr_transl; eauto. intro CA.
       apply plus_one.
@@ -523,21 +542,20 @@ Section PRESERVATION.
       apply plus_one.
       eapply exec_step_external; eauto.
       eapply external_call_symbols_preserved. apply senv_preserved. eauto.
-  Qed.
-  
-  Theorem pseudo_instructions_correct rs:
-    forward_simulation (RealAsm.semantics prog rs) (RealAsm.semantics tprog rs).
+  Admitted.
+
+  Theorem pseudo_instructions_correct:
+    forward_simulation (RealAsm.semantics instr_size prog) (RealAsm.semantics instr_size tprog).
   Proof.
-    eapply forward_simulation_plus with (match_states := fun s1 s2 : Asm.state => s1 = s2 /\ real_asm_inv prog s1).
+    eapply forward_simulation_plus with (match_states := fun s1 s2 : Asm.state => s1 = s2 /\ real_asm_inv s1).
     - simpl. apply public_preserved.
     - simpl; intros s1 IS1. inversion IS1.
       eapply Genv.init_mem_transf in H; eauto. eexists; split;[|split]; eauto.
-      econstructor. eauto.
-      inv H0. unfold rs0. unfold ge0.
-      rewrite <- symbols_preserved in H1.
-      erewrite <- (Linking.match_program_main) in H1 by eauto.
+      rewrite <- H3.
       econstructor; eauto.
-      eapply real_initial_inv; eauto.
+      rewrite <- symbols_preserved in H2. fold tge.
+      erewrite <- (Linking.match_program_main) in H2 by eauto. auto.
+      eapply real_initial_inv; eauto. rewrite H3. eauto.
     - simpl; intros s1 s2 r (MS & INV) FS. subst. auto.
     - simpl. intros s1 t s2 STEP s1' (MS & INV). subst.
       eexists; split; [|split]; eauto.
@@ -545,4 +563,3 @@ Section PRESERVATION.
       eapply real_asm_inv_inv; eauto.
   Qed.
 
-End WITHMEMORYMODEL.
