@@ -460,6 +460,7 @@ Qed.
         generalize (instr_size_bound (Pstoreptr (linear_addr RSP (Ptrofs.unsigned ofs_link)) RAX)).
         lia.
         unfold Psub, Padd. rewrite exec_instr_Plea. f_equal.
+        destr_in H4. inv H4.
         (*Pstoreptr*)
         econstructor. simpl_regs. rewrite H. simpl. eauto. eauto.
         erewrite code_bounded_repr; eauto.
@@ -478,7 +479,7 @@ Qed.
         * simpl. unfold exec_store.  unfold eval_addrmode. rewrite PTR64.
           unfold eval_addrmode64. simpl.
           simpl_regs.
-          inv INV. inv RSPPTR. destruct H2. simpl in H2. rewrite H2. rewrite H2 in H4.
+          inv INV. inv RSPPTR. destruct H2. simpl in H2. rewrite H2. rewrite H2 in Heqo.
           unfold Val.offset_ptr, Mptr in *. simpl in *.
           repeat (rewrite PTR64 in *; simpl in *).
           assert (
@@ -488,28 +489,71 @@ Qed.
 (Ptrofs.unsigned
          (Ptrofs.add (Ptrofs.add x (Ptrofs.of_int64 (Int64.add Int64.zero (Int64.repr (- (align sz 8 - 8))))))
             (Ptrofs.of_int64 (Int64.add Int64.zero (Int64.repr (Ptrofs.unsigned ofs_link))))))
-            ). admit.
+            ).
+                  {
+                    f_equal. f_equal. f_equal. unfold Ptrofs.sub. rewrite Ptrofs.unsigned_repr.
+                    +
+                    rewrite Int64.add_zero_l.
+                    rewrite Ptrofs.unsigned_repr; auto. 2: vm_compute; split; congruence.
+                    unfold Ptrofs.of_int64.
+                    unfold Ptrofs.neg. simpl.
+                    rewrite Ptrofs.unsigned_repr.
+                    apply Ptrofs.eqm_repr_eq.
+                    Search Ptrofs.eqm.
+                    exploit Ptrofs.eqm64. auto. intro. apply H4. apply H4.
+                    rewrite Ptrofs.unsigned_repr.
+                    Search Int64.unsigned.
+                    apply Int64.eqm_unsigned_repr_r.
+                    Search Int64.eqm.
+                    apply Int64.eqm_refl.
+                    assert (Int64.max_unsigned = Ptrofs.max_unsigned).
+                    unfold Int64.max_unsigned. unfold Ptrofs.max_unsigned.
+                    rewrite Ptrofs.modulus_eq64. auto. auto. rewrite <- H5.
+                    Search Int64.unsigned.
+                    apply Int64.unsigned_range_2.
+                    admit. (* sz_repr *)
+                    + admit. (* sz_repr *)
+                    + rewrite Int64.add_zero_l.
+                    unfold Ptrofs.of_int64. rewrite Int64.unsigned_repr.
+                    rewrite Ptrofs.repr_unsigned. auto.
+                    assert (Int64.max_unsigned = Ptrofs.max_unsigned).
+                    unfold Int64.max_unsigned. unfold Ptrofs.max_unsigned.
+                    rewrite Ptrofs.modulus_eq64. auto. auto. rewrite H4.
+                    apply Ptrofs.unsigned_range_2.
+                  }
+                  auto.
          assert ( (Vptr bstack (Ptrofs.add x (Ptrofs.repr 8)))=
                 (Vptr bstack (Ptrofs.add x (Ptrofs.of_int64 (Int64.add Int64.zero (Int64.repr 8)))))
-           ). admit.
-           rewrite H5, H6 in H4. destr_in H4.
-                  inv H4. f_equal.
+           ). auto.
+                  rewrite H4,H5 in Heqo.
+                  destr_in Heqo. rewrite H10.
+                  f_equal.
         apply Axioms.extensionality. intro r.
         destruct (preg_eq r PC).
         ++
           subst. simpl_regs. rewrite H. simpl. f_equal.
-          generalize (wf_asm_pc_repr' _ (WF _ _ H0) _ _ H1). intro REPR.
-          apply ptrofs_eq_unsigned. 
+          generalize (wf_asm_pc_repr' instr_size instr_size_bound _ (WF _ _ H0) _ _ H1). intro REPR.
+          apply ptrofs_eq_unsigned.
           rewrite Ptrofs.add_assoc. rewrite (Ptrofs.add_unsigned (Ptrofs.repr _)).
-          erewrite Ptrofs.unsigned_repr by apply instr_size_repr.
-          erewrite Ptrofs.unsigned_repr by apply instr_size_repr.
+          rewrite Ptrofs.add_assoc. rewrite (Ptrofs.add_unsigned (Ptrofs.repr _)).
+          erewrite Ptrofs.unsigned_repr.
+          erewrite Ptrofs.unsigned_repr.
+          erewrite Ptrofs.unsigned_repr.
+          erewrite Ptrofs.unsigned_repr.
           repeat rewrite ! REPR.
-          erewrite instr_size_alloc. unfold Psub, Padd; eauto.
-          generalize (instr_size_positive (Pallocframe sz pubrange ofs_ra)); omega.
-          setoid_rewrite <- (instr_size_alloc sz pubrange ofs_ra).
-          generalize (instr_size_positive (Pallocframe sz pubrange ofs_ra)); omega.
-        * simpl_regs. regs_eq. repeat rewrite Asmgenproof0.nextinstr_inv by auto.
-          regs_eq. auto.
+          generalize (transf_instr_size (Pallocframe sz ofs_ra ofs_link)). intro PSIZE.
+          simpl in PSIZE. rewrite PSIZE.
+          unfold Psub, Padd; eauto.
+          generalize (instr_size_bound (Pallocframe sz ofs_ra ofs_link)).
+          unfold Pstoreptr. rewrite PTR64. unfold Mptr. rewrite PTR64. simpl.
+          lia.
+          generalize (instr_size_bound (Pallocframe sz ofs_ra ofs_link)); lia.
+          generalize (transf_instr_size (Pallocframe sz ofs_ra ofs_link)). intro PSIZE.
+          simpl in PSIZE. rewrite PSIZE.
+          admit. admit. admit. admit. admit.
+        ++
+          simpl_regs. regs_eq. repeat rewrite Asmgenproof0.nextinstr_inv by auto.
+          regs_eq. auto. simpl.
           apply eval_addrmode_offset_ptr. inv INV. edestruct RSPPTR as ( bb & oo & EQ & _); eauto.
           rewrite eval_addrmode_offset_ptr; simpl_regs.
           2: inv INV; edestruct RSPPTR as ( bb & oo & EQ & _); eauto.
