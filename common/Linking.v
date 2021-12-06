@@ -577,17 +577,109 @@ Qed.
 
 (** *for static renaming *)
 
-Theorem match_partial_program_alpha:
-  forall {A B V: Type} {LA: Linker A} {LV: Linker V}
-    {ALA: Alpha A} {ALB: Alpha B} {ALV: Alpha V}
-    (transf_fun: A -> res B)
-    (p p': program A V) (tp tp': program B V) ,
-    (forall a b permu, transf_fun a = OK b ->
-                  transf_fun (alpha_rename permu a) = OK (alpha_rename permu b)) ->
-    match_program (fun cu f tf => transf_fun f = OK tf) eq p tp ->
-    match_program (fun cu f tf => transf_fun f = OK tf) eq p' tp' ->
-    alpha_equiv (tp.(prog_main) :: tp.(prog_public)) tp tp'.
-Admitted.
+(* some general lemma for PTree *)
+(* a general lemma for list *)
+Lemma in_list_first {A: Type} (Dec: forall (x y : A), {x=y} + {x<>y}):  forall (a:A) l,
+    In a l ->
+    exists l1 l2, l = l1 ++ a :: l2 /\ ~In a l1.
+Proof.
+  intros.
+  induction l.
+  simpl in H. contradiction.
+  simpl in H. destruct H.
+  exists (@nil A). exists l. simpl. rewrite H. auto.
+  destruct (Dec a a0).
+  exists (@nil A). exists l. simpl. rewrite e. auto.
+  apply IHl in H.
+  destruct H as [l1 [l2 [? ?]]].
+  exists (a0::l1). exists l2.
+  rewrite H. simpl. split. auto.
+  red. intros. destruct H1.
+  subst;congruence.
+  contradiction.
+Qed.
+
+Lemma in_list_last {A: Type} (Dec: forall (x y : A), {x=y} + {x<>y}) : forall (a:A) l,
+    In a l ->
+    exists l1 l2, l = l1 ++ a :: l2 /\ ~In a l2.
+Proof.
+  intros.
+  eapply in_rev in H.
+  eapply (in_list_first) in H;auto.
+  destruct H as [l1 [l2 [? ?]]].
+  exists (rev l2). exists (rev l1).
+  eapply rev_eq_app in H.
+  rewrite H. simpl.
+  rewrite<-app_assoc. simpl.
+  split;auto.
+  red. intros. apply in_rev in H1. contradiction.
+Qed.
+
+Lemma list_app_last {A: Type}: forall (l:list A) n , 
+    length l = S n ->
+    exists a l1 , l = l1 ++ (a::nil)  /\ length l1 = n. 
+Proof.
+  intros.
+  rewrite <- rev_length in H.
+  destruct (rev l) eqn: Rev.
+  simpl in H. congruence.
+  exists a ,(rev l0).
+  simpl in H. inversion H. 
+  split. assert (rev (rev l) = rev (a::l0)). f_equal. auto.
+  rewrite rev_involutive in H0.
+  rewrite H0. simpl. auto.
+  apply rev_length.
+Qed.
+
+Lemma PTree_fold_last_position_aux {V: Type} : forall n l b k (v:V),
+    length l = n ->
+    b ! k = None ->
+    (fold_left (fun (m : PTree.t V) (k_v : PTree.elt * V) =>
+                  PTree.set (fst k_v) (snd k_v) m) 
+               l b) ! k = Some v ->
+    exists l1 l2, l = l1 ++ (k,v) :: l2 /\ ~ In k (map fst l2). 
+Proof.
+  induction n.
+  - simpl. intros.
+    rewrite length_zero_iff_nil in H. subst.
+    simpl in *. rewrite H0 in H1. inversion H1.
+  - intros.
+    apply list_app_last in H.
+    destruct H as [a [l1 [? ?]]].
+    subst. erewrite  fold_left_app in H1.
+    simpl in H1.
+    destruct a. simpl in *.
+    (* discuss whether a equal to (k,v) *)
+    destruct (Pos.eq_dec e k).
+    + subst. erewrite PTree.gss in H1.
+      inversion H1. exists l1, nil.
+      simpl. auto.
+    + erewrite PTree.gso in H1;auto.
+      eapply IHn in H1.
+      destruct H1 as [l2 [l3 [? ?]]].
+      subst.
+      exists l2,(l3 ++ (e,v0)::nil).
+      rewrite <- app_assoc. split;auto.
+      red. intros. apply H1.
+      rewrite map_app in H.
+      eapply in_app in H.
+      destruct H. auto. simpl in H. destruct H;auto.
+      congruence. contradiction.
+      auto.
+      auto.
+Qed.
+
+Lemma PTree_of_list_last_position {V: Type} : forall l k (v:V),
+    (PTree_Properties.of_list l) ! k = Some v ->
+    exists l1 l2, l = l1 ++ (k,v) :: l2 /\ ~ In k (map fst l2).
+Proof.
+  unfold PTree_Properties.of_list.
+  intros.
+  eapply PTree_fold_last_position_aux.
+  auto.
+  apply PTree.gempty.
+  auto.
+Qed.
 
 Theorem alpha_partial_program_match:
   forall {A B V: Type} {LA: Linker A} {LV: Linker V}
@@ -611,6 +703,284 @@ Proof.
   split.
 Admitted.
 
+
+Lemma match_program_contextual_order :
+  forall {C F1 V1 F2 V2 :Type} {LC : Linker C}
+    P1 P2 (c1 c2:C) (p1:program F1 V1) (p2:program F2 V2),
+    match_program_gen P1 P2 c1 p1 p2 ->
+    linkorder c1 c2 ->
+    match_program_gen P1 P2 c2 p1 p2.
+Proof.
+  intros.
+  unfold match_program_gen in *.
+  destruct H. destruct H1.
+  split;auto.
+  induction H.
+  constructor.
+  apply list_forall2_cons.
+  - unfold match_ident_globdef in *.
+    destruct H. split;auto.
+    destruct H4.
+    + eapply match_globdef_fun.
+      2: apply H5.
+      eapply linkorder_trans. apply H4. apply H0.
+    + eapply match_globdef_var.
+      auto.
+  - auto.      
+Qed.
+
+Lemma list_forall_contextual_order:
+  forall {A B V :Type} {LA: Linker A} {LV: Linker V}
+    (transf_fun: program A V -> A -> res B)
+    c1 c2 (l1: list (ident*globdef A V)) (l2:list (ident*globdef B V)),
+  list_forall2 (match_ident_globdef
+                  (fun (cu : program A V) (f : A) (tf : B) =>
+                     transf_fun cu f = OK tf) eq c1) l1 l2 ->
+  linkorder c1 c2 ->
+  list_forall2 (match_ident_globdef
+                  (fun (cu : program A V) (f : A) (tf : B) =>
+                     transf_fun cu f = OK tf) eq c2) l1 l2.
+Proof.
+  intros.
+  induction H.
+  constructor.
+  apply list_forall2_cons.
+  unfold match_ident_globdef in *.
+  destruct H. split;auto.
+  destruct H2.
+  - eapply match_globdef_fun.
+    2: apply H3.
+    eapply linkorder_trans.
+    apply H2. apply H0.
+  - apply match_globdef_var. auto.
+  - auto.
+Qed.
+
+Lemma linkorder_prog_append_def {A V:Type} {LA: Linker A} {LV: Linker V} : forall (defs:list (ident*globdef A V)) public main a,
+  (linkorder
+     {| prog_defs :=  defs;
+        prog_public := public;
+        prog_main := main |}
+     {| prog_defs := a::defs;
+        prog_public := public;
+        prog_main := main |}).
+Proof.
+  Transparent Linker_prog. simpl.
+  split;auto.
+  split. apply incl_refl.
+  intros.
+  unfold prog_defmap in *. simpl in *.
+  apply PTree_of_list_last_position in H.
+  destruct H as [l1 [l2 [? ?]]].
+  exists gd1. rewrite H.
+  split.
+  rewrite app_comm_cons.
+  eapply PTree_Properties.of_list_unique.
+  auto. split.
+  apply linkorder_refl. intros. auto.
+Qed.
+
+(* add to AST.v *)
+Lemma exists_inverse_permutation : forall (a:permutation),
+    exists b, inverse_permutation a b.
+Admitted.
+
+Lemma inverse_permutation_sym : forall a b,
+    inverse_permutation a b -> inverse_permutation b a.
+  Admitted.
+
+(* a general lemma for PTree, hard to prove! *)
+Lemma Bijective_Injective {A B: Type}: forall (f: A->B), FinFun.Bijective f -> FinFun.Injective f.
+Proof.
+  unfold FinFun.Bijective. unfold FinFun.Injective.
+  intros.
+  destruct H as [g [? ?]].
+  eapply f_equal in H0.
+  erewrite H in H0.  erewrite H in H0.
+  auto.
+Qed.
+
+Lemma PTree_of_list_map {V: Type} : forall (f: positive -> positive) (g: V -> V) (l:list (positive * V)) k (v: V),
+    (FinFun.Bijective f) ->
+    (PTree_Properties.of_list l) ! k = Some v ->
+    (PTree_Properties.of_list
+       (map (fun (ele:(positive*V)) =>  (f (fst ele), g (snd ele))) l)) ! (f k) = Some (g v).
+Proof.
+  intros.
+  induction l.
+  - unfold PTree_Properties.of_list in *.
+    simpl in *.
+    erewrite PTree.gempty in H0.
+    inversion H0.
+  - intros.
+    (* key idea : discuss whether a in l or not, because of_list take the last occurence *)
+    destruct (in_dec Pos.eq_dec k (map fst l)).
+    + apply PTree_of_list_last_position in H0.
+      destruct H0 as [l1 [l2 [? ?]]].
+      destruct l1.
+      * rewrite H0. simpl in *.
+        rewrite <- (app_nil_l ((f k, g v)
+      :: map (fun ele : positive * V => (f (fst ele), g (snd ele)))
+           l2)).
+        eapply PTree_Properties.of_list_unique.
+        erewrite map_map. simpl.
+        (* f is Bijective *)
+        unfold FinFun.Bijective in H. destruct H as [f1 [? ?]].
+        red. intros. eapply (in_map f1) in H3.
+        erewrite H in H3. erewrite map_map in H3.
+        apply H1. erewrite <- map_id. (* use map_id to solve lta conversion *)
+        erewrite map_map. clear H0 IHl H1.
+        induction l2.
+        simpl in H3. auto.
+        simpl in *. destruct H3.
+        left. erewrite H in H0. auto.
+        right. apply IHl2. auto.
+      * simpl in H0. injection H0. intros;subst.
+        clear H0. rewrite app_comm_cons.
+        rewrite map_app. simpl.
+        rewrite app_comm_cons.
+        eapply PTree_Properties.of_list_unique.
+        erewrite map_map. simpl.
+        unfold FinFun.Bijective in H. destruct H as [f1 [? ?]].
+        red. intros. eapply (in_map f1) in H2.
+        erewrite H in H2. erewrite map_map in H2.
+        apply H1. erewrite <- map_id. (* use map_id to solve lta conversion *)
+        erewrite map_map. clear IHl H1 i.
+        induction l2.
+        simpl in H2. auto.
+        simpl in *. destruct H2.
+        left. erewrite H in H1. auto.
+        right. apply IHl2. auto.
+    + eapply PTree_Properties.in_of_list in H0. simpl in H0.
+      destruct H0.
+      * subst.
+        assert (~ In (f k) (map f (map fst l))).
+        { erewrite map_map.
+          red.
+          erewrite in_map_iff.
+          intros. destruct H0 as [x [? ?]].
+          apply Bijective_Injective in H. unfold FinFun.Injective in H.
+          eapply H in H0.
+          apply (in_map fst) in H1. rewrite H0 in H1. auto.
+        }.
+        simpl. rewrite <- (app_nil_l ((f k, g v)
+      :: map (fun ele : positive * V => (f (fst ele), g (snd ele))) l)).
+        eapply PTree_Properties.of_list_unique.
+        erewrite map_map. erewrite map_map in H0.
+        simpl. auto.       
+      * apply (in_map fst) in H0.
+        simpl in H0. contradiction.
+Qed.
+
+        
+(* a more general lemma, need to be moved to AST.v *)
+Lemma rename_program_remain_gd {F V: Type} {AF: Alpha F} {AV: Alpha V}: forall (p:AST.program F V) id gd a,
+    (prog_defmap p) ! id = Some gd ->
+    (prog_defmap (alpha_rename a p)) ! (alpha_rename a id) = Some (alpha_rename a gd).
+Proof.
+  unfold prog_defmap.
+  Transparent Alpha_prog.
+  destruct p. simpl in *.
+  intros. eapply PTree_of_list_map.
+  destruct a. simpl. auto.
+  auto.
+Qed.
+
+
+
+Lemma linkorder_alpha {A V:Type} {LA: Linker A} {LV: Linker V} {ALA: Alpha A}  {ALV: Alpha V}:
+  forall (p1 p2:program A V) a,
+  linkorder p1 p2 ->
+  linkorder (alpha_rename a p1) (alpha_rename a p2).
+Proof.
+  Transparent Linker_prog Alpha_prog.
+  simpl.
+  intros. destruct H as [? [? ?]].
+  split.
+  rewrite H. auto.
+  split.
+  - apply incl_map. auto.
+  - intros.
+    generalize (exists_inverse_permutation a).
+    intros. destruct H3 as [b ?].
+    eapply (rename_program_remain_gd _ _ _ b) in H2.
+    assert ((alpha_rename b (alpha_rename_prog a p1)) = p1).
+    { erewrite alpha_rename_sym. auto. simpl. auto. auto. }
+    rewrite H4 in *. apply H1 in H2. clear H1 H0.
+    destruct H2 as [gd2 [? [? ?]]].
+    eapply (rename_program_remain_gd _ _ _ a) in H0. 
+    erewrite alpha_rename_sym in H0. 2: reflexivity. 2: auto.
+    simpl in H0. exists (alpha_rename a gd2).
+    split.
+    + apply H0.
+    + split.
+      *
+        (*** need to add linkorder_alpha to Linker Class!!! ***)
+        Admitted.
+Lemma alpha_partial_program_match_gen_contextual:
+  forall {A B V: Type} {LA: Linker A} {LV: Linker V}
+    {ALA: Alpha A} {ALB: Alpha B} {ALV: Alpha V}
+    (transf_fun: program A V -> A -> res B) (ctx ctx':program A V)
+    (p p': program A V) (tp tp': program B V) (al: permutation),
+    (forall a b c permu, transf_fun c a = OK b ->
+                  transf_fun (alpha_rename permu c) (alpha_rename permu a) = OK (alpha_rename permu b)) ->
+    match_program_gen (fun cu f tf => transf_fun cu f = OK tf) eq ctx p tp ->
+    alpha_rename al p = p' ->
+    alpha_rename al tp = tp' ->
+    alpha_rename al ctx = ctx' ->
+    match_program_gen (fun cu f tf => transf_fun cu f = OK tf) eq ctx' p' tp'.
+Proof.
+  intros. subst.
+  unfold match_program_gen in *.
+  Transparent Alpha_prog.
+  destruct H0. destruct H1.
+  destruct p.
+  destruct tp.
+  simpl in *. unfold alpha_rename_prog. simpl in *.
+  split.
+  - induction H0. 
+    + 
+      simpl in *.
+      constructor.
+    + simpl.
+      apply list_forall2_cons.
+      unfold match_ident_globdef in *.
+      destruct H0.
+      destruct a1. destruct b1.
+      simpl in *. split.
+      * subst. auto.
+      * destruct g;destruct g0;inversion H4.
+        (* fundef *)
+        -- subst.           
+           eapply match_globdef_fun.
+           2: eapply H;apply H8.           
+           
+           apply (linkorder_alpha _ _ al) in H7.
+           assert ( {|
+    prog_defs := map
+                   (fun d : ident * globdef A V =>
+                    (alpha_rename al (fst d),
+                    alpha_rename al (snd d))) 
+                   (prog_defs ctx);
+    prog_public := map (alpha_rename al) (AST.prog_public ctx);
+    prog_main := alpha_rename al (AST.prog_main ctx) |} =
+                    alpha_rename al ctx).
+           { destruct ctx. simpl. unfold alpha_rename_prog. simpl. auto. }
+           rewrite H0.
+           apply H7.                     
+        (* var *)
+        -- subst. 
+           eapply match_globdef_var.
+           destruct v. destruct v0.
+           inversion H7. subst. constructor.
+           simpl. auto.
+      * eapply list_forall_contextual_order.
+        2: apply linkorder_refl.
+
+        auto.
+  - subst. auto.
+Qed.
+
 Theorem alpha_partial_program_match_contextual:
   forall {A B V: Type} {LA: Linker A} {LV: Linker V}
     {ALA: Alpha A} {ALB: Alpha B} {ALV: Alpha V}
@@ -622,8 +992,14 @@ Theorem alpha_partial_program_match_contextual:
     alpha_rename al p = p' ->
     alpha_rename al tp = tp' ->
     match_program (fun cu f tf => transf_fun cu f = OK tf) eq p' tp'.
-Admitted.
-  
+Proof.
+  intros. subst.
+  unfold match_program in *.
+  eapply alpha_partial_program_match_gen_contextual;auto.
+  apply H0.
+Qed.
+
+
 (** * Commutation between linking and program transformations *)
 
 Section LINK_MATCH_PROGRAM.
