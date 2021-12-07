@@ -65,22 +65,24 @@ Section PRESERVATION.
     intros. apply functions_translated in H; eauto.
   Qed.
 
+
+  Lemma transf_code_size: forall c,
+      code_size instr_size c = code_size instr_size (transf_code c).
+  Proof.
+    intros. induction c.
+    - auto.
+    - simpl. unfold transf_code. simpl.
+      Search code_size.
+      rewrite code_size_app.
+      generalize (transf_instr_size a). intro.
+      rewrite <- H. simpl. setoid_rewrite <- IHc. lia.
+  Qed.
+
   Lemma public_preserved:
     forall id : ident, Genv.public_symbol (Genv.globalenv tprog) id = Genv.public_symbol (Genv.globalenv prog) id.
   Proof.
     apply senv_preserved.
   Qed.
-
-(*  Lemma transf_instr_size:
-    forall i,
-      instr_size i = code_size (transf_instr i).
-  Proof.
-    destruct i; simpl; try omega; rewrite Z.add_0_r.
-    apply instr_size_alloc; eauto.
-    apply instr_size_free; eauto.
-    apply instr_size_load_parent_pointer; eauto.
-  Qed.
-*)
 
   Inductive code_at: Z -> code -> code -> Prop :=
   | code_at_nil o c: code_at o c nil
@@ -442,6 +444,9 @@ Qed.
         econstructor. eauto. eapply FFP. eauto.
         erewrite <- exec_instr_senv_equiv; eauto.
       + (* Pallocframe -> Padd;Psub;Pstoreptr*)
+        generalize (transf_instr_size (Pallocframe sz ofs_ra ofs_link)). intro PSIZE.
+        simpl in PSIZE.
+        generalize (instr_size_bound (Pallocframe sz ofs_ra ofs_link)). intro PSIZEB.
         subst; simpl in *. inv H2. inv CA. inv H8. inv H10.
         eapply plus_three.
         (*Padd*)
@@ -452,8 +457,7 @@ Qed.
         rewrite Asmgenproof0.nextinstr_pc. repeat rewrite Pregmap.gso by congruence.
         rewrite H. simpl. eauto. eauto.
         erewrite wf_asm_pc_repr'; eauto.
-        generalize (transf_instr_size (Pallocframe sz ofs_ra ofs_link)). intro PSIZE.
-        simpl in PSIZE. rewrite PSIZE.
+        rewrite PSIZE.
         generalize (instr_size_bound (Psub RSP RSP (align sz 8 - size_chunk Mptr))).
         unfold Padd.
         generalize (instr_size_bound (Plea RAX (linear_addr RSP (size_chunk Mptr)))).
@@ -462,21 +466,26 @@ Qed.
         unfold Psub, Padd. rewrite exec_instr_Plea. f_equal.
         destr_in H4. inv H4.
         (*Pstoreptr*)
+        generalize (instr_size_bound (Plea RAX (linear_addr RSP (size_chunk Mptr)))). intro SPlea1.
+        generalize (instr_size_bound (Plea RSP (linear_addr RSP (-(align sz 8 - size_chunk Mptr))))).
+        intro SPlea2.
+        generalize (instr_size_bound (Pstoreptr (linear_addr RSP (Ptrofs.unsigned ofs_link))RAX)). intro SPstore.
+        assert (CSIZE: 0 <= code_size instr_size (transf_code (fn_code f)) <= Ptrofs.max_unsigned).
+        {
+          apply WF in H0. exploit wf_asm_code_bounded; eauto. intro.
+          rewrite <- transf_code_size. auto.
+        }
         econstructor. simpl_regs. rewrite H. simpl. eauto. eauto.
         erewrite code_bounded_repr; eauto.
         erewrite code_bounded_repr; eauto.
-        admit. unfold Padd.
-        generalize (instr_size_bound (Plea RAX (linear_addr RSP (size_chunk Mptr)))). lia.
-        admit.
+        unfold Padd. lia.
         erewrite code_bounded_repr; eauto.
-        admit.
-        unfold Padd.
-        generalize (instr_size_bound (Plea RAX (linear_addr RSP (size_chunk Mptr)))). lia.
-        unfold Psub, Padd.
-        generalize (instr_size_bound (Plea RSP (linear_addr RSP (-(align sz 8 - size_chunk Mptr))))). lia.
-        unfold Pstoreptr.
+        unfold Padd. lia.
+        unfold Psub, Padd. lia.
+        unfold Psub, Padd, Pstoreptr in *.
         destruct ptr64 eqn:PTR64.
-        * simpl. unfold exec_store.  unfold eval_addrmode. rewrite PTR64.
+        * (*64bit storeptr*)
+          simpl. unfold exec_store.  unfold eval_addrmode. rewrite PTR64.
           unfold eval_addrmode64. simpl.
           simpl_regs.
           inv INV. inv RSPPTR. destruct H2. simpl in H2. rewrite H2. rewrite H2 in Heqo.
@@ -499,19 +508,17 @@ Qed.
                     unfold Ptrofs.neg. simpl.
                     rewrite Ptrofs.unsigned_repr.
                     apply Ptrofs.eqm_repr_eq.
-                    Search Ptrofs.eqm.
                     exploit Ptrofs.eqm64. auto. intro. apply H4. apply H4.
                     rewrite Ptrofs.unsigned_repr.
-                    Search Int64.unsigned.
                     apply Int64.eqm_unsigned_repr_r.
-                    Search Int64.eqm.
                     apply Int64.eqm_refl.
                     assert (Int64.max_unsigned = Ptrofs.max_unsigned).
                     unfold Int64.max_unsigned. unfold Ptrofs.max_unsigned.
                     rewrite Ptrofs.modulus_eq64. auto. auto. rewrite <- H5.
-                    Search Int64.unsigned.
                     apply Int64.unsigned_range_2.
-                    admit. (* sz_repr *)
+                    exploit wf_allocframe_repr; eauto.
+                    unfold Mptr. rewrite PTR64. simpl. intro. rewrite H4.
+                    apply Ptrofs.unsigned_range_2.
                     + admit. (* sz_repr *)
                     + rewrite Int64.add_zero_l.
                     unfold Ptrofs.of_int64. rewrite Int64.unsigned_repr.
@@ -536,32 +543,27 @@ Qed.
           apply ptrofs_eq_unsigned.
           rewrite Ptrofs.add_assoc. rewrite (Ptrofs.add_unsigned (Ptrofs.repr _)).
           rewrite Ptrofs.add_assoc. rewrite (Ptrofs.add_unsigned (Ptrofs.repr _)).
-          erewrite Ptrofs.unsigned_repr.
-          erewrite Ptrofs.unsigned_repr.
-          erewrite Ptrofs.unsigned_repr.
-          erewrite Ptrofs.unsigned_repr.
+          erewrite Ptrofs.unsigned_repr. 2: lia.
+          erewrite Ptrofs.unsigned_repr. unfold Psub,Padd in PSIZE.
+          erewrite Ptrofs.unsigned_repr. 2: lia.
+          erewrite Ptrofs.unsigned_repr. 2: lia.
           repeat rewrite ! REPR.
-          generalize (transf_instr_size (Pallocframe sz ofs_ra ofs_link)). intro PSIZE.
-          simpl in PSIZE. rewrite PSIZE.
-          unfold Psub, Padd; eauto.
-          generalize (instr_size_bound (Pallocframe sz ofs_ra ofs_link)).
-          unfold Pstoreptr. rewrite PTR64. unfold Mptr. rewrite PTR64. simpl.
+          rewrite PSIZE. lia. lia. lia.
+          rewrite Ptrofs.unsigned_repr. 2: lia.
+          rewrite Ptrofs.unsigned_repr. 2: lia.
           lia.
-          generalize (instr_size_bound (Pallocframe sz ofs_ra ofs_link)); lia.
-          generalize (transf_instr_size (Pallocframe sz ofs_ra ofs_link)). intro PSIZE.
-          simpl in PSIZE. rewrite PSIZE.
-          admit. admit. admit. admit. admit.
-        ++
-          simpl_regs. regs_eq. repeat rewrite Asmgenproof0.nextinstr_inv by auto.
-          regs_eq. auto. simpl.
-          apply eval_addrmode_offset_ptr. inv INV. edestruct RSPPTR as ( bb & oo & EQ & _); eauto.
-          rewrite eval_addrmode_offset_ptr; simpl_regs.
-          2: inv INV; edestruct RSPPTR as ( bb & oo & EQ & _); eauto.
-          f_equal.
-          unfold Ptrofs.neg. f_equal. f_equal.
-          eapply wf_allocframe_repr; eauto.
+        ++ unfold nextinstr_nf.
+          simpl_regs. regs_eq. simpl_regs. regs_eq. simpl_regs. regs_eq.
+           (* Ptrofs.neg (Ptrofs.sub (Ptrofs.repr (align sz 8)) (Ptrofs.repr 8)) =
+             Ptrofs.of_int64 (Int64.add Int64.zero (Int64.repr (- (align sz 8 - 8))))*)
+          f_equal. f_equal.
+          unfold Ptrofs.of_int64. unfold Ptrofs.neg.
+           apply Ptrofs.eqm_repr_eq.
+           unfold Ptrofs.sub. rewrite Int64.add_zero_l. apply  Int64.eqm_unsigned_repr_l.
+           
+           admit.
+        * admit. (*32-bit*)
         * traceEq.
-        *)
       + (*Pfreeframe*)
         subst; simpl in *. inv H2. inv CA. inv H7.
         eapply plus_one.
@@ -607,3 +609,4 @@ Qed.
       eapply real_asm_inv_inv; eauto.
   Qed.
 
+End PRESERVATION.

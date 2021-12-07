@@ -33,7 +33,7 @@ Section WITHGE.
       match Mem.storev Mptr m (Val.offset_ptr sp ofs_link) psp with
         |None => Stuck
         |Some m1 =>
-      Next (nextinstr isz (rs #RAX <- (Val.offset_ptr (rs RSP) (Ptrofs.repr (size_chunk Mptr))) #RSP <- sp)) m1
+      Next (nextinstr_nf isz (rs #RAX <- (Val.offset_ptr (rs RSP) (Ptrofs.repr (size_chunk Mptr))) #RSP <- sp)) m1
       end
     | Pfreeframe sz ofs_ra ofs_link =>
       let sp := Val.offset_ptr (rs RSP) (Ptrofs.sub (Ptrofs.repr (align sz 8)) (Ptrofs.repr (size_chunk Mptr))) in
@@ -1180,9 +1180,7 @@ Qed. *)
         + (* allocframe *)
           simpl in H2; repeat destr_in H2; inv INV; constructor; simpl.
           * red. simpl.
-            (* simpl_regs. *)
-
-            unfold nextinstr. rewrite Pregmap.gso. rewrite Pregmap.gss.
+            simpl_regs.
             destruct RSPPTR as (o & EQ & AL); simpl in *; rewrite EQ.
             simpl. eexists; split; eauto. apply align_Mptr_add_gen; auto.
             unfold Ptrofs.neg. apply div_unsigned_repr; auto. apply Z.divide_opp_r.
@@ -1195,7 +1193,7 @@ Qed. *)
             apply align_size_chunk_divides.
             apply align_Mptr_modulus.
             apply align_Mptr_modulus.
-            apply align_Mptr_modulus. congruence.
+            apply align_Mptr_modulus.
           * red in BSTACKPERM; red; simpl in *.
             intros o k p. erewrite storev_perm; eauto. intro. erewrite storev_perm; eauto.
           * red in STOP; red; simpl in *. erewrite <- Mem.support_storev; eauto.

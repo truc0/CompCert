@@ -1216,7 +1216,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
       | Some m3 =>
         match Mem.storev Mptr m3 (Val.offset_ptr sp ofs_link) rs#RSP with
         | None => Stuck
-        | Some m4 => Next (nextinstr (rs #RAX <- (rs#RSP) #RSP <- sp)) m4
+        | Some m4 => Next (nextinstr_nf (rs #RAX <- (rs#RSP) #RSP <- sp)) m4
         end
       end
      end

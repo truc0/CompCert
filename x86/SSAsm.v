@@ -23,7 +23,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
     | Some m1 =>
       match Mem.storev Mptr m1 (Val.offset_ptr sp ofs_link) rs#RSP with
       | None => Stuck
-      | Some m2 => Next (nextinstr (Ptrofs.repr (instr_size i)) (rs #RAX <- (rs#RSP) #RSP <- sp)) m2
+      | Some m2 => Next (nextinstr_nf (Ptrofs.repr (instr_size i)) (rs #RAX <- (rs#RSP) #RSP <- sp)) m2
       end
     end
   | Pfreeframe sz ofs_ra ofs_link =>

@@ -1138,11 +1138,12 @@ Transparent destroyed_by_jumptable.
   rewrite ATLR. rewrite F.
   rewrite (sp_val _ _ _ AG) in P. rewrite P. eauto.
   econstructor; eauto.
-  unfold nextinstr. rewrite Pregmap.gss. repeat rewrite Pregmap.gso; auto with asmgen.
+  unfold nextinstr_nf. unfold nextinstr. rewrite Pregmap.gss. rewrite undef_regs_other.
+  repeat rewrite Pregmap.gso; auto with asmgen.
   rewrite ATPC. simpl. constructor; eauto.
   unfold fn_code. eapply code_tail_next_int; eauto. simpl in g. simpl. lia.
-  constructor. exists nil. eauto.
-  apply agree_nextinstr. eapply agree_change_sp; eauto.
+  constructor.   simpl; intros. intuition congruence.  exists nil. eauto.
+  apply agree_nextinstr_nf. eapply agree_change_sp; eauto.
 Transparent destroyed_at_function_entry.
   apply agree_undef_regs with rs0; eauto.
   simpl; intros. apply Pregmap.gso; auto with asmgen. tauto.

@@ -864,7 +864,7 @@ Require Import Linking.
       destruct (rs2 RSP); simpl in *; try congruence.
       f_equal. apply ptrofs_cancel.
       eapply match_states_normal.
-      constructor. intros. apply nextinstr_eq.
+      constructor. intros. apply nextinstr_nf_eq.
       intros; apply set_reg_eq. intros. apply set_reg_eq. eauto.
       auto.
       rewrite RRSP. rewrite Val.offset_ptr_assoc. f_equal.

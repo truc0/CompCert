@@ -1306,8 +1306,8 @@ Lemma allocframe_inject:
     (STORERA: Mem.store Mptr m2 stkb ofs_ra (rs RA) = Some m3)
     (LINKPOS: 0 <= ofs_link <= Ptrofs.max_unsigned)
     (STORELINK: Mem.store Mptr m3 stkb ofs_link (rs RSP) = Some m4),
-    let rs1 := (nextinstr isz (rs # RAX <- (rs RSP)) # RSP <- (Vptr stkb Ptrofs.zero)) in
-    let rs1' := (nextinstr isz (rs' # RAX <- (rs' RSP)) # RSP <- (Val.offset_ptr (rs' RSP) (Ptrofs.neg (Ptrofs.repr (align sz 8))))) in
+    let rs1 := (nextinstr_nf isz (rs # RAX <- (rs RSP)) # RSP <- (Vptr stkb Ptrofs.zero)) in
+    let rs1' := (nextinstr_nf isz (rs' # RAX <- (rs' RSP)) # RSP <- (Val.offset_ptr (rs' RSP) (Ptrofs.neg (Ptrofs.repr (align sz 8))))) in
     exists j', inject_incr j j' /\
     exists m1', Mem.storev Mptr m' (Val.offset_ptr (Val.offset_ptr (rs' RSP) (Ptrofs.neg (Ptrofs.repr (align sz 8)))) (Ptrofs.repr ofs_ra)) (rs' RA)= Some m1' /\
     exists m2', Mem.storev Mptr m1' (Val.offset_ptr (Val.offset_ptr (rs' RSP) (Ptrofs.neg (Ptrofs.repr (align sz 8)))) (Ptrofs.repr ofs_link)) (rs' RSP) = Some m2' /\
@@ -1533,10 +1533,10 @@ Proof.
   - eapply Mem.sup_include_trans. apply ENVSUP'. auto.
   (* Regset Injection *)
   - unfold rs1. intros.
-    rewrite nextinstr_rsp in H.
+    rewrite nextinstr_nf_rsp in H.
     rewrite Pregmap.gss in H. congruence.
   - intros. unfold rs1, rs1'.
-    apply val_inject_nextinstr; auto.
+    apply val_inject_nextinstr_nf; auto.
     apply val_inject_set; auto.
     apply val_inject_set; auto.
     intros. eapply val_inject_incr; eauto.
@@ -1608,7 +1608,7 @@ Proof.
     split. eapply Mem.perm_store_1; eauto. eapply Mem.perm_store_2; eauto.
   - exists stkofs'.
     split. auto.
-    unfold rs1'. rewrite nextinstr_rsp. rewrite Pregmap.gss.
+    unfold rs1'. rewrite nextinstr_nf_rsp. rewrite Pregmap.gss.
     rewrite RSPINJ'. simpl.
     assert (stkofs' =  (Ptrofs.add stkofs (Ptrofs.neg (Ptrofs.repr aligned_sz)))).
     {
