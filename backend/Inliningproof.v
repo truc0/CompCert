@@ -20,10 +20,24 @@ Require Import Inlining Inliningspec.
 Definition match_prog (prog tprog: program) :=
   match_program (fun cunit f tf => transf_fundef (funenv_program cunit) f = OK tf) eq prog tprog.
 
+(* for static renaming, match Linking.v Theorem *)
+Definition match_prog_ctx (prog tprog: program):=
+  match_program (fun cunit f tf => transf_fundef_ctx cunit f = OK tf) eq prog tprog.
+
+Lemma match_program_ctx:
+  forall prog tprog, match_prog_ctx prog tprog <-> match_prog prog tprog.
+Proof.
+  intros.
+  unfold match_prog_ctx. unfold match_prog.
+  unfold transf_fundef_ctx.
+  split. auto.
+  auto.
+Qed.
+
 Lemma transf_program_match:
   forall prog tprog, transf_program prog = OK tprog -> match_prog prog tprog.
 Proof.
-  intros. eapply match_transform_partial_program_contextual; eauto.
+  intros. eapply match_transform_partial_program_contextual. eauto.
 Qed.
 
 Section INLINING.

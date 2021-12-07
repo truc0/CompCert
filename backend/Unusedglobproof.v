@@ -1605,7 +1605,7 @@ Qed.
 
 
 
-(** *static renaming lemma *)
+(** *Static renaming lemma *)
 
 
 
@@ -1705,7 +1705,7 @@ Proof.
     intros.
     destruct H0. clear used_defined0. clear used_main0. clear used_public0.
     (* here we need to prove a lemma: a has a inverse permutation *)
-    generalize (exists_inverse_permutation a). intros.
+    assert (exists b, inverse_permutation a b) by eapply exists_inverse_permutation.
     destruct H0 as [b ?].
     
     apply (In_rename_wset (alpha_rename b id') id' w w' a IS.empty).
