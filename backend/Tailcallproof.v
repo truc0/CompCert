@@ -603,5 +603,137 @@ Qed.
 
 End PRESERVATION.
 
-Instance TransfTailcallAlpha: TransfAlpha match_prog (@AST.prog_public _ _) (@AST.prog_public _ _).
-Admitted.
+(** *static renaming *)
+
+Lemma is_return_alpah: forall a f gas n r,
+  is_return gas (alpha_rename a f) n r =
+  is_return gas f n r.
+Proof.
+  Transparent Alpha_instruction Alpha_function Alpha_operation.
+  induction gas.
+  simpl. auto.
+  simpl. intros.
+  erewrite PTree.gmap1.
+  destruct ((fn_code f) ! n).
+  - simpl.
+    destruct i;simpl;auto.
+    + destruct o;simpl;auto.
+      erewrite IHgas.
+      auto.
+    + destruct s0;simpl;auto.
+    + destruct s0;simpl;auto.
+  - simpl. auto.
+Qed.
+
+Lemma transf_instr_alpha: forall f pc i a,
+    transf_instr (alpha_rename a f) pc (alpha_rename a i) = alpha_rename a (transf_instr f pc i).
+Proof.
+  Transparent Alpha_instruction Alpha_function.
+  intros;simpl.
+  unfold transf_instr.
+  destruct i;auto.
+  - 
+    cbn [alpha_rename_instruction].
+    destruct s0.
+    + rewrite is_return_alpah.
+      assert ((fn_sig (alpha_rename_function a f)) = (fn_sig f)).
+      { simpl. auto. }
+      rewrite H.
+      destruct (is_return niter f n r && tailcall_is_possible s &&
+                rettype_eq (sig_res s) (sig_res (fn_sig f)));auto.
+    + rewrite is_return_alpah.
+      assert ((fn_sig (alpha_rename_function a f)) = (fn_sig f)).
+      { simpl. auto. }
+      rewrite H.
+      destruct (is_return niter f n r && tailcall_is_possible s &&
+                rettype_eq (sig_res s) (sig_res (fn_sig f)));auto.
+  - cbn [alpha_rename_instruction].
+
+    destruct s0;auto.
+Qed.
+
+Lemma transf_function_ctx_alpha_aux: forall f ctx a p,
+
+PTree.xmap (transf_instr (alpha_rename a ctx))
+    (PTree.map1 (alpha_rename_instruction a) (fn_code f)) p =
+  PTree.map1 (alpha_rename_instruction a)
+             (PTree.xmap (transf_instr ctx) (fn_code f) p).
+Proof.
+  Transparent Alpha_function Alpha_instruction.
+  simpl. intros.
+  generalize dependent ctx.
+  generalize dependent p.
+  induction fn_code;intros;simpl;auto.
+  f_equal;auto.
+  destruct o;simpl;auto.
+  f_equal. eapply transf_instr_alpha.
+Qed.
+
+Lemma transf_function_ctx_alpha: forall f ctx a,
+    RTL.transf_function (transf_instr (alpha_rename a ctx))
+                        (alpha_rename a f) =
+    alpha_rename a (RTL.transf_function (transf_instr ctx) f).
+Proof.
+  Transparent Alpha_instruction Alpha_function.
+  unfold RTL.transf_function. simpl.
+  unfold alpha_rename_function;simpl.
+  intros. f_equal.
+  assert ({|
+       fn_sig := fn_sig ctx;
+       fn_params := fn_params ctx;
+       fn_stacksize := fn_stacksize ctx;
+       fn_code := PTree.map1 (alpha_rename_instruction a)
+                    (fn_code ctx);
+       fn_entrypoint := fn_entrypoint ctx |} = alpha_rename a ctx).
+  { simpl. unfold alpha_rename_function. auto. }
+  rewrite H;clear H.
+  apply transf_function_ctx_alpha_aux.
+Qed.
+
+Lemma transf_function_alpha: forall f a,
+    transf_function (alpha_rename a f) = alpha_rename a (transf_function f).
+Proof.
+  intros.
+  unfold transf_function.
+  Transparent Alpha_function Alpha_instruction.
+  simpl. destruct (zeq (fn_stacksize f) 0);auto.
+  apply transf_function_ctx_alpha.
+Qed.  
+
+Lemma transf_fundef_alpha: forall fd a,
+    transf_fundef (alpha_rename a fd) = alpha_rename a (transf_fundef fd).
+Proof.
+  intros.
+  Transparent Alpha_fundef.
+  simpl.
+  destruct fd.
+  - simpl. f_equal.
+    apply transf_function_alpha.
+  - simpl;auto.
+Qed.
+
+
+Instance TransfTailcallAlpha: TransfAlpha match_prog (fun p => p.(prog_main) :: p.(prog_public)) (fun p => p.(prog_main) :: p.(prog_public)).
+Proof.
+  red.
+  intros.
+  unfold match_prog in *.
+  unfold alpha_equiv in *. destruct H as [a [? ?]].
+  exists (alpha_rename a t).
+  split.
+  eapply alpha_program_match.
+  apply transf_fundef_alpha.
+
+  apply H0.
+  apply H1.
+  auto.
+  
+  exists a. split;auto.
+  generalize H0.
+  apply match_program_main in H0.
+  intros.
+  unfold match_program in H2.
+  apply match_program_public in H2. 
+  apply H. rewrite H0 in H3. rewrite H2 in H3.
+  auto.
+Qed.

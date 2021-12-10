@@ -576,6 +576,18 @@ Proof.
 Qed.
 
 (** *for static renaming *)
+Theorem alpha_program_match:
+  forall {A B V: Type} {LA: Linker A} {LV: Linker V}
+    {ALA: Alpha A} {ALB: Alpha B} {ALV: Alpha V}
+    (transf_fun: A -> B)
+    (p p': program A V) (tp tp': program B V) (al: permutation),
+    (forall a permu, transf_fun (alpha_rename permu a) = alpha_rename permu (transf_fun a)) ->
+    match_program (fun cu f tf => tf = transf_fun f) eq p tp ->
+    alpha_rename al p = p' ->
+    alpha_rename al tp = tp' ->
+    match_program (fun cu f tf => tf = transf_fun f) eq p' tp'.
+Admitted.
+
 
 
 Theorem alpha_partial_program_match:
