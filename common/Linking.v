@@ -801,6 +801,20 @@ Proof.
   apply H0.
 Qed.
 
+Theorem alpha_program_match_contextual:
+  forall {A B V: Type} {LA: Linker A} {LV: Linker V}
+    {ALA: Alpha A} {ALB: Alpha B} {ALV: Alpha V}
+    (transf_fun: program A V -> A -> B)
+    (p p': program A V) (tp tp': program B V) (al: permutation),
+    (forall a c permu, transf_fun (alpha_rename permu c) (alpha_rename permu a) = alpha_rename permu (transf_fun c a)) ->
+    match_program (fun cu f tf => tf = transf_fun cu f) eq p tp ->
+    alpha_rename al p = p' ->
+    alpha_rename al tp = tp' ->
+    match_program (fun cu f tf => tf = transf_fun cu f) eq p' tp'.
+Proof.
+Admitted.
+
+
 
 (** * Commutation between linking and program transformations *)
 

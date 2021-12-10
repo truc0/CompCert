@@ -256,165 +256,7 @@ Definition transf_program (p: program) : program :=
   let rm := romem_for p in
   transform_program (transf_fundef rm) p.
 
-
-(** *Abstract Value Alpha Renaming *)
-
-Definition alpha_rename_aptr (a:permutation) (p:aptr) :=
-  match p with
-  | Gl id ofs => Gl (alpha_rename a id) ofs
-  | Glo id => Glo (alpha_rename a id)
-  | _ => p
-  end.
-
-Program Instance Alpha_aptr: Alpha aptr :=
-  { alpha_rename := alpha_rename_aptr }.
-Next Obligation.
-  destruct p;simpl;auto.
-Defined.
-Next Obligation.
-  destruct p1;auto;simpl;
-  erewrite alpha_rename_sym;auto.
-Defined.
-Next Obligation.
-  destruct p1;auto.
-Defined.
-
-Global Opaque Alpha_aptr.
-
-Definition alpha_rename_aval (a:permutation) (v:aval) :=
-  match v with
-  | Uns p n => Uns (alpha_rename a p) n
-  | Sgn p n => Sgn (alpha_rename a p) n
-  | Ptr p => Ptr (alpha_rename a p)
-  | Ifptr p => Ifptr (alpha_rename a p)
-  | _ => v
-  end.
-
-Program Instance Alpha_aval: Alpha aval :=
-  { alpha_rename := alpha_rename_aval }.
-Next Obligation.
-  destruct p;simpl;auto;
-  erewrite alpha_rename_refl;auto.
-Defined.
-Next Obligation.
-  destruct p1;auto;simpl;
-  erewrite alpha_rename_sym;auto.
-Defined.
-Next Obligation.
-  destruct p1;auto;simpl;
-  erewrite alpha_rename_trans;auto.
-Defined.
-
-Global Opaque Alpha_aval.
-
-Definition alpha_rename_acontent (a:permutation) (c:acontent) :=
-  match c with
-  | ACval chunk v => ACval chunk (alpha_rename a v)
-  end.
-
-Program Instance Alpha_acontent: Alpha acontent :=
-  { alpha_rename := alpha_rename_acontent }.
-Next Obligation.
-  destruct p;simpl;auto;
-  erewrite alpha_rename_refl;auto.
-Defined.
-Next Obligation.
-  destruct p1;auto;simpl;
-  erewrite alpha_rename_sym;auto.
-Defined.
-Next Obligation.
-  destruct p1;auto;simpl;
-  erewrite alpha_rename_trans;auto.
-Defined.
-
-Global Opaque Alpha_acontent.
-
-Inductive match_option_alpha {A:Type} {ALA:Alpha A} (a:permutation) :option A -> option A -> Prop :=  
-| match_none_alpha : match_option_alpha a None None
-| match_some_alpha : forall a1 a2, a1 = alpha_rename a a2 ->
-                              match_option_alpha a (Some a1) (Some a2).
-
-Definition match_ablock_alpha a b1 b2 :=
-  (forall n ,match_option_alpha a (ZTree.get n b1.(ab_contents)) (ZTree.get n b2.(ab_contents)))
-  /\ b1.(ab_summary) = alpha_rename a b2.(ab_summary).
-
-
-Inductive  match_option_ablock_alpha a  :option ablock -> option ablock -> Prop :=
- |match_none_ablock_alpha: match_option_ablock_alpha a None None
- |match_some_ablock_alpha : forall b1 b2,
-     match_ablock_alpha a b1 b2 ->
-    match_option_ablock_alpha a (Some b1) (Some b2).
-
-Definition  match_romem_alpha a (rm1 rm2: romem) :  Prop :=
-  forall pc,
-    match_option_ablock_alpha a (rm1 ! pc) (rm2 ! pc).
-
-  
-Lemma romem_for_alpha :forall a ctx,
-    match_romem_alpha a (romem_for (alpha_rename a ctx)) (romem_for ctx).
-  intros.
-  Admitted.
-
-Inductive  match_aenv_alpha (a:permutation) : aenv -> aenv -> Prop :=
-| match_aenv_Bot_alpha : match_aenv_alpha a AE.Bot AE.Bot
-| match_aenv_Top_except_alpha: forall pt1 pt2 pc,
-    match_option_alpha a (pt1 ! pc) (pt2 ! pc) ->
-    match_aenv_alpha a (AE.Top_except pt1) (AE.Top_except pt2).
-
-Definition match_amem_alpha (a:permutation) am1 am2 : Prop :=
-  match_ablock_alpha a am1.(am_stack) am2.(am_stack) /\
-  (forall id, match_option_ablock_alpha a (am1.(am_glob) ! id) (am2.(am_glob) ! (alpha_rename a id))) /\
-  am1.(am_nonstack) = alpha_rename a am2.(am_nonstack) /\
-  am1.(am_top) = alpha_rename a am2.(am_top).
-
-
-Inductive match_VA_alpha a : VA.t -> VA.t -> Prop :=
-| match_Bot_alpha : match_VA_alpha a VA.Bot VA.Bot
-| match_State_alpha : forall ae1 ae2 am1 am2, 
-    match_aenv_alpha a ae1 ae2 ->
-    match_amem_alpha a am1 am2 ->
-    match_VA_alpha a (VA.State ae1 am1) (VA.State ae2 am2).
-
-
-(* Inductive match_option_VA_alpha a : option VA.t -> option VA.t -> Prop := *)
-(* | match_none_VA_alpha : match_option_VA_alpha a None None *)
-(* | match_some_VA_alpha : forall va1 va2,  *)
-(*     match_VA_alpha a va1 va2 -> *)
-(*     match_option_VA_alpha a (Some va1) (Some va2). *)
-
-Lemma analyze_alpha: forall f a ctx pc,
-    match_VA_alpha a ((analyze (romem_for (alpha_rename a ctx)) (alpha_rename a f))!!pc) ((analyze (romem_for ctx) f)!!pc) .
-Admitted.
-
-Lemma match_aenv_alpha_areg : forall a ae1 ae2 r,
-        match_aenv_alpha a ae1 ae2 ->
-        areg ae1 r =  alpha_rename a (areg ae2 r).
-Admitted.
-
-
-Lemma match_aenv_alpha_aregs : forall a ae1 ae2 l,
-        match_aenv_alpha a ae1 ae2 ->
-        aregs ae1 l = map (alpha_rename a) (aregs ae2 l).
-Admitted.
-
-Lemma eval_static_operation_alpha: forall a op ae1 ae2 l,
-    match_aenv_alpha a ae1 ae2 ->
-    eval_static_operation (alpha_rename a op) (aregs ae1 l) =
-    alpha_rename a (eval_static_operation op (aregs ae2 l)).
-Admitted.
-
-Lemma eval_static_addressing_alpha: forall a addr ae1 ae2 l,
-    match_aenv_alpha a ae1 ae2 ->
-    eval_static_addressing (alpha_rename a addr) (aregs ae1 l) =
-    alpha_rename a (eval_static_addressing addr (aregs ae2 l)).
-Admitted.
-
-Lemma eval_static_condition_alpha: forall a c ae1 ae2 l,
-    match_aenv_alpha a ae1 ae2 ->
-    eval_static_condition c (aregs ae1 l) =
-    eval_static_condition c (aregs ae2 l).
-Admitted.
-
+(** *static renaming  *)
 Lemma const_for_result_alpha: forall a av,
     match_option_alpha a (const_for_result (alpha_rename a av)) (const_for_result av).
   Admitted.
@@ -445,23 +287,10 @@ Lemma cond_strength_reduction_alpha: forall a c ae1 ae2 l,
 Admitted.
 
 
- Lemma eval_static_builtin_function_alpha: forall a ae1 ae2 am1 am2 rm1 rm2 b l,
-            match_aenv_alpha a ae1 ae2 ->
-            match_amem_alpha a am1 am2 ->
-            match_romem_alpha a rm1 rm2 ->
-            match_option_alpha a (eval_static_builtin_function ae1 am1 rm1 b (map (alpha_rename a) l)) (eval_static_builtin_function ae2 am2 rm2 b l).
-Admitted.
-
- Lemma debug_strength_reduction_alpha: forall a ae1 ae2 l,
-        match_aenv_alpha a ae1 ae2 ->
-        debug_strength_reduction ae1 (map (alpha_rename a) l) =
-        map (alpha_rename a) (debug_strength_reduction ae2 l).
- Admitted.
-   
- 
-Lemma AE_set_match_alpha : forall a r v ae1 ae2,
-            match_aenv_alpha a ae1 ae2 ->
-            match_aenv_alpha a (AE.set r (alpha_rename a v) ae1) (AE.set r v ae2). 
+Lemma debug_strength_reduction_alpha: forall a ae1 ae2 l,    
+    match_aenv_alpha a ae1 ae2 ->
+    debug_strength_reduction ae1 (map (alpha_rename a) l) =
+    map (alpha_rename a) (debug_strength_reduction ae2 l).
 Admitted.
 
 Lemma successor_alpha: forall a f ae1 ae2 pc,
@@ -469,12 +298,7 @@ Lemma successor_alpha: forall a f ae1 ae2 pc,
             successor (alpha_rename a f) ae1 pc = successor f ae2 pc.
 Admitted.
 
-Lemma loadv_alpha: forall a chunk rm1 rm2 am1 am2 av1 av2,
-        match_romem_alpha a rm1 rm2 ->
-        match_amem_alpha a am1 am2 ->
-        av1 = alpha_rename a av2 ->
-        loadv chunk rm1 am1 av1 = alpha_rename a (loadv chunk rm2 am2 av2).
-Admitted.
+
 
 Lemma transf_instr_alpha_aux :forall f a ctx n i,
     transf_instr (alpha_rename a f)
@@ -637,4 +461,16 @@ Proof.
   Transparent Alpha_fundef.
   destruct fd;simpl;auto.
   f_equal. apply transf_function_alpha.
+Qed.
+
+Definition transf_fundef_ctx ctx fd :=
+  transf_fundef (romem_for ctx) fd.
+
+Theorem transf_fundef_ctx_alpha: forall fd a ctx,
+    transf_fundef_ctx (alpha_rename a ctx) (alpha_rename a fd) =
+    alpha_rename a (transf_fundef_ctx ctx fd).
+Proof.
+  intros.
+  unfold transf_fundef_ctx.
+  apply transf_fundef_alpha.
 Qed.
