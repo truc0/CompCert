@@ -258,7 +258,7 @@ Definition transf_program (p: program) : program :=
 
 (** *static renaming  *)
 Lemma const_for_result_alpha: forall a av,
-    match_option_alpha a (const_for_result (alpha_rename a av)) (const_for_result av).
+    match_option_alpha a (fun a op1 op2 => op1 = alpha_rename a op2) (const_for_result (alpha_rename a av)) (const_for_result av).
   Admitted.
 
 Lemma op_strength_reduction_alpha: forall a o o1 o2 l l1 l2 ae1 ae2,

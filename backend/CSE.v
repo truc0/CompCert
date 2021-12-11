@@ -579,3 +579,231 @@ Definition transf_fundef (rm: romem) (f: fundef) : res fundef :=
 Definition transf_program (p: program) : res program :=
   transform_partial_program (transf_fundef (romem_for p)) p.
 
+(** *Alpha renaming for CSEDomain  *)
+
+Definition alpha_rename_rhs a r :=
+  match r with
+  | Op op lv => Op (alpha_rename a op) lv
+  | Load chunk addr lv => Load chunk (alpha_rename a addr) lv
+  end.
+
+Program Instance Alpha_rhs : Alpha rhs :=
+  { alpha_rename := alpha_rename_rhs }.
+Next Obligation.
+  destruct p;simpl;
+  rewrite alpha_rename_refl;auto.
+Defined.
+Next Obligation.
+  destruct p1;simpl;
+  erewrite alpha_rename_sym;auto.
+Defined.
+Next Obligation.
+  destruct p1;simpl;auto;
+    erewrite alpha_rename_trans;auto.
+Defined.
+
+Global Opaque Alpha_rhs.
+
+Definition alpha_rename_equation a eqa :=
+  match eqa with
+  | Eq v b r => Eq v b (alpha_rename a r)
+  end.
+
+Program Instance Alpha_equation : Alpha equation :=
+  { alpha_rename := alpha_rename_equation }.
+Next Obligation.
+  destruct p;simpl;
+  rewrite alpha_rename_refl;auto.
+Defined.
+Next Obligation.
+  destruct p1;simpl;
+  erewrite alpha_rename_sym;auto.
+Defined.
+Next Obligation.
+  destruct p1;simpl;auto;
+    erewrite alpha_rename_trans;auto.
+Defined.
+
+Global Opaque Alpha_equation.
+
+Definition match_numbering_alpha (a:permutation) (n1 n2 : numbering) :=
+  n1.(num_next) = n2.(num_next) /\
+  n1.(num_eqs) = map (alpha_rename a) n2.(num_eqs) /\
+  PTree.beq (CSEdomain.eq_valnum) n1.(num_reg) n2.(num_reg) = true /\
+  PTree.beq (list_eq_dec Pos.eq_dec) (snd n1.(num_val)) (snd n2.(num_val)) = true.
+
+Definition match_approxs_alpha (a:permutation) (opn1 opn2: option (PMap.t numbering)) :=
+  match_option_alpha a (fun a pn1 pn2 => forall pc, match_numbering_alpha a (pn1!!pc) (pn2!!pc)) opn1 opn2.
+
+Lemma CSE_analyze_alpha : forall a f pva1 pva2,
+    (forall pc, match_VA_alpha a pva1!!pc pva2!!pc) ->
+    match_approxs_alpha a (analyze (alpha_rename a f) pva1) (analyze f pva2).
+Admitted.
+
+Lemma valnum_regs_alpha : forall a n1 n2 l n1' vl1 n2' vl2,
+      match_numbering_alpha a n1 n2 ->
+      valnum_regs n1 l = (n1',vl1) ->
+      valnum_regs n2 l = (n2',vl2) ->
+      match_numbering_alpha a n1' n2' /\ vl1 = vl2.
+Admitted.
+
+Lemma reduce_combine_op_alpha: forall a n1 n2 op rl vl op1 op2 args1 args2,
+        match_numbering_alpha a n1 n2 ->
+        reduce operation combine_op n1 (alpha_rename a op) rl vl = (op1,args1) ->
+        reduce operation combine_op n2 op rl vl = (op2,args2) ->
+        op1 = alpha_rename a op2 /\ args1 = args2.
+Admitted.
+
+Lemma reduce_combine_addr_alpha: forall a n1 n2 addr rl vl addr1 addr2 args1 args2,
+        match_numbering_alpha a n1 n2 ->
+        reduce addressing combine_addr n1 (alpha_rename a addr) rl vl = (addr1,args1) ->
+        reduce addressing combine_addr n2 addr rl vl = (addr2,args2) ->
+        addr1 = alpha_rename a addr2 /\ args1 = args2.
+Admitted.
+
+Lemma reduce_combine_cond_alpha: forall a n1 n2 cond rl vl cond1 cond2 args1 args2,
+        match_numbering_alpha a n1 n2 ->
+        reduce condition combine_cond n1 cond rl vl = (cond1,args1) ->
+        reduce condition combine_cond n2 cond rl vl = (cond2,args2) ->
+        cond1 = cond2 /\ args1 = args2.
+Admitted.
+
+
+Lemma find_rhs_alpha : forall a n1 n2 rhs,
+    match_numbering_alpha a n1 n2 ->
+    find_rhs n1 (alpha_rename a rhs) = find_rhs n2 rhs.
+Admitted.
+
+Lemma is_trivial_op_alpha: forall op a,
+    is_trivial_op (alpha_rename a op) = is_trivial_op op.
+Admitted.
+
+Lemma transf_instr_alpha : forall a n1 n2 i,
+    match_numbering_alpha a n1 n2 ->
+    transf_instr n1 (alpha_rename a i) =
+    alpha_rename a (transf_instr n2 i).
+Proof.
+  intros.
+  Transparent Alpha_instruction Alpha_operation.
+  destruct i;simpl;auto.
+  - destruct (valnum_regs n1 l) eqn:?.
+    destruct (valnum_regs n2 l) eqn:?.
+    generalize (valnum_regs_alpha _ _ _ _ _ _ _ _ H Heqp Heqp0).
+    intros. destruct H0. subst.
+    destruct (reduce operation combine_op n0 (alpha_rename_operation a o) l l1) eqn:?.
+    destruct (reduce operation combine_op n3 o l l1) eqn:?.    
+    generalize (reduce_combine_op_alpha _ _ _ _ _ _ _ _ _ _ H0 Heqp1 Heqp2).
+    intros. destruct H1. subst.
+    generalize (find_rhs_alpha _ _ _ (Op o l1) H0).
+    intros. Transparent Alpha_rhs. simpl in H1.
+    rewrite H1.
+    erewrite is_trivial_op_alpha.
+    destruct (is_trivial_op o);
+    destruct (find_rhs n3 (Op o l1));simpl;auto.
+  - destruct (valnum_regs n1 l) eqn:?.
+    destruct (valnum_regs n2 l) eqn:?.
+    generalize (valnum_regs_alpha _ _ _ _ _ _ _ _ H Heqp Heqp0).
+    intros. destruct H0. subst.
+    generalize (find_rhs_alpha _ _ _ (Load m a0 l1) H0).
+    intros. Transparent Alpha_rhs. simpl in H1.
+    rewrite H1. destruct (find_rhs n3 (Load m a0 l1));simpl;auto.
+    destruct (reduce addressing combine_addr n0 (alpha_rename a a0) l l1) eqn:?.
+    destruct (reduce addressing combine_addr n3 a0 l l1) eqn:?.
+    generalize (reduce_combine_addr_alpha _ _ _ _ _ _ _ _ _ _ H0 Heqp1 Heqp2).
+    intros. destruct H2.  subst.
+    simpl. auto.
+  - destruct (valnum_regs n1 l) eqn:?.
+    destruct (valnum_regs n2 l) eqn:?.
+    generalize (valnum_regs_alpha _ _ _ _ _ _ _ _ H Heqp Heqp0).
+    intros. destruct H0. subst.
+    destruct (reduce addressing combine_addr n0 (alpha_rename a a0) l l1) eqn:?.
+    destruct (reduce addressing combine_addr n3 a0 l l1) eqn:?.
+    generalize (reduce_combine_addr_alpha _ _ _ _ _ _ _ _ _ _ H0 Heqp1 Heqp2).
+    intros. destruct H1.  subst.
+    simpl. auto.
+  - destruct s0;simpl;auto.
+  - destruct s0;simpl;auto.
+  - destruct (valnum_regs n1 l) eqn:?.
+    destruct (valnum_regs n2 l) eqn:?.
+    generalize (valnum_regs_alpha _ _ _ _ _ _ _ _ H Heqp Heqp0).
+    intros. destruct H0. subst.
+    destruct (reduce condition combine_cond n3 c l l1) eqn:?.
+    destruct (reduce condition combine_cond n4 c l l1) eqn:?.
+    generalize (reduce_combine_cond_alpha _ _ _ _ _ _ _ _ _ _  H0 Heqp1 Heqp2).
+    intros. destruct H1. subst.
+    simpl;auto.
+Qed.
+
+    
+Lemma transf_function_alpha_aux : forall a code pn1 pn2 node,
+    (forall pc, match_numbering_alpha a pn1!!pc pn2!!pc) ->
+          PTree.xmap (fun (pc : positive) (instr : instruction) => transf_instr pn1 # pc instr) (PTree.map1 (alpha_rename a) code) node =
+          PTree.map1 (alpha_rename a) (PTree.xmap (fun (pc : positive) (instr : instruction) => transf_instr pn2 # pc instr) code node).
+Proof.
+  intros.
+  generalize dependent node.
+  induction code;simpl;auto.
+  intros. destruct o;simpl.
+  - f_equal;auto.
+    f_equal.
+    apply transf_instr_alpha. auto.
+  - f_equal;auto.
+Qed.
+    
+Lemma transf_function_alpha: forall a f f' ctx,
+    transf_function (romem_for ctx) f = OK f' ->
+    transf_function (romem_for (alpha_rename a ctx)) (alpha_rename a f) = OK (alpha_rename a f').
+Proof.
+  intros.
+  unfold transf_function in *.
+  generalize (analyze_alpha f a ctx). intros.
+  generalize (CSE_analyze_alpha a f _ _ H0). intros.
+  unfold vanalyze in *.
+  inversion H1.
+  - rewrite <- H4 in H.
+    congruence.
+  - rewrite <- H3 in H.
+    monadInv H.
+    f_equal. 
+    Transparent Alpha_function.
+    simpl. unfold alpha_rename_function. simpl.
+    f_equal.
+    unfold transf_code.
+    unfold PTree.map. 
+    inversion H1.
+    + simpl in *.
+      rewrite <- H5 in H2. congruence.
+    + simpl in *. rewrite <- H in H2. rewrite <- H5 in H3.
+      inversion H2. inversion H3. subst.
+      clear H5 H4 H3 H2 H1 H0 H .
+      apply transf_function_alpha_aux. auto.
+Qed.
+
+Lemma transf_fundef_alpha : forall a fd fd' ctx,
+    transf_fundef (romem_for ctx) fd = OK fd' -> 
+    transf_fundef (romem_for (alpha_rename a ctx)) (alpha_rename a fd) = OK (alpha_rename a fd').
+Proof.
+  unfold transf_fundef.
+  unfold transf_partial_fundef.
+  intros.
+  Transparent Alpha_fundef.
+  destruct fd;destruct fd';simpl in *;try congruence;auto.
+  monadInv H.
+  eapply transf_function_alpha in EQ.
+  rewrite EQ. simpl. auto.
+  monadInv H.
+Qed.
+
+Definition transf_fundef_ctx ctx fd:=
+    transf_fundef (romem_for ctx) fd.
+
+Theorem transf_fundef_ctx_alpha: forall fd fd' a ctx,
+    transf_fundef_ctx ctx fd = OK fd' ->
+    transf_fundef_ctx (alpha_rename a ctx) (alpha_rename a fd) =
+    OK (alpha_rename a fd').
+Proof.
+  intros.
+  unfold transf_fundef_ctx in *.
+  apply transf_fundef_alpha.
+  auto.
+Qed.

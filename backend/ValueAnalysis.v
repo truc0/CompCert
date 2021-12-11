@@ -2145,13 +2145,13 @@ Defined.
 
 Global Opaque Alpha_acontent.
 
-Inductive match_option_alpha {A:Type} {ALA:Alpha A} (a:permutation) :option A -> option A -> Prop :=  
-| match_none_alpha : match_option_alpha a None None
-| match_some_alpha : forall a1 a2, a1 = alpha_rename a a2 ->
-                              match_option_alpha a (Some a1) (Some a2).
+Inductive match_option_alpha {A:Type} (a:permutation) (Match: permutation -> A -> A -> Prop):option A -> option A -> Prop :=  
+| match_none_alpha : match_option_alpha a Match None None
+| match_some_alpha : forall a1 a2, Match a a1 a2  ->
+                              match_option_alpha a Match (Some a1) (Some a2).
 
 Definition match_ablock_alpha a b1 b2 :=
-  (forall n ,match_option_alpha a (ZTree.get n b1.(ab_contents)) (ZTree.get n b2.(ab_contents)))
+  (forall n ,match_option_alpha a (fun a ac1 ac2 => ac1 = alpha_rename a ac2) (ZTree.get n b1.(ab_contents)) (ZTree.get n b2.(ab_contents)))
   /\ b1.(ab_summary) = alpha_rename a b2.(ab_summary).
 
 
@@ -2173,8 +2173,8 @@ Lemma romem_for_alpha :forall a ctx,
 
 Inductive  match_aenv_alpha (a:permutation) : aenv -> aenv -> Prop :=
 | match_aenv_Bot_alpha : match_aenv_alpha a AE.Bot AE.Bot
-| match_aenv_Top_except_alpha: forall pt1 pt2 pc,
-    match_option_alpha a (pt1 ! pc) (pt2 ! pc) ->
+| match_aenv_Top_except_alpha: forall pt1 pt2 r,
+    match_option_alpha a (fun a v1 v2 => v1 = alpha_rename a v2) (pt1 ! r) (pt2 ! r) ->
     match_aenv_alpha a (AE.Top_except pt1) (AE.Top_except pt2).
 
 Definition match_amem_alpha (a:permutation) am1 am2 : Prop :=
@@ -2237,7 +2237,7 @@ Lemma eval_static_builtin_function_alpha: forall a ae1 ae2 am1 am2 rm1 rm2 b l,
     match_aenv_alpha a ae1 ae2 ->
     match_amem_alpha a am1 am2 ->
     match_romem_alpha a rm1 rm2 ->
-    match_option_alpha a (eval_static_builtin_function ae1 am1 rm1 b (map (alpha_rename a) l)) (eval_static_builtin_function ae2 am2 rm2 b l).
+    match_option_alpha a (fun a v1 v2 => v1 = alpha_rename a v2) (eval_static_builtin_function ae1 am1 rm1 b (map (alpha_rename a) l)) (eval_static_builtin_function ae2 am2 rm2 b l).
 Admitted.
  
  
