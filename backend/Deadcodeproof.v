@@ -28,6 +28,20 @@ Proof.
   intros. eapply match_transform_partial_program_contextual; eauto.
 Qed.
 
+Definition match_prog_ctx (prog tprog: RTL.program) :=
+  match_program (fun cu f tf => transf_fundef_ctx cu f = OK tf) eq prog tprog.
+
+Lemma match_program_ctx:
+  forall prog tprog, match_prog_ctx prog tprog <-> match_prog prog tprog.
+Proof.
+  intros.
+  unfold match_prog_ctx. unfold match_prog.
+  unfold transf_fundef_ctx.
+  split. auto.
+  auto.
+Qed.
+
+
 (** * Relating the memory states *)
 
 (** The [magree] predicate is a variant of [Mem.extends] where we
@@ -1150,5 +1164,31 @@ Qed.
 
 End PRESERVATION.
 
-Instance TransfDeadcodeAlpha: TransfAlpha match_prog (@AST.prog_public _ _) (@AST.prog_public _ _).
-Admitted.
+Instance TransfDeadcodeAlpha: TransfAlpha match_prog (fun p => p.(prog_main) :: p.(prog_public)) (fun p => p.(prog_main) :: p.(prog_public)).
+Proof.
+  red.
+  intros.
+  rewrite <- match_program_ctx in *.
+  unfold match_prog_ctx in *.
+  unfold alpha_equiv in *. destruct H as [a [? ?]].
+  exists (alpha_rename a t).
+  split.
+  rewrite <- match_program_ctx in *.
+  unfold match_prog_ctx in *.
+  eapply alpha_partial_program_match_contextual.
+  intros. apply transf_fundef_ctx_alpha.
+
+  auto.
+  apply H0.
+  apply H1.
+  auto.
+  
+  exists a. split;auto.
+  generalize H0.
+  apply match_program_main in H0.
+  intros.
+  unfold match_program in H2.
+  apply match_program_public in H2. 
+  apply H. rewrite H0 in H3. rewrite H2 in H3.
+  auto.
+Qed.
