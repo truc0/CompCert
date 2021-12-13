@@ -1513,8 +1513,19 @@ Qed.
 End INSTRSIZE.
 
 (** instrsize instantiation *)
-Definition instr_size_1 (i:Asm.instruction) : Z := 1.
+
+Definition instr_size_1 (i : Asm.instruction) : Z := 1.
 Lemma instr_size_bound_1 : forall i, 0 < instr_size_1 i <= Ptrofs.max_unsigned.
+Proof.
+  intros. destruct i; simpl; vm_compute; split; congruence.
+Qed.
+
+Definition instr_size_real (i : Asm.instruction) :=
+  match i with
+    |Pallocframe _ _ _=> 3
+    |_ => 1
+  end.
+Lemma instr_size_bound_real : forall i, 0 < instr_size_real i <= Ptrofs.max_unsigned.
 Proof.
   intros. destruct i; simpl; vm_compute; split; congruence.
 Qed.

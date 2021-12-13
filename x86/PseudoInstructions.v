@@ -32,19 +32,24 @@ Definition transf_instr (i: instruction): list instruction :=
 Definition transf_code (c: code) : code :=
   concat (map transf_instr c).
 
-Definition transf_function (f: function) : function :=
+Section INSTRSIZE.
+Variable instr_size : instruction -> Z.
+Definition transf_function (f: function) :=
+  if   wf_asm_function_check instr_size f && AsmFacts.check_asm_code_no_rsp (fn_code f) then OK
   {|
     fn_sig := fn_sig f;
     fn_code := transf_code (fn_code f);
     fn_stacksize := fn_stacksize f;
     fn_ofs_link := fn_ofs_link f;
-  |}.
+  |}
+  else Error (MSG"Precondition of pseudo instruction elimination fails" ::nil).
 
-Definition transf_fundef := AST.transf_fundef transf_function.
+Definition transf_fundef := AST.transf_partial_fundef transf_function.
 
-Definition transf_program (p: Asm.program) : Asm.program :=
-  AST.transform_program transf_fundef p.
+Definition transf_program (p: Asm.program) : res Asm.program :=
+  AST.transform_partial_program transf_fundef p.
 
+End INSTRSIZE.
 (*
 Definition check_function (f: Asm.function) : bool :=
   wf_asm_function_check f && AsmFacts.check_asm_code_no_rsp (fn_code f).

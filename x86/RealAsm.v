@@ -408,8 +408,9 @@ Section WFASM.
       wf_allocframe_repr:
         forall o sz ora olink,
           find_instr instr_size o (fn_code f) = Some (Pallocframe sz ora olink) ->
-          align sz 8 - size_chunk Mptr =
-          Ptrofs.unsigned (Ptrofs.sub (Ptrofs.repr (align sz 8)) (Ptrofs.repr (size_chunk Mptr)));
+          size_chunk Mptr <= align sz 8 <= Ptrofs.max_unsigned;
+(*          align sz 8 - size_chunk Mptr =
+          Ptrofs.unsigned (Ptrofs.sub (Ptrofs.repr (align sz 8)) (Ptrofs.repr (size_chunk Mptr))); *)
 
       wf_freeframe_repr:
         forall o sz ora olink,
@@ -417,22 +418,30 @@ Section WFASM.
           Ptrofs.repr (align sz 8 - size_chunk Mptr) = Ptrofs.sub (Ptrofs.repr (align sz 8)) (Ptrofs.repr (size_chunk Mptr));
     }.
 
-  Definition is_make_palloc a f :=  a = make_palloc f /\
-                                    align (fn_stacksize f) 8 - size_chunk Mptr =
-                                    Ptrofs.unsigned (Ptrofs.sub (Ptrofs.repr (align (fn_stacksize f) 8)) (Ptrofs.repr (size_chunk Mptr))).
-(*
-  Lemma pair_eq: forall {A B}
-                   (Adec: forall (a b: A), {a = b} + {a <> b})
-                   (Bdec: forall (a b: B), {a = b} + {a <> b}),
-      forall (a b: A * B), {a = b} + {a <> b}.
+  Lemma wf_allocframe_repr_lemma : forall a b,
+      0 < a ->
+      a <= b <= Ptrofs.max_unsigned ->
+      b - a = Ptrofs.unsigned (Ptrofs.sub (Ptrofs.repr b) (Ptrofs.repr a)).
   Proof.
-    intros.
-    destruct a, b.
-    destruct (Adec a a0), (Bdec b b0); subst;
-      first [ now (right; inversion 1; congruence)
-            | left; reflexivity ].
-  Defined.
-*)
+    intros. unfold  Ptrofs.sub.
+    repeat rewrite Ptrofs.unsigned_repr; auto; lia.
+  Qed.
+
+  Lemma wf_allocframe_repr' :
+    forall o sz ora olink f,
+      wf_asm_function f ->
+      find_instr instr_size o (fn_code f) = Some (Pallocframe sz ora olink) ->
+      align sz 8 - size_chunk Mptr =
+        Ptrofs.unsigned (Ptrofs.sub (Ptrofs.repr (align sz 8)) (Ptrofs.repr (size_chunk Mptr))).
+  Proof.
+    intros. eapply wf_allocframe_repr_lemma. unfold Mptr. destr; simpl; lia.
+    eapply wf_allocframe_repr; eauto.
+  Qed.
+
+  Definition is_make_palloc a f :=  a = make_palloc f /\ size_chunk Mptr <= align (fn_stacksize f) 8 <= Ptrofs.max_unsigned.
+(*                                    align (fn_stacksize f) 8 - size_chunk Mptr =
+                                    Ptrofs.unsigned (Ptrofs.sub (Ptrofs.repr (align (fn_stacksize f) 8)) (Ptrofs.repr (size_chunk Mptr))). *)
+
   Definition pallocframe_dec s s' o o' l l':
     {Pallocframe s o l= Pallocframe s' o' l'} + {Pallocframe s o l <> Pallocframe s' o' l'}.
   Proof.
@@ -456,7 +465,9 @@ Section WFASM.
     destruct a; try (now right; inversion 1).
     apply and_dec.
     apply pallocframe_dec.
-    apply zeq.
+    apply and_dec.
+    apply Z_le_dec.
+    apply Z_le_dec.
   Defined.
 
   Definition check_ret_or_jmp roj :=

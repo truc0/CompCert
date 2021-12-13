@@ -15,17 +15,9 @@ Require Import Values.
 Require Import Conventions1.
 Require Import AsmFacts.
 Require Import RealAsm PseudoInstructions.
+Require Import Errors.
 Require Import RealAsmproof.
 Require Import AsmRegs.
-
-Definition match_prog (p: Asm.program) (tp: Asm.program) :=
-  Linking.match_program (fun _ f tf => tf = transf_fundef f) eq p tp.
-
-Lemma transf_program_match:
-  forall p tp, transf_program p = tp -> match_prog p tp.
-Proof.
-  intros. subst. eapply Linking.match_transform_program; eauto.
-Qed.
 
 Section PRESERVATION.
 
@@ -33,8 +25,17 @@ Section PRESERVATION.
   Hypothesis instr_size_bound : forall i, 0 < instr_size i <= Ptrofs.max_unsigned.
   Hypothesis transf_instr_size : forall i, instr_size i = code_size instr_size (transf_instr i).
 
+  Definition match_prog (p: Asm.program) (tp: Asm.program) :=
+    Linking.match_program (fun _ f tf => transf_fundef instr_size f = OK tf ) eq p tp.
+
+  Lemma transf_program_match:
+    forall p tp, transf_program instr_size p = OK tp -> match_prog p tp.
+  Proof.
+    intros. subst. eapply Linking.match_transform_partial_program; eauto.
+  Qed.
+
   Variable prog tprog: Asm.program.
-  Hypothesis TRANSF: Linking.match_program (fun _ f1 f2 => f2 = transf_fundef f1) eq prog tprog.
+  Hypothesis TRANSF: Linking.match_program (fun _ f1 f2 => transf_fundef instr_size f1 = OK f2) eq prog tprog.
   Let ge := Genv.globalenv prog.
   Let tge := Genv.globalenv tprog.
 
@@ -54,13 +55,16 @@ Section PRESERVATION.
   Lemma functions_translated:
     forall b f,
       Genv.find_funct_ptr ge b = Some f ->
-      Genv.find_funct_ptr tge b = Some (transf_fundef f).
-  Proof. apply (Genv.find_funct_ptr_transf TRANSF). Qed.
+      exists tf,
+      Genv.find_funct_ptr tge b = Some tf /\
+        transf_fundef instr_size f = OK tf.
+  Proof. apply (Genv.find_funct_ptr_transf_partial TRANSF). Qed.
 
   Lemma functions_transl:
     forall fb f,
       Genv.find_funct_ptr ge fb = Some (Internal f) ->
-      Genv.find_funct_ptr tge fb = Some (Internal (transf_function f)).
+      exists tf,
+      Genv.find_funct_ptr tge fb = Some tf /\(Internal (transf_function f)).
   Proof.
     intros. apply functions_translated in H; eauto.
   Qed.
@@ -72,7 +76,6 @@ Section PRESERVATION.
     intros. induction c.
     - auto.
     - simpl. unfold transf_code. simpl.
-      Search code_size.
       rewrite code_size_app.
       generalize (transf_instr_size a). intro.
       rewrite <- H. simpl. setoid_rewrite <- IHc. lia.
@@ -500,8 +503,9 @@ Qed.
             (Ptrofs.of_int64 (Int64.add Int64.zero (Int64.repr (Ptrofs.unsigned ofs_link))))))
             ).
                   {
+                    exploit wf_allocframe_repr; eauto.
+                    unfold Mptr. rewrite PTR64. simpl. intro.
                     f_equal. f_equal. f_equal. unfold Ptrofs.sub. rewrite Ptrofs.unsigned_repr.
-                    +
            (* Ptrofs.neg (Ptrofs.sub (Ptrofs.repr (align sz 8)) (Ptrofs.repr 8)) =
              Ptrofs.of_int64 (Int64.add Int64.zero (Int64.repr (- (align sz 8 - 8))))*)
                     rewrite Int64.add_zero_l.
@@ -515,18 +519,15 @@ Qed.
                     apply Int64.eqm_refl.
                     assert (Int64.max_unsigned = Ptrofs.max_unsigned).
                     unfold Int64.max_unsigned. unfold Ptrofs.max_unsigned.
-                    rewrite Ptrofs.modulus_eq64. auto. auto. rewrite <- H4.
+                    rewrite Ptrofs.modulus_eq64. auto. auto. rewrite <- H5.
                     apply Int64.unsigned_range_2.
-                    exploit wf_allocframe_repr; eauto.
-                    unfold Mptr. rewrite PTR64. simpl. intro. rewrite H4.
-                    apply Ptrofs.unsigned_range_2.
-                    + admit. (* sz_repr *)
+                    lia. lia.
                     + rewrite Int64.add_zero_l.
                     unfold Ptrofs.of_int64. rewrite Int64.unsigned_repr.
                     rewrite Ptrofs.repr_unsigned. auto.
                     assert (Int64.max_unsigned = Ptrofs.max_unsigned).
                     unfold Int64.max_unsigned. unfold Ptrofs.max_unsigned.
-                    rewrite Ptrofs.modulus_eq64. auto. auto. rewrite H4.
+                    rewrite Ptrofs.modulus_eq64. auto. auto.
                     apply Ptrofs.unsigned_range_2.
                   }
                   auto.
@@ -555,9 +556,9 @@ Qed.
           lia.
         ++ unfold nextinstr_nf.
           simpl_regs. regs_eq. simpl_regs. regs_eq. simpl_regs. regs_eq.
-           (* Ptrofs.neg (Ptrofs.sub (Ptrofs.repr (align sz 8)) (Ptrofs.repr 8)) =
-             Ptrofs.of_int64 (Int64.add Int64.zero (Int64.repr (- (align sz 8 - 8))))*)
           f_equal. f_equal.  symmetry.
+           exploit wf_allocframe_repr; eauto.
+           unfold Mptr. rewrite PTR64. simpl. intro.
            unfold Ptrofs.sub. rewrite Ptrofs.unsigned_repr.
            rewrite Int64.add_zero_l.
            rewrite Ptrofs.unsigned_repr; auto. 2: vm_compute; split; congruence.
@@ -570,12 +571,9 @@ Qed.
            apply Int64.eqm_refl.
            assert (Int64.max_unsigned = Ptrofs.max_unsigned).
            unfold Int64.max_unsigned. unfold Ptrofs.max_unsigned.
-           rewrite Ptrofs.modulus_eq64. auto. auto. rewrite <- H12.
+           rewrite Ptrofs.modulus_eq64. auto. auto. rewrite <- H13.
            apply Int64.unsigned_range_2.
-           exploit wf_allocframe_repr; eauto.
-           unfold Mptr. rewrite PTR64. simpl. intro. rewrite H12.
-           apply Ptrofs.unsigned_range_2.
-           admit. (* sz_repr *)
+           lia. lia.
         * (*32bit storeptr*)
           simpl. unfold exec_store.  unfold eval_addrmode. rewrite PTR64.
           unfold eval_addrmode32. simpl.
@@ -593,9 +591,9 @@ Qed.
             ).
                   {
                     f_equal. f_equal. f_equal.
+                    exploit wf_allocframe_repr; eauto.
+                    unfold Mptr. rewrite PTR64. simpl. intro.
                     unfold Ptrofs.sub. rewrite Ptrofs.unsigned_repr.
-           (* Ptrofs.neg (Ptrofs.sub (Ptrofs.repr (align sz 8)) (Ptrofs.repr 8)) =
-             Ptrofs.of_int64 (Int64.add Int64.zero (Int64.repr (- (align sz 8 - 8))))*)
                     rewrite Int.add_zero_l.
                     rewrite Ptrofs.unsigned_repr; auto. 2: vm_compute; split; congruence.
                     unfold Ptrofs.of_int.
@@ -603,18 +601,14 @@ Qed.
                     rewrite Ptrofs.unsigned_repr.
                     apply Ptrofs.eqm_repr_eq.
                     rewrite Ptrofs.unsigned_repr.
-                    exploit Ptrofs.eqm32. auto. intro. apply H4.
+                    exploit Ptrofs.eqm32. auto. intro. apply H5.
                     apply Int.eqm_unsigned_repr_r.
                     apply Int.eqm_refl.
                     assert (Int.max_unsigned = Ptrofs.max_unsigned).
                     unfold Int.max_unsigned. unfold Ptrofs.max_unsigned.
-                    rewrite Ptrofs.modulus_eq32. auto. auto. rewrite <- H4.
-                    apply Int.unsigned_range_2.
-                    exploit wf_allocframe_repr; eauto.
-                    unfold Mptr. rewrite PTR64. simpl. intro. rewrite H4.
-                    apply Ptrofs.unsigned_range_2.
-                    admit. (* sz_repr *)
-                    + rewrite Int.add_zero_l.
+                    rewrite Ptrofs.modulus_eq32. auto. auto. rewrite <- H5.
+                    apply Int.unsigned_range_2. lia. lia.
+                    rewrite Int.add_zero_l.
                     unfold Ptrofs.of_int. rewrite Int.unsigned_repr.
                     rewrite Ptrofs.repr_unsigned. auto.
                     assert (Int.max_unsigned = Ptrofs.max_unsigned).
@@ -648,9 +642,9 @@ Qed.
           lia.
         ++ unfold nextinstr_nf.
           simpl_regs. regs_eq. simpl_regs. regs_eq. simpl_regs. regs_eq.
-           (* Ptrofs.neg (Ptrofs.sub (Ptrofs.repr (align sz 8)) (Ptrofs.repr 8)) =
-             Ptrofs.of_int64 (Int64.add Int64.zero (Int64.repr (- (align sz 8 - 8))))*)
           f_equal. f_equal.  symmetry.
+           exploit wf_allocframe_repr; eauto.
+           unfold Mptr. rewrite PTR64. simpl. intro.
            unfold Ptrofs.sub. rewrite Ptrofs.unsigned_repr.
            rewrite Int.add_zero_l.
            rewrite Ptrofs.unsigned_repr; auto. 2: vm_compute; split; congruence.
@@ -659,17 +653,13 @@ Qed.
            rewrite Ptrofs.unsigned_repr.
            apply Ptrofs.eqm_repr_eq.
            rewrite Ptrofs.unsigned_repr.
-           exploit Ptrofs.eqm32. auto. intro. apply H12.
+           exploit Ptrofs.eqm32. auto. intro. apply H13.
            apply Int.eqm_unsigned_repr_r.
            apply Int.eqm_refl.
            assert (Int.max_unsigned = Ptrofs.max_unsigned).
            unfold Int.max_unsigned. unfold Ptrofs.max_unsigned.
-           rewrite Ptrofs.modulus_eq32. auto. auto. rewrite <- H12.
-           apply Int.unsigned_range_2.
-           exploit wf_allocframe_repr; eauto.
-           unfold Mptr. rewrite PTR64. simpl. intro. rewrite H12.
-           apply Ptrofs.unsigned_range_2.
-           admit. (* sz_repr *)
+           rewrite Ptrofs.modulus_eq32. auto. auto. rewrite <- H13.
+           apply Int.unsigned_range_2. lia. lia.
         * traceEq.
       + (*Pfreeframe*)
         subst; simpl in *. inv H2. inv CA. inv H7.
@@ -695,7 +685,7 @@ Qed.
       apply plus_one.
       eapply exec_step_external; eauto.
       eapply external_call_symbols_preserved. apply senv_preserved. eauto.
-  Admitted.
+Qed.
 
   Theorem pseudo_instructions_correct:
     forward_simulation (RealAsm.semantics instr_size prog) (RealAsm.semantics instr_size tprog).
