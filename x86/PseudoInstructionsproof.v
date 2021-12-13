@@ -15,9 +15,17 @@ Require Import Values.
 Require Import Conventions1.
 Require Import AsmFacts.
 Require Import RealAsm PseudoInstructions.
-Require Import Errors.
 Require Import RealAsmproof.
 Require Import AsmRegs.
+
+Definition match_prog (p: Asm.program) (tp: Asm.program) :=
+  Linking.match_program (fun _ f tf => tf = transf_fundef f) eq p tp.
+
+Lemma transf_program_match:
+  forall p tp, transf_program p = tp -> match_prog p tp.
+Proof.
+  intros. subst. eapply Linking.match_transform_program; eauto.
+Qed.
 
 Section PRESERVATION.
 
@@ -25,17 +33,8 @@ Section PRESERVATION.
   Hypothesis instr_size_bound : forall i, 0 < instr_size i <= Ptrofs.max_unsigned.
   Hypothesis transf_instr_size : forall i, instr_size i = code_size instr_size (transf_instr i).
 
-  Definition match_prog (p: Asm.program) (tp: Asm.program) :=
-    Linking.match_program (fun _ f tf => transf_fundef instr_size f = OK tf ) eq p tp.
-
-  Lemma transf_program_match:
-    forall p tp, transf_program instr_size p = OK tp -> match_prog p tp.
-  Proof.
-    intros. subst. eapply Linking.match_transform_partial_program; eauto.
-  Qed.
-
   Variable prog tprog: Asm.program.
-  Hypothesis TRANSF: Linking.match_program (fun _ f1 f2 => transf_fundef instr_size f1 = OK f2) eq prog tprog.
+  Hypothesis TRANSF: Linking.match_program (fun _ f1 f2 => f2 = transf_fundef f1) eq prog tprog.
   Let ge := Genv.globalenv prog.
   Let tge := Genv.globalenv tprog.
 
@@ -55,16 +54,13 @@ Section PRESERVATION.
   Lemma functions_translated:
     forall b f,
       Genv.find_funct_ptr ge b = Some f ->
-      exists tf,
-      Genv.find_funct_ptr tge b = Some tf /\
-        transf_fundef instr_size f = OK tf.
-  Proof. apply (Genv.find_funct_ptr_transf_partial TRANSF). Qed.
+      Genv.find_funct_ptr tge b = Some (transf_fundef f).
+  Proof. apply (Genv.find_funct_ptr_transf TRANSF). Qed.
 
   Lemma functions_transl:
     forall fb f,
       Genv.find_funct_ptr ge fb = Some (Internal f) ->
-      exists tf,
-      Genv.find_funct_ptr tge fb = Some tf /\(Internal (transf_function f)).
+      Genv.find_funct_ptr tge fb = Some (Internal (transf_function f)).
   Proof.
     intros. apply functions_translated in H; eauto.
   Qed.

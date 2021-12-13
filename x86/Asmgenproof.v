@@ -248,13 +248,15 @@ Proof.
   destruct (Int.eq_dec n Int.zero); TailNoLabel.
   destruct (Int64.eq_dec n Int64.zero); TailNoLabel.
   destruct (Float.eq_dec n Float.zero); TailNoLabel.
-  destruct (Float32.eq_dec n Float32.zero); TailNoLabel.  admit. admit.
+  destruct (Float32.eq_dec n Float32.zero); TailNoLabel.
+  exploit mk_intconv_label; eauto. intros. simpl. auto.
+  exploit mk_intconv_label; eauto. intros. simpl. auto.
   destruct (normalize_addrmode_64 x) as [am' [delta|]]; TailNoLabel.
   eapply tail_nolabel_trans. eapply transl_cond_label; eauto. eapply mk_setcc_label.
   unfold transl_sel in EQ2. destruct (ireg_eq x x0); monadInv EQ2.
   TailNoLabel.
   eapply tail_nolabel_trans. eapply transl_cond_label; eauto. eapply mk_sel_label; eauto.
-Admitted.
+Qed.
 
 Remark transl_load_label:
   forall chunk addr args dest k c,

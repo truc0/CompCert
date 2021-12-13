@@ -529,7 +529,7 @@ Ltac DestructM :=
     replace (fn_stack_requirements p22) with (Stackingproof.fn_stack_requirements p21).
     eapply Stackingproof.transf_program_correct with (return_address_offset := Asmgenproof0.return_address_offset instr_size).
     eapply Asmgenproof.return_address_exists. eapply instr_size_bound.
-    eassumption.  eassumption.
+    eassumption.
     eapply Asmgen_fn_stack_requirements_match; eauto.
   eapply Asmgenproof.transf_program_correct. eapply instr_size_bound. eassumption. }
   split. auto.
@@ -591,6 +591,22 @@ Proof.
   apply SSAsm.semantics_determinate.
 Qed.
 
+Lemma Pseudo_fn_stack_requirements_match: forall  mp ap,
+    PseudoInstructionsproof.match_prog mp ap->
+    fn_stack_requirements mp = fn_stack_requirements ap.
+Proof.
+  intros.
+  unfold fn_stack_requirements.
+  apply Axioms.extensionality. intro i.
+  destruct (Globalenvs.Genv.find_funct_ptr (Globalenvs.Genv.globalenv mp)) eqn:FF.
+  exploit PseudoInstructionsproof.functions_translated; eauto. intro TF.
+  unfold PseudoInstructions.transf_fundef in TF.
+  unfold transf_fundef in TF.
+  destr_in TF.  inv TF. rewrite H1. auto. rewrite TF. auto.
+  eapply match_program_no_more_functions in FF; eauto.
+  setoid_rewrite FF. auto.
+Qed.
+
 Theorem c_semantic_preservation_real:
   forall p tp,
   match_prog_real p tp ->
@@ -603,13 +619,12 @@ Proof.
   destruct H as (p1 & MP1 & P).
   simpl in P. destruct P as (p2 & MP2 & P'). inv MP2.
   simpl in P'. destruct P' as (p3 & MP3 & p4 & MP4 & EQ).
-  inv EQ.
-  apply compose_backward_simulation with (SSAsm.semantics instr_size p2).
+  exploit RealAsmproof.match_prog_inv; eauto. intro EQ'. inv EQ'.
+  apply compose_backward_simulation with (SSAsm.semantics instr_size p3).
   apply RealAsm.real_asm_single_events.
-  replace (fn_stack_requirements tp) with (fn_stack_requirements p2).
+  replace (fn_stack_requirements tp) with (fn_stack_requirements p3).
   eapply c_semantic_preservation_SS; eauto.
-  exploit RealAsmproof.match_prog_inv; eauto. intro EQ. inv EQ.
-  admit.
+  apply Pseudo_fn_stack_requirements_match; eauto.
   eapply compose_backward_simulation; eauto.
   apply RealAsm.real_asm_single_events.
   apply RealAsmproof.real_asm_correct'; eauto.
@@ -624,11 +639,19 @@ Proof.
   eapply PseudoInstructionsproof.pseudo_instructions_correct; eauto.
   eapply instr_size_bound.
   intros. destruct i; simpl; auto.
-  admit. (*check again or preserve?*)
-  admit. (*check again or preserve?*)
+  intros. red. intros. exploit (Globalenvs.Genv.find_funct_ptr_transf_partial MP3); eauto.
+  intros (tf & FFP & TF).
+  simpl in TF; monadInv  TF. unfold RealAsmgen.transf_function in EQ. destr_in EQ.
+  eapply RealAsm.wf_asm_function_check_correct; eauto. eapply instr_size_bound.
+  exploit match_prog_wf; eauto.
+  intros (A&B&C). red in A. red. intros.
+  red. intros. exploit AsmFacts.in_find_instr; eauto.
+  instantiate (1 := instr_size).
+  eapply instr_size_bound.
+  intros [ofs H2]. eapply A; eauto.
   apply RealAsm.real_asm_receptive.
   apply RealAsm.real_asm_determinate.
-Admitted.
+Qed.
 
 (** * Correctness of the CompCert compiler *)
 
