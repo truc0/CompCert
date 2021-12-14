@@ -469,26 +469,3 @@ Definition transf_program (p: program): Errors.res program :=
 
 Definition transf_fundef_ctx ctx f := transf_fundef (funenv_program ctx) f.
 
-
-Lemma transf_function_alpha_commute: forall f f' ctx a,
-    transf_function (funenv_program ctx) f = OK f' ->
-    transf_function (funenv_program (alpha_rename a ctx)) (alpha_rename a f) = OK (alpha_rename a f').
-Proof.
-  unfold transf_function.
-    
-Admitted.
-
-Theorem transf_fundef_alpha_commute: forall fd fd' ctx a,
-    transf_fundef_ctx ctx fd = OK fd' ->
-    transf_fundef_ctx (alpha_rename a ctx) (alpha_rename a fd) = OK (alpha_rename a fd').
-Proof.
-  unfold transf_fundef_ctx. unfold transf_fundef.
-  intros. Transparent Alpha_fundef.
-  destruct fd;destruct fd'.
-  - simpl in *.
-    monadInv H.
-    admit. 
-  - simpl in H. monadInv H.
-  - simpl in H. monadInv H.
-  - simpl. auto.
-Admitted.

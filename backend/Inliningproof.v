@@ -37,7 +37,7 @@ Qed.
 Lemma transf_program_match:
   forall prog tprog, transf_program prog = OK tprog -> match_prog prog tprog.
 Proof.
-  intros. eapply match_transform_partial_program_contextual. eauto.
+  intros. eapply match_transform_partial_program_contextual; eauto.
 Qed.
 
 Section INLINING.
@@ -1365,6 +1365,126 @@ Proof.
 Qed.
 
 End INLINING.
+
+Inductive match_option_alpha {A:Type} (a:permutation) (Match: permutation -> A -> A -> Prop):option A -> option A -> Prop :=  
+| match_none_alpha : match_option_alpha a Match None None
+| match_some_alpha : forall a1 a2, Match a a1 a2  ->
+                              match_option_alpha a Match (Some a1) (Some a2).
+
+
+Definition match_funenv_alpha (a:permutation) (fenv1 fenv2: funenv) :=
+  forall id, match_option_alpha a (fun a f1 f2 => f1 = alpha_rename a f2) fenv1!(alpha_rename a id) fenv2!id.
+
+Lemma funenv_program_alpha: forall a p,
+    match_funenv_alpha a (funenv_program (alpha_rename a p)) (funenv_program p).
+Admitted.
+
+Definition match_state_alpha a (s1 s2:state) :=
+  s1.(st_nextnode) = s2.(st_nextnode) /\ s1.(st_nextreg) = s2.(st_nextreg) /\ s1.(st_stksize) = s2.(st_stksize) /\
+  (* (forall pc, match_option_alpha a (fun a i1 i2 => i1 = alpha_rename a i2) s1.(st_code)!pc s2.(st_code)!pc) *)
+    s1.(st_code) = PTree.map1 (alpha_rename a)s2.(st_code).
+
+Lemma match_state_alpha_initstate: forall a,
+    match_state_alpha a initstate initstate.
+Proof.
+  unfold match_state_alpha.
+  intros. auto.
+Qed.
+
+Lemma reserve_nodes_alpha: forall a n s1 s1' s2 s2' n1 n2 INCR1 INCR2,
+    match_state_alpha a s1 s2 ->
+    reserve_nodes n s1 = R n1 s1' INCR1 ->
+    reserve_nodes n s2 = R n2 s2' INCR2 ->
+    match_state_alpha a s1' s2'.
+Admitted.
+
+Lemma reserve_regs_alpha: forall a n s1 s1' s2 s2' n1 n2 INCR1 INCR2,
+    match_state_alpha a s1 s2 ->
+    reserve_regs n s1 = R n1 s1' INCR1 ->
+    reserve_regs n s2 = R n2 s2' INCR2 ->
+    match_state_alpha a s1' s2'.
+Admitted.
+
+Lemma expand_cfg_alpha: forall a s1 s1' s2 s2' fenv1 fenv2 ctx f u1 u2 INCR1 INCR2,
+      match_state_alpha a s1 s2 ->
+      match_funenv_alpha a fenv1 fenv2 ->
+      expand_cfg fenv1 ctx (alpha_rename a f) s1 = R u1 s1' INCR1 ->
+      expand_cfg fenv2 ctx f s2 = R u2 s2' INCR2 ->
+      match_state_alpha a s1' s2'.
+  unfold expand_cfg.
+  intros.
+  rewrite unroll_Fixm in *.
+  
+  
+  unfold expand_cfg_rec in *.
+  monadInv H1. monadInv H2.
+  
+  rewrite unroll_Fixm in *.
+Admitted.
+
+  
+Lemma expand_function_alpha: forall a f fenv1 fenv2 ctx1 ctx2 s1 s2 SINCR1 SINCR2,
+    match_funenv_alpha a fenv1 fenv2 ->
+    expand_function fenv1 (alpha_rename a f) initstate = R ctx1 s1 SINCR1 ->
+    expand_function fenv2 f initstate = R ctx2 s2 SINCR2 ->
+    ctx1 = ctx2 /\ match_state_alpha a s1 s2.
+Proof.
+  unfold expand_function.
+  intros.
+  assert (max_pc_function (alpha_rename a f) = max_pc_function f) by admit. rewrite H2 in *. clear H2.
+  assert (max_reg_function (alpha_rename a f) = max_reg_function f) by admit. rewrite H2 in *. clear H2.
+  monadInv H0. monadInv H1.
+  generalize (reserve_nodes_alpha _ _ _ _ _ _ _ _ _ _ (match_state_alpha_initstate a)  EQ EQ2).
+  intros.
+  generalize (reserve_regs_alpha _ _ _ _ _ _ _ _ _ _ H0 EQ1 EQ4). intros.  
+  rewrite EQ in EQ2. inversion EQ2;subst. clear EQ EQ2.
+  rewrite EQ1 in EQ4. inversion EQ4;subst. clear EQ1 EQ4.
+  split;auto.
+  eapply expand_cfg_alpha.
+  apply H1. apply H. apply EQ0. apply EQ3.
+Admitted.
+
+Lemma transf_function_alpha: forall f f' ctx a,
+    transf_function (funenv_program ctx) f = OK f' ->
+    transf_function (funenv_program (alpha_rename a ctx)) (alpha_rename a f) = OK (alpha_rename a f').
+Proof.
+  unfold transf_function.
+  intros.
+  destruct (expand_function (funenv_program ctx) f initstate) eqn:?.
+  destruct (expand_function (funenv_program (alpha_rename a ctx))
+                            (alpha_rename a f) initstate) eqn:?.
+  generalize (funenv_program_alpha a ctx). intros.
+  generalize (expand_function_alpha  _ _ _ _ _ _ _ _ _ _ H0 Heqr0 Heqr). intros.
+  destruct H1;subst.
+  unfold match_state_alpha in H2. destruct H2 as [? [? [? ?]]].
+  rewrite H3.
+  destruct (zlt (st_stksize s') Ptrofs.max_unsigned);Errors.monadInv H.
+  f_equal. Transparent Alpha_function.
+  simpl. unfold alpha_rename_function. simpl. f_equal.
+  auto.
+Qed.
+
+Theorem transf_fundef_alpha_commute: forall fd fd' ctx a,
+    transf_fundef_ctx ctx fd = OK fd' ->
+    transf_fundef_ctx (alpha_rename a ctx) (alpha_rename a fd) = OK (alpha_rename a fd').
+Proof.
+  unfold transf_fundef_ctx. unfold transf_fundef.
+  intros. Transparent Alpha_fundef.
+  destruct fd;destruct fd'.
+  - simpl in *.
+    monadInv H.
+    admit. 
+  - simpl in H. monadInv H.
+  - simpl in H. monadInv H.
+  - simpl. auto.
+Admitted.
+
+
+
+
+
+
+
 
 Instance TransfInliningAlpha: TransfAlpha match_prog (fun p => p.(prog_main) :: p.(prog_public)) (fun p => p.(prog_main) :: p.(prog_public)).
 Proof.
