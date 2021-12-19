@@ -1405,23 +1405,243 @@ Lemma reserve_regs_alpha: forall a n s1 s1' s2 s2' n1 n2 INCR1 INCR2,
     match_state_alpha a s1' s2'.
 Admitted.
 
-Lemma expand_cfg_alpha: forall a s1 s1' s2 s2' fenv1 fenv2 ctx f u1 u2 INCR1 INCR2,
+
+Lemma  xelement_map: forall (f:instruction -> instruction) (tree:code) l n,
+    PTree.xelements (PTree.map1 f tree) n (map (fun e => (fst e, f (snd e))) l) =
+    map (fun e => (fst e, f (snd e))) (PTree.xelements tree n l).
+Proof.
+  induction tree;intros;simpl;auto.
+  destruct o;simpl;auto.
+  - erewrite <- IHtree1 .
+    simpl. f_equal.
+    f_equal. auto.    
+  - erewrite <- IHtree1 .
+    f_equal. auto.
+Qed.
+
+Lemma request_stack_alpha: forall permu n (s1 s2 s1' s2': state) (x1 x2:unit) INCR1 INCR2,
+      match_state_alpha permu s1 s2 ->
+      request_stack n s1 = R x1 s1' INCR1 ->
+      request_stack n s2 = R x2 s2' INCR2 ->
+      match_state_alpha permu s1' s2'.
+    Admitted.
+
+Lemma set_instr_alpha: forall a pc i s1 s2 x1 x2 s1' s2' INCR1 INCR2,
+        match_state_alpha a s1 s2 ->
+        set_instr pc (alpha_rename a i) s1 = R x1 s1' INCR1 ->
+        set_instr pc i s2 = R x2 s2' INCR2 ->
+        match_state_alpha a s1' s2'.
+Admitted.
+
+Lemma can_inline_alpha_none: forall fe id,
+    None = fe ! id ->
+    can_inline fe (inr id) = @Cannot_inline fe (inr id).
+Proof.
+  intros.
+  simpl.
+  symmetry in H. 
+Admitted.
+
+
+   
+Section EXPAND_INSTR_ALPHA.
+  Variable a : permutation.
+  Variable fenv1 : funenv.
+  Variable fenv2 : funenv.
+  Hypothesis match_fenv_alpha: match_funenv_alpha a fenv1 fenv2.
+  Variable rec1: forall fe', (size_fenv fe' < size_fenv fenv1)%nat -> context -> function -> mon unit.
+  Variable rec2: forall fe', (size_fenv fe' < size_fenv fenv2)%nat -> context -> function -> mon unit.
+  Hypothesis rec_alpha:
+    forall fenv1' fenv2' (L1: (size_fenv fenv1' < size_fenv fenv1)%nat) (L2: (size_fenv fenv2' < size_fenv fenv2)%nat) (ctx:context) (f:function) (s1 s2 s1' s2':state) (x1 x2:unit) INCR1 INCR2,
+      match_state_alpha a s1 s2 ->
+      match_funenv_alpha a fenv1' fenv2' ->
+      rec1 fenv1' L1 ctx (alpha_rename a f) s1 = R x1 s1' INCR1 ->
+      rec2 fenv2' L2 ctx f s2 = R x2 s2' INCR2 ->
+      match_state_alpha a s1' s2'.
+
+  Lemma expand_instr_alpha: forall ctx pc instr (s1 s2 s1' s2': state) (x1 x2:unit) INCR1 INCR2,
+      match_state_alpha a s1 s2 ->
+      expand_instr fenv1 rec1 ctx pc (alpha_rename a instr) s1 = R x1 s1' INCR1 ->
+      expand_instr fenv2 rec2 ctx pc instr s2 = R x2 s2' INCR2 ->
+      match_state_alpha a s1' s2'.
+  Proof.
+    Transparent Alpha_instruction.
+    intros;destruct instr.
+    - simpl in *. eapply set_instr_alpha. 
+      apply H. 2: apply H1. simpl. apply H0.
+    - simpl in *. eapply set_instr_alpha. 
+      apply H. 2:apply H1. simpl. rewrite <- H0. 
+      f_equal. f_equal. destruct o;simpl;auto.
+      Transparent Alpha_operation.
+      simpl.  destruct a0;simpl;auto.     
+      destruct a0;simpl;auto.
+    - simpl in *. eapply set_instr_alpha. 
+      apply H. 2: apply H1. simpl.
+      rewrite <- H0. f_equal. f_equal.
+      destruct a0;simpl;auto.
+    - simpl in *. eapply set_instr_alpha. 
+      apply H. 2: apply H1. simpl.
+      rewrite <- H0. f_equal. f_equal.
+      destruct a0;simpl;auto.
+    - cbn [expand_instr] in *.
+      simpl in H0. destruct s0.
+      + cbn [expand_instr] in *.
+        simpl in *. eapply set_instr_alpha. 
+        apply H. 2: apply H1. simpl.
+        rewrite <- H0. f_equal.
+      + cbn [expand_instr] in *.
+        unfold match_funenv_alpha in match_fenv_alpha.
+        generalize (match_fenv_alpha i). intros.       
+        inversion H2.
+        eapply can_inline_alpha_none in H4.
+        eapply can_inline_alpha_none in H5.
+        destruct (can_inline fenv2 (inr i)) eqn:?.
+        destruct (can_inline fenv1 (inr (alpha_rename a i))) eqn:?.
+        * eapply set_instr_alpha. 
+          apply H. 2: apply H1. simpl.
+          rewrite <- H0. f_equal.
+        * 
+          (* lots of obligation, confusing! *)
+          rewrite H4 in Heqi1.
+        
+        destruct 
+        rewrite <- H5 in H1.
+        Lemma can_inline_alpha: forall a fenv1 fenv2 id,
+            
+        admit.
+    - admit.
+    - simpl in *. eapply set_instr_alpha. 
+      apply H. 2: apply H1. simpl.
+      rewrite <- H0. f_equal. f_equal.
+      clear H0 H1.
+      induction l;simpl;auto.
+      f_equal. induction a0;simpl;auto.
+      Transparent Alpha_builtin_arg. simpl.
+      f_equal. auto. auto.
+       Transparent Alpha_builtin_arg. simpl.
+      f_equal. auto. auto.
+      auto.
+    - simpl in *. eapply set_instr_alpha. 
+      apply H. 2: apply H1. simpl.
+      rewrite <- H0. f_equal.
+    - simpl in *. eapply set_instr_alpha. 
+      apply H. 2: apply H1. simpl.
+      rewrite <- H0. f_equal.
+    - simpl in *. destruct (retinfo ctx);simpl in *.
+      + eapply set_instr_alpha. 
+      apply H. 2: apply H1. simpl.
+      rewrite <- H0. f_equal.
+      destruct p. simpl. destruct o;simpl;auto.
+      + eapply set_instr_alpha. 
+      apply H. 2: apply H1. simpl.
+      rewrite <- H0. f_equal.
+  Admitted.
+
+  Lemma can_inline_alpha
+  
+  Lemma mlist_iter2_cfg_rec_alpha_aux2: forall l permu ctx (s1 s2 s1' s2': state ) INCR1 INCR2,
+      match_state_alpha permu s1 s2 ->
+      mlist_iter2 (expand_instr fenv1 rec1 ctx)
+                  (map
+                     (fun e : positive * instruction =>
+                        (fst e, alpha_rename permu (snd e))) l) s1 =
+      R tt s1' INCR1 ->
+      mlist_iter2 (expand_instr fenv2 rec2 ctx) l s2 =
+      R tt s2' INCR2 ->
+      match_state_alpha permu s1' s2'.
+  Proof.
+    induction l;intros;simpl in *;auto.
+    - monadInv H0. monadInv H1. auto.
+    - destruct a0. monadInv H0. monadInv H1.
+      simpl in EQ. generalize (expand_instr_alpha _ _ _ _ _ _ _ _ _ _ _ _ H EQ EQ1). intros.
+      eapply IHl. apply H0.
+      apply EQ0. apply EQ2.
+  Qed.
+  
+      
+  Lemma mlist_iter2_cfg_rec_alpha_aux: forall code permu ctx (s1 s2 s1' s2': state ) INCR1 INCR2 n l,
+      match_state_alpha permu s1 s2 ->
+      mlist_iter2 (expand_instr fenv1 rec1 ctx) (PTree.xelements (PTree.map1 (alpha_rename permu) code) n (map (fun e => (fst e,alpha_rename permu (snd e)) ) l )) s1 = R tt s1' INCR1 ->
+      mlist_iter2 (expand_instr fenv2 rec2 ctx) (PTree.xelements code n l)  s2 = R tt s2' INCR2 ->
+      match_state_alpha permu s1' s2'.
+  Proof.
+    induction code;intros;simpl in *.
+    - eapply mlist_iter2_cfg_rec_alpha_aux2;eauto.
+    - destruct o;simpl in *;auto.
+      + eapply IHcode1.
+        apply H.
+        
+        assert (((PTree.prev n, alpha_rename permu i)
+             :: PTree.xelements (PTree.map1 (alpha_rename permu) code2)
+                  n~1
+                  (map
+                     (fun e : positive * instruction =>
+                        (fst e, alpha_rename permu (snd e))) l)) =
+                map (fun e : positive * instruction =>
+                       (fst e, alpha_rename permu (snd e))) ((PTree.prev n,i)::PTree.xelements code2 n~1 l)).
+        { simpl. f_equal. eapply xelement_map. }                  
+        rewrite H2 in H0.
+        apply H0. apply H1.
+      + eapply IHcode1.
+        apply H.
+        erewrite xelement_map in H0.
+        apply H0.
+        apply H1.
+Qed.
+        
+  Lemma mlist_iter2_cfg_rec_alpha: forall permu ctx (s1 s2 s1' s2': state )code INCR1 INCR2,
+      match_state_alpha permu s1 s2 ->
+      mlist_iter2 (expand_instr fenv1 rec1 ctx) (PTree.elements (PTree.map1 (alpha_rename permu) code)) s1 = R tt s1' INCR1 ->
+      mlist_iter2 (expand_instr fenv2 rec2 ctx) (PTree.elements code)  s2 = R tt s2' INCR2 ->
+      match_state_alpha permu s1' s2'.
+  Proof.
+    unfold PTree.elements in *. intros.
+    eapply mlist_iter2_cfg_rec_alpha_aux;eauto.
+    simpl. apply H0.
+  Qed.
+  
+
+  Lemma expand_cfg_rec_alpha: forall ctx f (s1 s2 s1' s2': state) (x1 x2:unit) INCR1 INCR2,
+      match_state_alpha a s1 s2 ->
+      expand_cfg_rec fenv1 rec1 ctx (alpha_rename a f) s1 = R x1 s1' INCR1 ->
+      expand_cfg_rec fenv2 rec2 ctx f s2 = R x2 s2' INCR2 ->
+      match_state_alpha a s1' s2'.
+  Proof.
+    intros.
+    unfold expand_cfg_rec in H0, H1.
+    monadInv H0. monadInv H1.
+    exploit ptree_mfold_spec. apply EQ0.
+    exploit ptree_mfold_spec. apply EQ2.
+    intros [INC1 ITER1]. intros  [INC2 ITER2].
+    Transparent Alpha_function.
+    simpl in *.
+    generalize (request_stack_alpha _ _ _ _ _ _ _ _ _ _ H EQ EQ1). intros.
+    eapply mlist_iter2_cfg_rec_alpha. apply H0.
+    apply ITER2. apply ITER1.
+Qed.        
+End EXPAND_INSTR_ALPHA.
+
+    
+Lemma expand_cfg_alpha: forall fenv1 fenv2 a s1 s1' s2 s2' ctx f u1 u2 INCR1 INCR2,
       match_state_alpha a s1 s2 ->
       match_funenv_alpha a fenv1 fenv2 ->
       expand_cfg fenv1 ctx (alpha_rename a f) s1 = R u1 s1' INCR1 ->
       expand_cfg fenv2 ctx f s2 = R u2 s2' INCR2 ->
       match_state_alpha a s1' s2'.
-  unfold expand_cfg.
+  intro fenv1;pattern fenv1.
+  apply well_founded_ind with (R := ltof _ size_fenv).
+  apply well_founded_ltof.
   intros.
-  rewrite unroll_Fixm in *.
-  
-  
-  unfold expand_cfg_rec in *.
-  monadInv H1. monadInv H2.
-  
-  rewrite unroll_Fixm in *.
-Admitted.
-
+  unfold expand_cfg in H2, H3. rewrite unroll_Fixm in H2, H3.
+  eapply expand_cfg_rec_alpha;eauto.
+  intros.
+  eapply H.
+  apply L1.
+  apply H4.
+  apply H5.
+  apply H6.
+  apply H7.
+Qed.  
   
 Lemma expand_function_alpha: forall a f fenv1 fenv2 ctx1 ctx2 s1 s2 SINCR1 SINCR2,
     match_funenv_alpha a fenv1 fenv2 ->
