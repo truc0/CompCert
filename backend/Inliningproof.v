@@ -1434,13 +1434,25 @@ Lemma set_instr_alpha: forall a pc i s1 s2 x1 x2 s1' s2' INCR1 INCR2,
 Admitted.
 
 Lemma can_inline_alpha_none: forall fe id,
-    None = fe ! id ->
-    can_inline fe (inr id) = @Cannot_inline fe (inr id).
+    can_inline fe (inr id) = @Cannot_inline fe (inr id) <->
+    None = fe ! id.    
 Proof.
-  intros.
-  simpl.
-  symmetry in H. 
-Admitted.
+  Admitted.
+
+  (* intros. split. *)
+  (* destruct (fe!id) eqn:?. *)
+  (* symmetry in Heqo. *)
+  (*  unfold can_inline in H. *)
+  
+  (* rewrite Heqo in H. *)
+  (* destruct (can_inline fe (inr id)) eqn:?. *)
+  
+
+  (* intros. *)
+  (* destruct (can_inline fe (inr id)) eqn:?. *)
+  (* auto. inversion P. subst. *)
+  (* unfold ident in *. *)
+  (* rewrite Q in H. congruence. *)
 
 
    
@@ -1459,6 +1471,27 @@ Section EXPAND_INSTR_ALPHA.
       rec2 fenv2' L2 ctx f s2 = R x2 s2' INCR2 ->
       match_state_alpha a s1' s2'.
 
+  Lemma inline_function_alpha: forall ctx id f Q1 Q2 l pc r s1 s2 x1 x2 s1' s2' INCR1 INCR2,
+      match_state_alpha a s1 s2 ->
+      inline_function fenv1 rec1 ctx (alpha_rename a id) (alpha_rename a f) Q1 l pc r s1 = R x1 s1' INCR1 ->
+      inline_function fenv2 rec2 ctx id f Q2 l pc r s2 = R x2 s2' INCR2 ->
+      match_state_alpha a s1' s2' /\ x1 = x2.
+  Proof.
+    intros.
+    unfold inline_function in *.
+    monadInv H0. monadInv H1.
+    Admitted.
+    
+  Lemma inline_tailcall_function_alpha: forall ctx id f Q1 Q2 l s1 s2 x1 x2 s1' s2' INCR1 INCR2,
+      match_state_alpha a s1 s2 ->
+      inline_tail_function fenv1 rec1 ctx (alpha_rename a id) (alpha_rename a f) Q1 l s1 = R x1 s1' INCR1 ->
+      inline_tail_function fenv2 rec2 ctx id f Q2 l s2 = R x2 s2' INCR2 ->
+      match_state_alpha a s1' s2' /\ x1 = x2.
+Admitted.
+
+    
+
+    
   Lemma expand_instr_alpha: forall ctx pc instr (s1 s2 s1' s2': state) (x1 x2:unit) INCR1 INCR2,
       match_state_alpha a s1 s2 ->
       expand_instr fenv1 rec1 ctx pc (alpha_rename a instr) s1 = R x1 s1' INCR1 ->
@@ -1491,25 +1524,82 @@ Section EXPAND_INSTR_ALPHA.
         rewrite <- H0. f_equal.
       + cbn [expand_instr] in *.
         unfold match_funenv_alpha in match_fenv_alpha.
-        generalize (match_fenv_alpha i). intros.       
-        inversion H2.
-        eapply can_inline_alpha_none in H4.
-        eapply can_inline_alpha_none in H5.
-        destruct (can_inline fenv2 (inr i)) eqn:?.
+        generalize (match_fenv_alpha i). intros.
+        (* inversion H2.      *)
+        (* eapply can_inline_alpha_none in H4. *)
+        (* eapply can_inline_alpha_none in H5. *)
+        destruct (can_inline fenv2 (inr i)) eqn:?;
         destruct (can_inline fenv1 (inr (alpha_rename a i))) eqn:?.
         * eapply set_instr_alpha. 
           apply H. 2: apply H1. simpl.
           rewrite <- H0. f_equal.
-        * 
-          (* lots of obligation, confusing! *)
-          rewrite H4 in Heqi1.
-        
-        destruct 
-        rewrite <- H5 in H1.
-        Lemma can_inline_alpha: forall a fenv1 fenv2 id,
-            
-        admit.
-    - admit.
+        * unfold ident in *. inversion H2. inversion P. subst.
+          rewrite Q in H4. congruence.
+          eapply can_inline_alpha_none in Heqi0. rewrite <- Heqi0 in H4.
+          congruence.
+        *  unfold ident in *. inversion H2. inversion P. subst.
+           rewrite Q in H5. congruence.
+           apply can_inline_alpha_none in Heqi1. rewrite <- Heqi1 in H3.
+           congruence.
+        * monadInv H0. monadInv H1.
+          inversion P0. inversion P. subst.
+          inversion H2. rewrite Q in H3. congruence.
+          unfold ident in *. rewrite Q0 in H0.
+          rewrite Q in H1. inversion H0. inversion H1.
+          subst.
+          generalize (inline_function_alpha _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ H EQ EQ1). intros. destruct H3. subst.
+          assert (Inop x0 = alpha_rename a (Inop x0)).
+          { Transparent Alpha_instruction. simpl. auto. }
+          rewrite H4 in EQ0.
+          eapply set_instr_alpha. apply H3.
+          apply EQ0. apply EQ2.         
+    - cbn [expand_instr] in *.
+      simpl in H0. destruct s0.
+      + cbn [expand_instr] in *.
+        simpl in *. destruct (retinfo ctx). destruct p.
+        * eapply set_instr_alpha. 
+          apply H. 2: apply H1. simpl.
+          rewrite <- H0. f_equal.
+        * eapply set_instr_alpha. 
+          apply H. 2: apply H1. simpl.
+          rewrite <- H0. f_equal.
+      + 
+        cbn [expand_instr] in *.
+        unfold match_funenv_alpha in match_fenv_alpha.
+        generalize (match_fenv_alpha i). intros.
+        (* inversion H2.      *)
+        (* eapply can_inline_alpha_none in H4. *)
+        (* eapply can_inline_alpha_none in H5. *)
+        destruct (can_inline fenv2 (inr i)) eqn:?;
+        destruct (can_inline fenv1 (inr (alpha_rename a i))) eqn:?.
+        * destruct (retinfo ctx). destruct p.
+          -- eapply set_instr_alpha. 
+             apply H. 2: apply H1. apply H0.
+          -- eapply set_instr_alpha. 
+             apply H. 2: apply H1. apply H0.
+          (*    rewrite H3 in H0. apply H0 *)
+          (*      2: apply H1. simpl. *)
+          (* rewrite <- H0. f_equal. *)
+        * unfold ident in *. inversion H2. inversion P. subst.
+          rewrite Q in H4. congruence.
+          eapply can_inline_alpha_none in Heqi0. rewrite <- Heqi0 in H4.
+          congruence.
+        *  unfold ident in *. inversion H2. inversion P. subst.
+           rewrite Q in H5. congruence.
+           apply can_inline_alpha_none in Heqi1. rewrite <- Heqi1 in H3.
+           congruence.
+        * monadInv H0. monadInv H1.
+          inversion P0. inversion P. subst.
+          inversion H2. rewrite Q in H3. congruence.
+          unfold ident in *. rewrite Q0 in H0.
+          rewrite Q in H1. inversion H0. inversion H1.
+          subst.
+          generalize (inline_tailcall_function_alpha  _ _ _ _ _ _ _ _ _ _ _ _ _ _ H EQ EQ1). intros. destruct H3. subst.
+          assert (Inop x0 = alpha_rename a (Inop x0)).
+          { Transparent Alpha_instruction. simpl. auto. }
+          rewrite H4 in EQ0.
+          eapply set_instr_alpha. apply H3.
+          apply EQ0. apply EQ2.
     - simpl in *. eapply set_instr_alpha. 
       apply H. 2: apply H1. simpl.
       rewrite <- H0. f_equal. f_equal.
@@ -1535,7 +1625,7 @@ Section EXPAND_INSTR_ALPHA.
       + eapply set_instr_alpha. 
       apply H. 2: apply H1. simpl.
       rewrite <- H0. f_equal.
-  Admitted.
+Qed.
 
   Lemma can_inline_alpha
   
