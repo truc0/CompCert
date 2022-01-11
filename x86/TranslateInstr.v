@@ -336,6 +336,53 @@ Lemma translate_consistency1 : forall ofs i addr addrE,
     monadInv EQ5.
 Admitted.
 
+Definition translate_instr (ofs: Z) (i:instruction) :Instruction :=
+  match i with
+  | Pmov_rr rd r1 =>
+    do rdbits <- encode_ireg_u3 rd;
+    do r1bits <- encode_ireg_u3 r1;
+    Pmovl_rr rdbits r1bits
+  | UserAsm.Pmovl_rm rd addr =>
+    do rdbits <- encode_ireg_u3 rd;
+    do a <- translate_Addrmode_AddrE ofs i addr;
+    Pmovl_rm a rdbits
+  | UserAsm.Pmovl_ri rd imm =>
+    do rdbits <- encode_ireg_u3 rd;
+    do imm32 <- encode_ofs_u32 imm;
+    Pmovl_ri rdbits imm32
+  | UserAsm.Pmovl_mr addr r =>
+    do rbits <- encode_ireg_u3 r;
+    do a <- translate_Addrmode_AddrE ofs i addr;
+    Pmovl_mr a rbits
+  | UserAsm.Pmovsd_ff rd r1 =>
+    do rdbits <- encode_ireg_u3 rd;
+    do r1bits <- encode_ireg_u3 r1;
+    Pmovsd_ff rdbits r1bits
+  | Pmovsd_fm r addr =>
+    do rbits <- encode_ireg_u3 r;
+    do a <- translate_Addrmode_AddrE ofs i addr;
+    Pmovsd_fEv a rbits
+  | Pmovsd_mf addr r =>
+    do rbits <- encode_ireg_u3 r;
+    do a <- translate_Addrmode_AddrE ofs i addr;
+    Pmovsd_Evf a rbits
+  | Pmovss_fm r addr =>
+    do rbits <- encode_ireg_u3 r;
+    do a <- translate_Addrmode_AddrE ofs i addr;
+    Pmovss_fEv a rdbits
+  | Pmovss_mf addr r =>
+    do rbits <- encode_ireg_u3 r;
+    do a <- translate_Addrmode_AddrE ofs i addr;
+    Pmovss_Evf a rdbits
+  | UserAsm.Pfldl_m addr =>
+    do a <- translate_Addrmode_AddrE ofs i addr;
+    Pfldl_m a
+  | Pfstpl_m addr =>
+    do a <- translate_Addrmode_AddrE ofs i addr;
+    Pfstpl_m a
+  | 
+    
+       
 
-
+      
     
