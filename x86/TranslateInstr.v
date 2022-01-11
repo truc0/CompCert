@@ -219,8 +219,12 @@ Definition translate_Addrmode_AddrE (sofs: Z) (i:instruction) (addr:addrmode): r
               OK (AddrE6 r zero32)
           | None,Some (idx,ss) =>
             do index <- encode_ireg_u3 idx;          
-            do scale <- encode_scale_u2 ss;                    
-                OK (AddrE9 scale index zero32)
+            do scale <- encode_scale_u2 ss;
+            if ireg_eq idx RSP then
+              (* OK (AddrE7 zero32) *)
+              Error (msg "index can not be RSP")
+            else
+              OK (AddrE9 scale index zero32)
           | Some base,Some (idx,ss) =>
             do scale <- encode_scale_u2 ss;
             do index <- encode_ireg_u3 idx;
@@ -248,7 +252,11 @@ Definition translate_Addrmode_AddrE (sofs: Z) (i:instruction) (addr:addrmode): r
         | None,Some (idx,ss) =>
           do r <- encode_ireg_u3 idx;
           do scale <- encode_scale_u2 ss;
-          OK (AddrE9 scale r ofs32)                          
+          if ireg_eq idx RSP then
+            (* OK (AddrE7 ofs32) *)
+            Error (msg "index can not be RSP")
+          else
+            OK (AddrE9 scale r ofs32)                          
         | Some base,Some (idx,ss) =>
           do scale <- encode_scale_u2 ss;
           do index <- encode_ireg_u3 idx;
@@ -279,8 +287,11 @@ Definition translate_AddrE_Addrmode (sofs: Z) (i:instruction) (addr:AddrE) : res
     | AddrE11 disp =>
       OK (Addrmode None None (inl (bits_to_Z (proj1_sig disp))))
     | AddrE9 ss idx disp =>
-      do index <- decode_ireg (proj1_sig idx);      
-      OK (Addrmode None (Some (index,(bits_to_Z (proj1_sig ss)))) (inl (bits_to_Z (proj1_sig disp))) )
+      do index <- decode_ireg (proj1_sig idx);
+      if ireg_eq index RSP then
+        Error (msg "index can not be RSP")
+      else
+        OK (Addrmode None (Some (index,(bits_to_Z (proj1_sig ss)))) (inl (bits_to_Z (proj1_sig disp))) )  
     | AddrE6 base disp =>
       do b <- decode_ireg (proj1_sig base);
       OK (Addrmode (Some b) None (inl (bits_to_Z (proj1_sig disp))) )
@@ -380,9 +391,33 @@ Definition translate_instr (ofs: Z) (i:instruction) :Instruction :=
   | Pfstpl_m addr =>
     do a <- translate_Addrmode_AddrE ofs i addr;
     Pfstpl_m a
+  | UserAsm.Pflds_m addr =>
+    do a <- translate_Addrmode_AddrE ofs i addr;
+    Pflds_m a
+  | UserAsm.Pfstps_m addr =>
+    do a <- translate_Addrmode_AddrE ofs i addr;
+    Pfstps_m a
+  | UserAsm.Pxchg_rr rd r =>
+    do rdbits <- encode_ireg_u3 rd;
+    do rbits <- encode_ireg_u3 r;
+    Pxchg_rr rdbits rbits
+  | UserAsm.Pmovb_mr addr r =>
+    do a <- translate_Addrmode_AddrE ofs i addr;
+    do rbits <- encode_ireg_u3 r;
+    Pmovb_mr a rbtis
+  | UserAsm.Pmovw_mr addr r =>
+    do a <- translate_Addrmode_AddrE ofs i addr;
+    do rbits <- encode_ireg_u3 r;
+    Pmovw_mr a rbtis
+  | UserAsm.Pmovzb_rr rd r =>
+    do rdbits <- encode_ireg_u3 rd;
+    do rbits <- encode_ireg_u3 r;
+    Pmovzb_rr rdbits rbits
+  | UserAsm.Pmovzb_rm r a =>
+    do rbits <- encode_ireg_u3 r;
+    do a <- translate_Addrmode_AddrE ofs i addr;
+    Pmovzb_rm a rbits
   | 
     
-       
-
       
     
