@@ -120,6 +120,7 @@ BACKEND=\
   AsmFloatLiteral.v SymbolString.v\
   AsmPseudoInstr.v \
   Asmlabelgen.v \
+  LocalLib.v Jumptablegen.v CheckDef.v\
   
 # C front-end modules (in cfrontend/)
 
