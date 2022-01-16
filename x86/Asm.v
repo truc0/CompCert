@@ -204,6 +204,7 @@ Inductive instruction: Type :=
   | Pshld_ri (rd: ireg) (r1: ireg) (n: int)
   | Prorl_ri (rd: ireg) (n: int)
   | Prorq_ri (rd: ireg) (n: int)
+  | Prolw_ri (rd: ireg) (n: int) (*SANCC*)
   | Pcmpl_rr (r1 r2: ireg)
   | Pcmpq_rr (r1 r2: ireg)
   | Pcmpl_ri (r1: ireg) (n: int)
@@ -223,6 +224,8 @@ Inductive instruction: Type :=
   | Pabsd (rd: freg)
   | Pcomisd_ff (r1 r2: freg)
   | Pxorpd_f (rd: freg)	              (**r [xor] with self = set to zero *)
+  | (*SANCC*) Pxorpd_fm (frd: freg) (a: addrmode)
+  | (*SANCC*) Pandpd_fm (frd: freg) (a: addrmode)
   | Padds_ff (rd: freg) (r1: freg)
   | Psubs_ff (rd: freg) (r1: freg)
   | Pmuls_ff (rd: freg) (r1: freg)
@@ -231,6 +234,8 @@ Inductive instruction: Type :=
   | Pabss (rd: freg)
   | Pcomiss_ff (r1 r2: freg)
   | Pxorps_f (rd: freg)	              (**r [xor] with self = set to zero *)
+  | (*SANCC*) Pxorps_fm (frd: freg) (a: addrmode)
+  | (*SANCC*) Pandps_fm (frd: freg) (a: addrmode)
   (** Branches and calls *)
   | Pjmp_l (l: label)
   | Pjmp_s (symb: ident) (sg: signature)
@@ -241,6 +246,7 @@ Inductive instruction: Type :=
   | Pcall_s (symb: ident) (sg: signature)
   | Pcall_r (r: ireg) (sg: signature)
   | Pret
+  | (* SANCC *) Pret_iw (n: int)
   (** Saving and restoring registers *)
   | Pmov_rm_a (rd: ireg) (a: addrmode)  (**r like [Pmov_rm], using [Many64] chunk *)
   | Pmov_mr_a (a: addrmode) (rs: ireg)  (**r like [Pmov_mr], using [Many64] chunk *)
@@ -290,7 +296,12 @@ Inductive instruction: Type :=
   | Psbbl_rr (rd: ireg) (r2: ireg)
   | Psqrtsd (rd: freg) (r1: freg)
   | Psubl_ri (rd: ireg) (n: int)
-  | Psubq_ri (rd: ireg) (n: int64).
+  | Psubq_ri (rd: ireg) (n: int64)
+  (**SANCC: Local jumps using relative offsets *)
+  | Pjmp_l_rel (ofs: Z)
+  | Pjcc_rel (c: testcond)(ofs: Z)
+  | Pjcc2_rel (c1 c2: testcond)(ofs: Z)   (**r pseudo *)
+  | Pjmptbl_rel (r: ireg) (tbl: list Z) (**r pseudo *).
 
 Definition code := list instruction.
 Record function : Type := mkfunction { fn_sig: signature; fn_code: code; fn_stacksize:Z; fn_ofs_link : ptrofs}.
@@ -313,6 +324,63 @@ Proof.
   left; econstructor; eauto.
   left; econstructor; eauto.
 Qed.
+
+(*SANCC: Copy from ccelf-no-perm*)
+(*SACC: checks for not jumps *)
+Section SACC_NOT_JMP.
+
+Definition instr_not_jmp_rel (i:instruction) :=
+  match i with
+  | Pjmp_l_rel _ 
+  | Pjcc_rel _ _ 
+  | Pjcc2_rel _ _ _
+  | Pjmptbl_rel _ _ => False
+  | _ => True
+  end.
+
+Definition func_no_jmp_rel (f:function) :=
+  Forall instr_not_jmp_rel (fn_code f).
+
+Definition fundef_no_jmp_rel (f:fundef) :=
+  match f with
+  | Internal f => func_no_jmp_rel f
+  | External _ => True
+  end.
+
+Definition prog_no_jmp_rel (p: program) :=
+  Forall (fun def => match def with
+                  | (id, Gvar _) => True
+                  | (id, Gfun f) => fundef_no_jmp_rel f
+                  end) (prog_defs p).
+
+Definition instr_not_jmp_rel_dec : forall i, {instr_not_jmp_rel i} + {~instr_not_jmp_rel i}.
+Proof.
+  destruct i; auto; try (left; cbn; auto).
+Defined.
+
+Definition func_no_jmp_rel_dec: forall f, {func_no_jmp_rel f} + {~func_no_jmp_rel f}.
+Proof.
+  destruct f. unfold func_no_jmp_rel. simpl.
+  apply Forall_dec. 
+  apply instr_not_jmp_rel_dec.
+Defined.
+
+Definition fundef_no_jmp_rel_dec: forall f, {fundef_no_jmp_rel f} + {~fundef_no_jmp_rel f}.
+Proof.
+  destruct f. 
+  simpl. apply func_no_jmp_rel_dec.
+  simpl. auto.
+Defined.
+
+Definition prog_no_jmp_rel_dec: forall p, {prog_no_jmp_rel p} + {~prog_no_jmp_rel p}.
+Proof.
+  destruct p. unfold prog_no_jmp_rel. simpl.
+  apply Forall_dec.
+  destruct x as [id def]. repeat destr.
+  apply fundef_no_jmp_rel_dec.
+Defined.
+
+End SACC_NOT_JMP.
 
 (** * Operational semantics *)
 
@@ -788,6 +856,17 @@ Definition goto_label (f: function) (lbl: label) (rs: regset) (m: mem) :=
     end
   end.
 
+(*SANCC: Copy from ccelf-no-perm*)
+Definition goto_ofs (sz:ptrofs) (ofs:Z) (rs: regset) (m: mem) :=
+  match rs#PC with
+  | Vptr b o =>
+    match Genv.find_funct_ptr ge b with
+    | Some _ => Next (rs#PC <- (Vptr b (Ptrofs.add o (Ptrofs.add sz (Ptrofs.repr ofs))))) m
+    | None => Stuck
+    end
+  | _ => Stuck
+  end.
+
 (** Auxiliaries for memory accesses. *)
 
 Definition exec_load (sz:ptrofs) (chunk: memory_chunk) (m: mem)
@@ -1254,6 +1333,30 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
       end else Stuck
   | Pbuiltin ef args res =>
       Stuck                             (**r treated specially below *)
+  (*SANCC: Copy from ccelf-no-perm*)
+  (**SACC: Local jumps to relative offsets *)
+  | Pjmp_l_rel ofs => goto_ofs sz ofs rs m
+  | Pjcc_rel cond ofs =>
+      match eval_testcond cond rs with
+      | Some true => goto_ofs sz ofs rs m
+      | Some false => Next (nextinstr rs) m
+      | None => Stuck
+      end
+  | Pjcc2_rel cond1 cond2 ofs =>
+      match eval_testcond cond1 rs, eval_testcond cond2 rs with
+      | Some true, Some true => goto_ofs sz ofs rs m
+      | Some _, Some _ => Next (nextinstr rs) m
+      | _, _ => Stuck
+      end
+  | Pjmptbl_rel r tbl =>
+      match rs#r with
+      | Vint n =>
+          match list_nth_z tbl (Int.unsigned n) with
+          | None => Stuck
+          | Some ofs => goto_ofs sz ofs (rs #RAX <- Vundef #RDX <- Vundef) m
+          end
+      | _ => Stuck
+      end
   (** The following instructions and directives are not generated
       directly by [Asmgen], so we do not model them. *)
   | Padcl_ri _ _
@@ -1294,7 +1397,13 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
   | Psbbl_rr _ _
   | Psqrtsd _ _
   | Psubl_ri _ _
-  | Psubq_ri _ _ => Stuck
+  | Psubq_ri _ _ 
+  | (* SANCC *) Pret_iw _ 
+  | (* SANCC *) Pxorpd_fm _ _
+  | (* SANCC *) Pandpd_fm _ _ 
+  | (* SANCC *) Pxorps_fm _ _
+  | (* SANCC *) Pandps_fm _ _ 
+  | (* SANCC *) Prolw_ri _ _ => Stuck
   end.
 
 (** Translation of the LTL/Linear/Mach view of machine registers
