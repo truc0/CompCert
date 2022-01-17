@@ -240,6 +240,7 @@ Inductive instruction: Type :=
   | Pjmp_l (l: label)
   | Pjmp_s (symb: ident) (sg: signature)
   | Pjmp_r (r: ireg) (sg: signature)
+  | Pjmp_m (a: addrmode) (* SANCC *)
   | Pjcc (c: testcond)(l: label)
   | Pjcc2 (c1 c2: testcond)(l: label)   (**r pseudo *)
   | Pjmptbl (r: ireg) (tbl: list label) (**r pseudo *)
@@ -1403,7 +1404,8 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
   | (* SANCC *) Pandpd_fm _ _ 
   | (* SANCC *) Pxorps_fm _ _
   | (* SANCC *) Pandps_fm _ _ 
-  | (* SANCC *) Prolw_ri _ _ => Stuck
+  | (* SANCC *) Prolw_ri _ _ 
+  | (* SANCC *) Pjmp_m _ => Stuck
   end.
 
 (** Translation of the LTL/Linear/Mach view of machine registers
