@@ -25,7 +25,28 @@ Require Import Linking.
   Variable instr_size: instruction -> Z.
   Hypothesis instr_size_bound : forall i, 0 < instr_size i <= Ptrofs.max_unsigned.
   Let ge := Genv.globalenv prog.
+  Hypothesis TRANSF: prog_no_jmp_rel prog. (* SANCC *)
 
+  (* SANCC *)
+ Lemma find_jmp_rel_absurd: forall b f ofs i,
+    Genv.find_funct_ptr ge b = Some (Internal f) ->
+    find_instr instr_size ofs (fn_code f) = Some i -> 
+    instr_not_jmp_rel i.
+  Proof.
+    intros b f ofs i FPTR FI.
+    exploit Genv.find_funct_ptr_inversion; eauto.
+    unfold ge in FPTR. eauto.
+    intros (id & IN).
+    red in TRANSF. 
+    rewrite Forall_forall in TRANSF.
+    exploit TRANSF; eauto. simpl.
+    exploit Asmgenproof0.find_instr_in; eauto. 
+    intros INi NJ.
+    red in NJ.
+    rewrite Forall_forall in NJ.
+    auto.
+  Qed.
+  
   Definition pc_at (s: state): option ((function * instruction) + external_function) :=
     let '(State rs m) := s in
     match rs PC with
@@ -320,6 +341,17 @@ Require Import Linking.
     unfold goto_label. intros. destr. rewrite <- SEQ. destr. destr. eauto.
   Qed.
 
+  (* SANCC *)
+    Lemma goto_ofs_seq:
+    forall sz ofs rs1 rs2 m rs' m'
+      (GL : goto_ofs ge sz ofs rs1 m = Next rs' m')
+      (SEQ: rs1 PC = rs2 PC),
+    exists (rs2' : regset) (m2' : mem), goto_ofs ge sz ofs rs2 m = Next rs2' m2'.
+  Proof.
+    unfold goto_ofs. intros. destr_in GL. destr_in GL. inv GL. 
+    rewrite <- SEQ, Heqo. eauto.
+  Qed.
+
   Ltac force_rewrite_match H :=
     match goal with
       H: ?b = _ |- context [ match ?a with _ => _ end ] =>
@@ -604,6 +636,13 @@ Require Import Linking.
         eapply exec_store_seq; eauto. congruence.
         eapply exec_store_seq; eauto. congruence.
         exfalso; apply PC1. constructor 1. constructor.
+        (* SANCC *)
+        eapply goto_ofs_seq; eauto. apply REQ; congruence.
+        erewrite <- eval_testcond_seq by eauto. repeat destr_in H6; eauto. eapply goto_ofs_seq; eauto. apply REQ; congruence.
+        erewrite <- eval_testcond_seq by eauto. destr_in H6.
+        erewrite <- eval_testcond_seq by eauto. repeat destr_in H6; eauto. eapply goto_ofs_seq; eauto. apply REQ; congruence.
+        rewrite <- REQ by congruence. destr. destr. eapply goto_ofs_seq. eauto. simpl_regs. apply REQ; congruence.
+        (* end SANCC *)
         eapply eval_builtin_args_eq_rs in H4. rewrite REQ in H4.
         right; do 2 eexists. eapply exec_step_builtin. rewrite <- REQ; eauto. congruence. all: eauto. congruence.
         eapply wf_asm_builtin_not_PC; eauto.
@@ -703,6 +742,22 @@ Require Import Linking.
     }
   Qed.
 
+
+  (* SANCC *)
+  Lemma goto_ofs_match:
+    forall sz ofs rs2 m2 rs2' m2' rs1,
+      (forall r: preg, r<>RA -> rs1 r = rs2 r) ->
+      goto_ofs ge sz ofs rs2 m2 = Next rs2' m2' ->
+      exists rs1' m1', goto_ofs ge sz ofs rs1 m2 = Next rs1' m1' /\ seq (State rs1' m1') (State rs2' m2').
+  Proof.
+    intros sz ofs rs2 m2 rs2' m2' rs1 REQ GL2.
+    edestruct goto_ofs_seq as (rs1' & m1' & GL). eauto. symmetry; apply REQ. congruence. rewrite GL.
+    do 2 eexists; split; eauto.
+    unfold goto_ofs in GL2, GL. rewrite REQ in GL by congruence.
+    repeat destr_in GL. inv GL2.
+    constructor. intros. regs_eq.
+  Qed.
+  
   Lemma exec_instr_normal:
     forall rs1 rs2 m1 m2 b ofs f i rs2' m2',
       seq (State rs1 m1) (State rs2 m2) ->
@@ -758,6 +813,15 @@ Require Import Linking.
         eapply goto_label_match. 2: eauto. intros; regs_eq.
         contradict NII. constructor 2; auto.
         contradict NII. constructor. constructor.
+        (* SANCC *)
+        eapply goto_ofs_match; eauto.
+        eapply goto_ofs_match; eauto.
+        erewrite eval_testcond_seq by eauto. rewrite Heqo0. eapply goto_ofs_match; eauto.
+        erewrite eval_testcond_seq by eauto. rewrite Heqo0.
+        do 2 eexists; split; [eauto|constructor; intros; simpl; regs_eq; repeat destr; simpl; regs_eq].
+        erewrite eval_testcond_seq by eauto. rewrite Heqo0.
+        do 2 eexists; split; [eauto|constructor; intros; simpl; regs_eq; repeat destr; simpl; regs_eq].
+        eapply goto_ofs_match. 2: eauto. intros; regs_eq.
     }
     destruct (Val.eq (rs2' PC) (Val.offset_ptr (rs2 PC) (Ptrofs.repr (instr_size i)))).
     {
@@ -793,6 +857,11 @@ Require Import Linking.
     contradict NIC. constructor.
     contradict NIC. constructor.
     contradict NII. constructor 2. auto.
+    (* SANCC *)
+    exploit find_jmp_rel_absurd; eauto. intros. contradiction.
+    exploit find_jmp_rel_absurd; eauto. intros. contradiction.
+    exploit find_jmp_rel_absurd; eauto. intros. contradiction.
+    exploit find_jmp_rel_absurd; eauto. intros. contradiction.
   Qed.
 
   Lemma offsets_after_call_correct:
@@ -1311,28 +1380,42 @@ Qed.
   Qed.
 
   Lemma match_prog_inv: forall t tp,
-    match_prog t tp -> t = tp.
+    match_prog t tp -> t = tp /\ prog_no_jmp_rel t. (*SANCC*)
   Proof.
     intros t tp MT. red in MT. red in MT. red in MT.
     destruct MT as (MT & EQ1 & EQ2).
-    set (P :=
-           (match_ident_globdef (fun (_ : program Asm.fundef unit) (f tf : Asm.fundef) => transf_fundef instr_size f = OK tf)
+    set (P := 
+           (match_ident_globdef (fun (_ : program Asm.fundef unit) (f tf : Asm.fundef) => transf_fundef instr_size f = OK tf) 
                                        (@eq unit) t)) in *.
-    destruct t, tp. simpl in *. subst.
+    destruct t, tp. simpl in *. subst. 
     apply list_forall2_ind with (P:=P) (l:= prog_defs) (l0:= prog_defs0).
+    - split; simpl; auto.
+      red. simpl. apply Forall_forall. intros x H. inv H.
+    - intros a1 al b1 bl Pab LP (EQ1 & NJ). inv EQ1. 
+      red in NJ. rewrite Forall_forall in NJ. split.
+      + f_equal.
+        f_equal. red in Pab. red in Pab. destruct Pab as [Pab1 Pab2].
+        destruct a1, b1. simpl in *. subst. f_equal.
+        destruct g. inv Pab2.
+        destruct f. monadInv H1. unfold transf_function in EQ.
+        destr_in EQ; destr_in EQ(*SANCC*); inv EQ.
+        simpl in *. inv H1. inv H0.
+        inv H1. auto.
+        inv Pab2. inv H0. auto.
+      + red. apply Forall_forall. 
+        intros x IN. simpl in *. destruct IN as [IN1 | IN2].
+        * subst. red in Pab. red in Pab. destruct Pab as [Pab1 Pab2].            destruct x, b1. simpl in *. subst.
+          destruct g; auto.
+          inv Pab2. unfold transf_fundef in H1.
+          unfold transf_partial_fundef in H1. destr_in H1; monadInv H1.
+          unfold transf_function in EQ.
+          (* SANCC *)
+          destr_in EQ; destr_in EQ; inv EQ.
+          simpl;auto.
+        * apply NJ. auto.
     - auto.
-    - intros a1 al b1 bl Pab LP EQ1. inv EQ1.
-      f_equal.
-      f_equal. red in Pab. red in Pab. destruct Pab as [Pab1 Pab2].
-      destruct a1, b1. simpl in *. subst. f_equal.
-      destruct g. inv Pab2.
-      destruct f. inv H0.
-      monadInv H1. unfold transf_function in EQ.
-      destr_in EQ; inv EQ.
-      simpl in *. inv H1. auto. inv Pab2. inv H0. auto.
-    - auto.
-Qed.
-
+Qed.    
+    
 End PRESERVATION.
 
   Section PRESERVATION2.
@@ -1347,13 +1430,17 @@ End PRESERVATION.
 (*  Hypothesis WF: wf_asm_prog ge. *)
   Hypothesis prog_no_rsp: asm_prog_no_rsp instr_size ge.
 
+  
   Theorem real_asm_correct':
     backward_simulation (SSAsm.semantics instr_size prog) (RealAsm.semantics instr_size tprog).
   Proof.
     red in TRANSF.
     unfold transf_program in TRANSF.
-    exploit match_prog_inv; eauto. intro EQ. subst tprog.
+    exploit match_prog_inv; eauto. intro EQ.
+    destruct EQ.                (* SANCC *)
+    subst tprog.
     apply real_asm_correct; auto.
+    
     intros. red. intros. exploit (Genv.find_funct_ptr_transf_partial TRANSF); eauto.
     intros (tf & FFP & TF).
     simpl in TF; monadInv  TF. unfold transf_function in EQ. destr_in EQ.

@@ -132,18 +132,17 @@ Proof.
   rewrite set_pair_no_rsp; eauto.
 Qed.
 
-
-
+(* SANCC: copy from ccelf-no-perm *)
 Definition written_regs i : list preg :=
-    match i with
+    match i with 
     (** Moves *)
     | Pmov_rr rd _
-    | Pmovl_ri rd _
-    | Pmovq_ri rd _
+    | Pmovl_ri rd _ 
+    | Pmovq_ri rd _ 
     | Pmov_rs rd _
-    | Pmovl_rm rd _
+    | Pmovl_rm rd _ 
     | Pmovq_rm rd _ => IR rd :: nil
-    | Pmovl_mr a rs
+    | Pmovl_mr a rs 
     | Pmovq_mr a rs => nil
     | Pmovsd_ff rd _ 
     | Pmovsd_fi rd _ 
@@ -156,6 +155,7 @@ Definition written_regs i : list preg :=
     | Pfstpl_m a => ST0 :: nil
     | Pflds_m a => ST0 :: nil
     | Pfstps_m a => ST0 :: nil
+
     (** Moves with conversion *)
     | Pmovb_mr a rs 
     | Pmovw_mr a rs => nil
@@ -265,9 +265,14 @@ Definition written_regs i : list preg :=
     | Pxorps_f   rd     => FR rd :: nil
     (* (** Branches and calls *) *)
     | Pjmp_l _
+
     | Pjcc _ _
     | Pjcc2 _ _ _ => nil
     | Pjmptbl r tbl => IR RAX :: IR RDX :: nil
+    | Pjmp_l_rel _
+    | Pjcc_rel _ _
+    | Pjcc2_rel _ _ _ => nil
+    | Pjmptbl_rel r tbl => IR RAX :: IR RDX :: nil
 
     | Pret => nil
     (* (** Saving and restoring registers *) *)
@@ -279,11 +284,163 @@ Definition written_regs i : list preg :=
     (* (** Pseudo-instructions *) *)
     | Plabel l => nil
     | Pallocframe _ _ _ => IR RAX :: IR RSP :: nil
-    | Pfreeframe sz ofs_ra  ofs_link  => IR RSP :: nil
+    | Pfreeframe sz ofs_ra ofs_link => IR RSP :: nil
 
     | Pbuiltin ef args res => nil
     | _ => nil
     end.
+
+(* Definition written_regs i : list preg := *)
+(*     match i with *)
+(*     (** Moves *) *)
+(*     | Pmov_rr rd _ *)
+(*     | Pmovl_ri rd _ *)
+(*     | Pmovq_ri rd _ *)
+(*     | Pmov_rs rd _ *)
+(*     | Pmovl_rm rd _ *)
+(*     | Pmovq_rm rd _ => IR rd :: nil *)
+(*     | Pmovl_mr a rs *)
+(*     | Pmovq_mr a rs => nil *)
+(*     | Pmovsd_ff rd _  *)
+(*     | Pmovsd_fi rd _  *)
+(*     | Pmovsd_fm rd _ => FR rd :: nil *)
+(*     | Pmovsd_mf a r1 => nil *)
+(*     | Pmovss_fi rd _  *)
+(*     | Pmovss_fm rd _ => FR rd :: nil *)
+(*     | Pmovss_mf a r1 => nil *)
+(*     | Pfldl_m a  => ST0 :: nil *)
+(*     | Pfstpl_m a => ST0 :: nil *)
+(*     | Pflds_m a => ST0 :: nil *)
+(*     | Pfstps_m a => ST0 :: nil *)
+(*     (** Moves with conversion *) *)
+(*     | Pmovb_mr a rs  *)
+(*     | Pmovw_mr a rs => nil *)
+(*     | Pmovzb_rr rd _  *)
+(*     | Pmovzb_rm rd _   *)
+(*     | Pmovsb_rr rd _  *)
+(*     | Pmovsb_rm rd _   *)
+(*     | Pmovzw_rr rd _  *)
+(*     | Pmovzw_rm rd _   *)
+(*     | Pmovsw_rr rd _  *)
+(*     | Pmovsw_rm rd _   *)
+(*     | Pmovzl_rr rd _  *)
+(*     | Pmovsl_rr rd _  *)
+(*     | Pmovls_rr rd => IR rd :: nil *)
+(*     | Pcvtsd2ss_ff rd _ => FR rd :: nil *)
+(*     | Pcvtss2sd_ff rd _ => FR rd :: nil *)
+(*     | Pcvttsd2si_rf rd _=> IR rd :: nil *)
+(*     | Pcvtsi2sd_fr rd _ => FR rd :: nil *)
+(*     | Pcvttss2si_rf rd _=> IR rd :: nil *)
+(*     | Pcvtsi2ss_fr rd _ => FR rd :: nil *)
+(*     | Pcvttsd2sl_rf rd _=> IR rd :: nil *)
+(*     | Pcvtsl2sd_fr rd _ => FR rd :: nil *)
+(*     | Pcvttss2sl_rf rd _ => IR rd :: nil *)
+(*     | Pcvtsl2ss_fr rd _  => FR rd :: nil *)
+(*     (* (** Integer arithmetic *) *) *)
+(*     | Pleal rd _  *)
+(*     | Pleaq rd _ *)
+(*     | Pnegl rd *)
+(*     | Pnegq rd *)
+(*     | Paddl_ri rd _  *)
+(*     | Paddq_ri rd _ *)
+(*     | Psubl_ri rd _  *)
+(*     | Psubq_ri rd _  *)
+(*     | Psubl_rr rd _ *)
+(*     | Psubq_rr rd _ *)
+(*     | Pimull_rr rd _ *)
+(*     | Pimulq_rr rd _ *)
+(*     | Pimull_ri rd _  *)
+(*     | Pimulq_ri rd _ => IR rd :: nil *)
+(*     | Pimull_r r1  *)
+(*     | Pimulq_r r1  *)
+(*     | Pmull_r r1   *)
+(*     | Pmulq_r r1  => IR RAX :: IR RDX :: nil *)
+(*     | Pcltd  *)
+(*     | Pcqto => IR RDX :: nil *)
+(*     | Pdivl r1   *)
+(*     | Pdivq r1   *)
+(*     | Pidivl r1  *)
+(*     | Pidivq r1 => IR RAX :: IR RDX :: nil *)
+(*     | Pandl_rr rd _  *)
+(*     | Pandq_rr rd _  *)
+(*     | Pandl_ri rd _  *)
+(*     | Pandq_ri rd _  *)
+(*     | Porl_rr rd _  *)
+(*     | Porq_rr rd _  *)
+(*     | Porl_ri rd _   *)
+(*     | Porq_ri rd _   *)
+(*     | Pxorl_r rd *)
+(*     | Pxorq_r rd *)
+(*     | Pxorl_rr rd _  *)
+(*     | Pxorq_rr rd _  *)
+(*     | Pxorl_ri rd _   *)
+(*     | Pxorq_ri rd _   *)
+(*     | Pnotl rd  *)
+(*     | Pnotq rd  *)
+(*     | Psall_rcl rd *)
+(*     | Psalq_rcl rd *)
+(*     | Psall_ri  rd _      *)
+(*     | Psalq_ri  rd _      *)
+(*     | Pshrl_rcl rd *)
+(*     | Pshrq_rcl rd *)
+(*     | Pshrl_ri  rd _      *)
+(*     | Pshrq_ri  rd _      *)
+(*     | Psarl_rcl rd *)
+(*     | Psarq_rcl rd *)
+(*     | Psarl_ri  rd _      *)
+(*     | Psarq_ri  rd _      *)
+(*     | Pshld_ri  rd _ _ *)
+(*     | Prorl_ri  rd _      *)
+(*     | Prorq_ri  rd _     => IR rd :: nil *)
+(*     | Pcmpl_rr  _ _     *)
+(*     | Pcmpq_rr  _ _     *)
+(*     | Pcmpl_ri  _ _     *)
+(*     | Pcmpq_ri  _ _     *)
+(*     | Ptestl_rr _ _     *)
+(*     | Ptestq_rr _ _     *)
+(*     | Ptestl_ri _ _     *)
+(*     | Ptestq_ri _ _    => nil *)
+(*     | Pcmov     c rd _   *)
+(*     | Psetcc    c rd    => IR rd :: nil *)
+(*     (* (** Floating-point arithmetic *) *) *)
+(*     | Paddd_ff   rd _   *)
+(*     | Psubd_ff   rd _   *)
+(*     | Pmuld_ff   rd _   *)
+(*     | Pdivd_ff   rd _   *)
+(*     | Pnegd rd  *)
+(*     | Pabsd rd => FR rd :: nil *)
+(*     | Pcomisd_ff r1 r2  => nil *)
+(*     | Pxorpd_f   rd           (**r [xor] with self = set to zero *) *)
+(*     | Padds_ff   rd _   *)
+(*     | Psubs_ff   rd _   *)
+(*     | Pmuls_ff   rd _   *)
+(*     | Pdivs_ff   rd _   *)
+(*     | Pnegs rd           *)
+(*     | Pabss rd          => FR rd :: nil *)
+(*     | Pcomiss_ff r1 r2  => nil *)
+(*     | Pxorps_f   rd     => FR rd :: nil *)
+(*     (* (** Branches and calls *) *) *)
+(*     | Pjmp_l _ *)
+(*     | Pjcc _ _ *)
+(*     | Pjcc2 _ _ _ => nil *)
+(*     | Pjmptbl r tbl => IR RAX :: IR RDX :: nil *)
+
+(*     | Pret => nil *)
+(*     (* (** Saving and restoring registers *) *) *)
+(*     | Pmov_mr_a _ _    *)
+(*     | Pmovsd_mf_a _ _ => nil *)
+(*     | Pmov_rm_a rd _   => IR rd :: nil *)
+(*     | Pmovsd_fm_a rd _ => FR rd :: nil *)
+
+(*     (* (** Pseudo-instructions *) *) *)
+(*     | Plabel l => nil *)
+(*     | Pallocframe _ _ _ => IR RAX :: IR RSP :: nil *)
+(*     | Pfreeframe sz ofs_ra  ofs_link  => IR RSP :: nil *)
+
+(*     | Pbuiltin ef args res => nil *)
+(*     |  *)
+(*     | _ => nil *)
+(*     end. *)
 
   Ltac simpl_not_in NIN :=
     let H1 := fresh in
@@ -350,6 +507,12 @@ Definition written_regs i : list preg :=
     solvegl H7.
     solvegl H7.
     solvegl H7.
+    (* SANCC *)
+    Ltac solveofs H := unfold goto_ofs in H; repeat destr_in H; simpl_regs; auto.
+    solveofs H7.
+    solveofs H7.
+    solveofs H7.    
+    solveofs H7.
   Qed.
 
   Definition check_asm_instr_no_rsp i :=
@@ -870,6 +1033,17 @@ Proof.
     unfold goto_label in GOTO; repeat destr_in GOTO.
 Qed.
 
+(* SANCC *)
+Lemma goto_ofs_support:
+  forall (ge: Genv.t Asm.fundef unit) sz ofs m1 rs1 rs2 m2,
+    goto_ofs ge sz ofs rs1 m1 = Next rs2 m2 ->
+    Mem.support m1 = Mem.support m2 /\
+    (forall b o k p , Mem.perm m1 b o k p <-> Mem.perm m2 b o k p).
+Proof.
+  intros.
+  unfold goto_ofs in H; repeat destr_in H.
+Qed.
+
 Lemma asm_prog_unchange_sup (i : instruction) :
   asm_instr_unchange_sup i.
 Proof.
@@ -881,6 +1055,7 @@ Proof.
                 | now (eapply exec_load_support; eauto)
                 | now (eapply exec_store_support; eauto)
                 | now ( eapply goto_label_support; eauto)
+                | now (eapply goto_ofs_support; eauto)
                 | idtac ].
     Unshelve. all: auto. exact (Ptrofs.repr (instr_size (Pmov_mr_a a rs))).
     exact Mint32. exact PC.
@@ -919,8 +1094,9 @@ Proof.
   destruct i; simpl in EI; inv EI; try (apply Mem.sup_include_refl);
       first [ now (eapply exec_load_unchange_support; eauto)
             | now (eapply exec_store_unchange_support; eauto)
-            | now (repeat destr_in H0)
-            | unfold goto_label in H0; repeat destr_in H0].
+            | now (repeat destr_in H0)            
+            | unfold goto_label in H0; repeat destr_in H0
+            ].
   + rewrite (Mem.support_store _ _ _ _ _ _ Heqo1).
     rewrite (Mem.support_store _ _ _ _ _ _ Heqo0).
     eapply Mem.sup_include_trans. 2: eapply Mem.sup_include_record_frame; eauto.
@@ -932,6 +1108,10 @@ Proof.
     eapply Mem.sup_include_trans.
     intro. eapply Mem.support_return_frame_1 in Heqo2. apply Heqo2.
     eapply Mem.sup_include_pop_stage; eauto.
+  +  (*SANCC*) unfold goto_ofs in H1; repeat destr_in H1.
+  +  (*SANCC*) unfold goto_ofs in H1; repeat destr_in H1.
+  +  (*SANCC*) unfold goto_ofs in H1; repeat destr_in H1.
+  +  (*SANCC*) unfold goto_ofs in H1; repeat destr_in H1.
 Qed.
 
   Section WITH_SAEQ.

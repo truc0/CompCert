@@ -12,7 +12,10 @@ Variable instr_size : instruction -> Z.
 
 Definition transf_function (f: Asm.function) : res Asm.function :=
   if wf_asm_function_check instr_size f then
-    OK f
+      if func_no_jmp_rel_dec f then
+        OK f
+      else 
+        Error (msg "func_no_jmp_rel")
   else
     Error (msg "asm_function_is_not_wellformed").
 

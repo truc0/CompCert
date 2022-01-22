@@ -163,7 +163,8 @@ Section WITHGETGE.
       subst. intros. rewrite FPTR_EQ. auto.
     Qed.
 
- (*   Lemma goto_ofs_eq: forall sz ofs rs m,
+    (* SANCC *)
+   Lemma goto_ofs_eq: forall sz ofs rs m,
         goto_ofs ge sz ofs rs m = goto_ofs tge sz ofs rs m.
     Proof.
       intros. unfold goto_ofs. destr; auto.
@@ -172,7 +173,8 @@ Section WITHGETGE.
       intros (f1 & FT). rewrite FT. auto.
       rewrite FPTR_EQ in Heqo. rewrite Heqo. auto.
     Qed.
-*)
+
+   
     Ltac unfold_loadstore :=
       match goal with
       | [ |- context[ exec_load _ _ _ _ _  _] ] =>
@@ -211,6 +213,11 @@ Section WITHGETGE.
         apply FPTR_EQ in Heqo0. congruence.
         apply FPTR_EQ in Heqo. congruence.
       - erewrite SADDR_EQ. auto.
+      (* SANCC *)
+      - eapply goto_ofs_eq.
+      - destr;destr. eapply goto_ofs_eq.  
+      - destr;destr;destr;destr. eapply goto_ofs_eq.
+      - destr;destr. eapply goto_ofs_eq.
     Qed.
 
 (*    Lemma label_pos_1_eq: forall lbl z c,
