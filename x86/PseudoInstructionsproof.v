@@ -285,7 +285,8 @@ Section PRESERVATION.
     destr.
     destr_in H. inv H. erewrite functions_translated; eauto.
   Qed.
-(*
+
+  (* SANCC *)
   Lemma goto_ofs_senv_equiv:
     forall sz ofs rs m rs' m',
       goto_ofs ge sz ofs rs m = Next rs' m' ->
@@ -296,7 +297,7 @@ Section PRESERVATION.
     destr.
     destr_in H. inv H. erewrite functions_translated; eauto.
   Qed.
-*)
+  
   Lemma functions_only_translated:
     forall b,
       Genv.find_funct_ptr ge b = None ->
@@ -352,7 +353,8 @@ Section PRESERVATION.
     destr.
     destr_in H. erewrite functions_only_translated; eauto.
   Qed.
-(*
+
+  (* SANCC *)
   Lemma goto_ofs_senv_equiv':
     forall sz ofs rs m,
       goto_ofs ge sz ofs rs m = Stuck ->
@@ -363,7 +365,7 @@ Section PRESERVATION.
     destr.
     destr_in H. erewrite functions_only_translated; eauto.
   Qed.
-*)
+  
   Lemma goto_label_eq:
     forall f l rs m,
       goto_label instr_size ge f l rs m =
@@ -374,7 +376,8 @@ Section PRESERVATION.
     symmetry; eapply goto_label_senv_equiv; eauto.
     symmetry; eapply goto_label_senv_equiv'; eauto.
   Qed.
-(*
+
+  (* SANCC *)
   Lemma goto_ofs_eq:
     forall sz ofs rs m,
       goto_ofs ge sz ofs rs m =
@@ -386,16 +389,15 @@ Section PRESERVATION.
     symmetry; eapply goto_ofs_senv_equiv'; eauto.
   Qed.
 
-  Lemma eval_ros_eq:
-    forall ros rs,
-      eval_ros ge ros rs = eval_ros tge ros rs.
-  Proof.
-    unfold eval_ros.
-    intros. destr.
-    unfold Genv.symbol_address.
-    destruct senv_preserved as (A & B & C & D). simpl in *; rewrite B. auto.
-  Qed.
-  *)
+  (* Lemma eval_ros_eq: *)
+  (*   forall ros rs, *)
+  (*     eval_ros ge ros rs = eval_ros tge ros rs. *)
+  (* Proof. *)
+  (*   unfold eval_ros. *)
+  (*   intros. destr. *)
+  (*   unfold Genv.symbol_address. *)
+  (*   destruct senv_preserved as (A & B & C & D). simpl in *; rewrite B. auto. *)
+  (* Qed. *)
 
   Lemma exec_instr_senv_equiv:
     forall f i rs m (ID : id_instr i = true),
@@ -424,7 +426,12 @@ Section PRESERVATION.
     destr. destr. eapply goto_label_eq; eauto.
     -
     destr. f_equal. f_equal. f_equal.       unfold Genv.symbol_address.
-      rewrite symbols_preserved. auto.
+    rewrite symbols_preserved. auto.
+    (* SANCC *)
+    - eapply goto_ofs_eq.
+    - destr. destr. eapply goto_ofs_eq.
+    - destr. destr. destr. destr.  eapply goto_ofs_eq.
+    - destr. destr.  eapply goto_ofs_eq.
 Qed.
 
   Lemma pseudo_instructions_step:
@@ -511,6 +518,7 @@ Qed.
                     rewrite Ptrofs.unsigned_repr.
                     apply Ptrofs.eqm_repr_eq.
                     rewrite Ptrofs.unsigned_repr.
+                    try apply Ptrofs.eqm64; auto. (*SANCC*)
                     apply Int64.eqm_unsigned_repr_r.
                     apply Int64.eqm_refl.
                     assert (Int64.max_unsigned = Ptrofs.max_unsigned).
@@ -524,6 +532,7 @@ Qed.
                     assert (Int64.max_unsigned = Ptrofs.max_unsigned).
                     unfold Int64.max_unsigned. unfold Ptrofs.max_unsigned.
                     rewrite Ptrofs.modulus_eq64. auto. auto.
+                    try rewrite H5. (* SANCC *)
                     apply Ptrofs.unsigned_range_2.
                   }
                   auto.
@@ -563,6 +572,7 @@ Qed.
            rewrite Ptrofs.unsigned_repr.
            apply Ptrofs.eqm_repr_eq.
            rewrite Ptrofs.unsigned_repr.
+           try apply Ptrofs.eqm64; auto. (*SANCC*)
            apply Int64.eqm_unsigned_repr_r.
            apply Int64.eqm_refl.
            assert (Int64.max_unsigned = Ptrofs.max_unsigned).
