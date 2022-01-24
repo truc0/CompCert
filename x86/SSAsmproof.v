@@ -1209,6 +1209,26 @@ Proof.
   repeat simpl_inject. econstructor; eauto. rewrite Ptrofs.add_zero. auto.
 Qed.
 
+(* SANCC  *)
+Lemma goto_ofs_inject:
+      forall j rs1 rs2 m1 m2
+        (GLOBFUN_INJ: forall b f, Genv.find_funct_ptr ge b = Some f -> j b = Some (b,0))
+        (MINJ: Mem.inject j m1 m2)
+        (RINJ : forall r : PregEq.t, Val.inject j (rs1 r) (rs2 r))
+        sz ofs rs1' m1',
+        goto_ofs ge sz ofs rs1 m1 = Next rs1' m1' ->
+        exists rs2' m2',
+          goto_ofs ge sz ofs rs2 m2 = Next rs2' m2' /\
+          Mem.inject j m1' m2' /\
+          forall r, Val.inject j (rs1' r) (rs2' r).
+    Proof.
+      unfold goto_ofs. intros. repeat destr_in H.
+      generalize (RINJ PC); rewrite Heqv. intro A; inv A.
+      erewrite GLOBFUN_INJ in H2; eauto. inv H2. rewrite Heqo.
+      do 2 eexists; split; eauto. split; eauto.
+      repeat simpl_inject. econstructor; eauto. repeat rewrite Ptrofs.add_zero. auto.
+    Qed.
+
 Lemma exec_instr_inject_normal:
   forall j m1 m2 rs1 rs2 f i rs1' m1'
     (MINJ: Mem.inject j m1 m2)
@@ -1293,6 +1313,25 @@ Proof.
     rewrite Heqo.
     eapply goto_label_inject; eauto. eapply globinj_to_funinj. auto.
     repeat simpl_inject.
+  (* SANCC *)
+  + eapply goto_ofs_inject; eauto. eapply globinj_to_funinj. auto.
+  + erewrite eval_testcond_inject; eauto. simpl.
+    eapply goto_ofs_inject; eauto. eapply globinj_to_funinj. auto.
+  + erewrite eval_testcond_inject; eauto. simpl.
+    do 2 eexists; split; eauto. split; eauto. repeat simpl_inject.
+  + erewrite eval_testcond_inject; eauto. simpl.
+    erewrite eval_testcond_inject; eauto. simpl.
+    eapply goto_ofs_inject; eauto. eapply globinj_to_funinj. auto.
+  + erewrite eval_testcond_inject; eauto. simpl.
+    erewrite eval_testcond_inject; eauto. simpl.
+    do 2 eexists; split; eauto. split; eauto. repeat simpl_inject.
+  + erewrite eval_testcond_inject; eauto. simpl.
+    erewrite eval_testcond_inject; eauto. simpl.
+    do 2 eexists; split; eauto. split; eauto. repeat simpl_inject.
+  + generalize (RINJ r); rewrite Heqv; intro A; inv A.
+    rewrite Heqo.
+    eapply goto_ofs_inject; eauto. eapply globinj_to_funinj. auto.
+    repeat simpl_inject.    
 Qed.
 
 Lemma allocframe_inject:

@@ -1,6 +1,8 @@
 (* *******************  *)
 (* Author: Zhenguo Yin  *)
+(*         Jinhua Wu    *)
 (* Date:   Aug 04, 2020 *)
+(* Last updated:  Jan 24, 2022*)
 (* *******************  *)
 Require Import Coqlib Integers AST Maps.
 Require Import Events.
@@ -137,7 +139,7 @@ Definition transf_globdef (acc: list (ident*globdef fundef unit) * list (ident*g
   | _ => ((fst acc) ++ [id_def], snd acc)
   end.
 
-Definition transl_program (p:Asm.program) :=
+Definition transf_program (p:Asm.program) : program :=
   {| prog_defs := let (defs, jmptbls) := fold_left transf_globdef (prog_defs p) ([],[]) in
                   defs ++ jmptbls;
      prog_public := prog_public p;
