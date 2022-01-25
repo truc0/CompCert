@@ -121,6 +121,8 @@ BACKEND=\
   AsmPseudoInstr.v \
   Asmlabelgen.v \
   LocalLib.v Jumptablegen.v CheckDef.v\
+  RelocProgram.v \
+  Symbtablegen.v \
   
 # C front-end modules (in cfrontend/)
 
