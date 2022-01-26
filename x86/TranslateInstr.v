@@ -15,6 +15,8 @@ Local Open Scope hex_scope.
 Local Open Scope bits_scope.
 Local Open Scope nat_scope.
 
+(** *CAV21: Instruction ,CompCertELF: instruction*)
+
 Definition assertLength {A} (l:list A) n: {length l = n} +
                                           {length l <> n}.
 Proof.
@@ -84,7 +86,7 @@ Program Definition encode_ofs_u32 (ofs :Z) :res u32 :=
     OK (exist _ ofs32 _)
   else Error (msg "impossible").
 
-
+(* Addressing mode in CAV21 automatically generated definition *)
 Inductive AddrE: Type :=
 | AddrE12(uvar3_0:u3)
 | AddrE11(uvar32_0:u32)
@@ -108,6 +110,7 @@ Inductive AddrM: Type :=
 | AddrM4(uvar2_0:u2)(uvar3_1:u3)(uvar3_2:u3)(uvar32_3:u32)
 | AddrM3(uvar3_0:u3)(uvar32_1:u32).
 
+(* Instruction in CAV21 automatically generated definition *)
 Inductive Instruction: Type :=
 | Psubl_ri(uvar3_0:u3)(uvar32_1:u32)
 | Pbsqrtsd(uvar3_0:u3)(uvar3_1:u3)
@@ -201,6 +204,7 @@ Section WITH_RELOC_OFS_MAP.
 
 Variable rtbl_ofs_map: reloc_ofs_map_type.
 
+(* Translate ccelf addressing mode to cav21 addr mode *)
 Definition translate_Addrmode_AddrE (sofs: Z) (i:instruction) (addr:addrmode): res AddrE :=
   match addr with
   | Addrmode obase oindex disp  =>
@@ -278,6 +282,8 @@ Definition decode_ireg (bs:bits) : res ireg :=
   else Error(msg "reg not found")
 .
 
+
+(* Translate CAV21 addr mode to ccelf addr mode *)
 Definition translate_AddrE_Addrmode (sofs: Z) (i:instruction) (addr:AddrE) : res addrmode :=
   (* need to relocate? *)
   do iofs <- instr_reloc_offset i;
@@ -331,6 +337,7 @@ Definition translate_AddrE_Addrmode (sofs: Z) (i:instruction) (addr:AddrE) : res
   end.
 
 
+(* consistency proof *)
 Lemma translate_consistency1 : forall ofs i addr addrE,
     translate_Addrmode_AddrE ofs i addr = OK addrE ->
     translate_AddrE_Addrmode ofs i addrE = OK addr.
@@ -347,6 +354,8 @@ Lemma translate_consistency1 : forall ofs i addr addrE,
     monadInv EQ5.
 Admitted.
 
+
+(* ccelf instruction to cav21 instruction, unfinished!!! *)
 Definition translate_instr (ofs: Z) (i:instruction) :Instruction :=
   match i with
   | Pmov_rr rd r1 =>
