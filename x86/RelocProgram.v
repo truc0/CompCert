@@ -2,7 +2,7 @@
 (* Author: Yuting Wang  *)
 (*         Jinhua Wu    *)
 (* Date:   Sep 13, 2019 *)
-(* Last updated:  *)
+(* Last updated:  Jan 29, 2022 by Jinhua Wu*)
 (* *******************  *)
 
 (** * Template of languages with information about symbols and relocation *)

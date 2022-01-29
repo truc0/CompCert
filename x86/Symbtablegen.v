@@ -2,7 +2,7 @@
 (* Author: Yuting Wang  *)
 (*         Jinhua Wu    *)
 (* Date:   Sep 13, 2019 *)
-(* Last updated: Jan 25,2022 by Jinhua Wu *)
+(* Last updated: Jan 29,2022 by Jinhua Wu *)
 (* *******************  *)
 
 Require Import Coqlib Integers AST Maps.
@@ -24,6 +24,9 @@ Section INSTR_SIZE.
 Variable instr_size : instruction -> Z.
 Hypothesis instr_size_bound : forall i, 0 < instr_size i <= Ptrofs.max_unsigned.
 
+(** identity to section index *)
+Definition ident_to_index id := Npos id.
+
 
 Definition def_size (def: AST.globdef Asm.fundef unit) : Z :=
   match def with
@@ -38,9 +41,9 @@ Lemma def_size_pos:
 Proof.
   unfold def_size. intros.
   destr.
-  destr. generalize (code_size_non_neg instr_size instr_size_bound (Asm.fn_code f0)); omega.
-  omega.
-  generalize (AST.init_data_list_size_pos (AST.gvar_init v)); omega.
+  destr. generalize (code_size_non_neg instr_size instr_size_bound (Asm.fn_code f0)); lia.
+  lia.
+  generalize (AST.init_data_list_size_pos (AST.gvar_init v)); lia.
 Qed.
 
 Definition defs_size (defs: list (AST.globdef Asm.fundef unit)) : Z :=
@@ -50,7 +53,7 @@ Lemma defs_size_pos:
   forall defs, 0 <= defs_size defs.
 Proof.
   induction defs as [|def defs].
-  - cbn. omega.
+  - cbn. lia.
   - cbn. generalize (def_size_pos def).
     intros. apply OMEGA2; eauto.
 Qed.
@@ -69,15 +72,16 @@ Section INSTR_SIZE.
   Variable instr_size : instruction -> Z.
 
 
-Section WITH_SECS_SIZE.
+(* Section WITH_SECS_SIZE. *)
 
-Variables (rdsize dsize csize: Z).
+(* Variables (rdsize dsize csize: Z). *)
 
 Definition get_bind_ty id :=
   if is_def_local id then bind_local else bind_global.
 
 (** get_symbol_entry takes the ids and the current sizes of data and text sections and 
-    a global definition as input, and outputs the corresponding symbol entry *)
+    a global definition as input, and outputs the corresponding symbol 
+entry *)
 (** wjh: update value just like before, because offset always is zero *)
 Definition get_symbentry (id:ident) (def: (AST.globdef Asm.fundef unit)) : symbentry :=
   let bindty := get_bind_ty id in
@@ -110,8 +114,8 @@ Definition get_symbentry (id:ident) (def: (AST.globdef Asm.fundef unit)) : symbe
            {|symbentry_id := id;
              symbentry_bind := bindty;
              symbentry_type := symb_data;
-             symbentry_value := rdsize;
-             symbentry_secindex := secindex_normal (Npos id);
+             symbentry_value := 0; (* section for each def, so offset is zero *)
+             symbentry_secindex := secindex_normal (ident_to_index id);
              symbentry_size := AST.init_data_list_size (AST.gvar_init gvar);
            |}
          | false =>
@@ -119,8 +123,8 @@ Definition get_symbentry (id:ident) (def: (AST.globdef Asm.fundef unit)) : symbe
            {|symbentry_id := id;
              symbentry_bind := bindty;
              symbentry_type := symb_data;
-             symbentry_value := dsize;
-             symbentry_secindex := secindex_normal (Npos id);
+             symbentry_value := 0;
+             symbentry_secindex := secindex_normal (ident_to_index id);
              symbentry_size := AST.init_data_list_size (AST.gvar_init gvar);
            |}
          end
@@ -138,52 +142,25 @@ Definition get_symbentry (id:ident) (def: (AST.globdef Asm.fundef unit)) : symbe
     {|symbentry_id := id;
       symbentry_bind := bindty;
       symbentry_type := symb_func;
-      symbentry_value := csize;
-      symbentry_secindex := secindex_normal (Npos id);
+      symbentry_value := 0;
+      symbentry_secindex := secindex_normal (ident_to_index id);
       symbentry_size := code_size instr_size (fn_code f);
     |}
   end.
 
-(** update_code_data_size takes the current sizes of data and text
-    sections and a global definition as input, and updates these sizes
-    accordingly *) 
-Definition update_section_size (id: ident) (def: (AST.globdef Asm.fundef unit))
- : (Z * Z * Z) :=
-  match def with
-  | (Gvar gvar) =>
-    match gvar_init gvar with
-    | nil
-    | [Init_space _] => (rdsize, dsize, csize)
-    | l => match gvar_readonly gvar with
-          | true => let sz := AST.init_data_list_size l in
-                   (rdsize + sz, dsize, csize)
-          | false => let sz := AST.init_data_list_size l in
-                    (rdsize, dsize + sz, csize)
-          end
-    end
-  | (Gfun (External ef)) => (rdsize, dsize, csize)
-  | (Gfun (Internal f)) =>
-    let sz := Asm.code_size instr_size (Asm.fn_code f) in
-    (rdsize, dsize, csize+sz)
-  end.
 
-End WITH_SECS_SIZE.
-
-Definition acc_symb (ssize: symbtable * Z * Z * Z) 
-           (iddef: ident * (AST.globdef Asm.fundef unit)) :=
-  let '(stbl, rdsize, dsize, csize) := ssize in
+Definition acc_symb (stbl: symbtable) 
+           (iddef: ident * (AST.globdef Asm.fundef unit)) := 
   let (id, def) := iddef in
-  let e := get_symbentry rdsize dsize csize id def in
-  let stbl' := e :: stbl in
-  let '(rdsize', dsize', csize') := update_section_size rdsize dsize csize id def in
-  (stbl', rdsize', dsize', csize').
+  let e := get_symbentry id def in
+  e :: stbl.
 
 
 (** Generate the symbol and section table *)
 Definition gen_symb_table defs :=
-  let '(rstbl, rdsize, dsize, csize) := 
-      fold_left acc_symb  defs (nil,0, 0, 0) in
-  (rev rstbl, rdsize, dsize, csize).
+  let rstbl :=
+      fold_left acc_symb defs nil in
+  rev rstbl.
 
 
 (* End WITH_PROG_SECS. *)
@@ -210,9 +187,9 @@ Definition gen_symb_table defs :=
 (* Proof. *)
 (*   unfold def_size. intros. *)
 (*   destr. *)
-(*   destr. generalize (code_size_non_neg (Asm.fn_code f0)); omega. *)
-(*   omega. *)
-(*   generalize (AST.init_data_list_size_pos (AST.gvar_init v)); omega. *)
+(*   destr. generalize (code_size_non_neg (Asm.fn_code f0)); lia. *)
+(*   lia. *)
+(*   generalize (AST.init_data_list_size_pos (AST.gvar_init v)); lia. *)
 (* Qed. *)
 
 (* Lemma odef_size_pos: *)
@@ -220,7 +197,7 @@ Definition gen_symb_table defs :=
 (*     0 <= odef_size d. *)
 (* Proof. *)
 (*   unfold odef_size. intros. *)
-(*   destr. apply def_size_pos. omega. *)
+(*   destr. apply def_size_pos. lia. *)
 (* Qed. *)
 
 (* Definition def_not_empty def : Prop := *)
@@ -365,7 +342,7 @@ Proof.
   intros.
   unfold data_size_aligned.
   apply Zdivide_dec.
-  (* unfold alignw. omega. *)
+  (* unfold alignw. lia. *)
 Qed.
     
 Record wf_prog (p:Asm.program) : Prop :=
@@ -396,7 +373,7 @@ Qed.
 (** The full translation *)
 Definition transf_program (p:Asm.program) : res program :=
   if check_wellformedness p then
-    let '(symb_tbl, rdsize, dsize, csize) := gen_symb_table (AST.prog_defs p) in
+    let symb_tbl := gen_symb_table (AST.prog_defs p) in
     let sec_tbl := create_sec_table (AST.prog_defs p) in
     if zle (sections_size instr_size (map snd sec_tbl)) Ptrofs.max_unsigned then
       OK {| prog_public := AST.prog_public p;
