@@ -87,6 +87,7 @@ Require AsmStructRet.
 Require AsmFloatLiteral.
 Require AsmPseudoInstr.
 Require Jumptablegen.
+Require Symbtablegen.
 
 (** Pretty-printers (defined in Caml). *)
 Parameter print_Clight: Clight.program -> unit.
@@ -191,14 +192,15 @@ Definition transf_c_program (p: Csyntax.program) : res Asm.program :=
   @@ time "SSAsm" SSAsmproof.transf_program
   @@@ time "Translation from SSAsm to RealAsm" RealAsmgen.transf_program instr_size
   @@ time "Elimination of pseudo instruction" PseudoInstructions.transf_program.
-
- Definition transf_c_program_bytes (p: Csyntax.program) : res Asm.program :=
+ (** Transfer to ELF *)
+ Definition transf_c_program_bytes (p: Csyntax.program) :=
   transf_c_program_real p
   @@@ time "Expand builtin inline assembly" AsmBuiltinInline.transf_program
   @@@ time "Pad Instructions with struct return" AsmStructRet.transf_program
   @@ time "Generation of the float literal" AsmFloatLiteral.transf_program
   @@@ time "Elimination of other pseudo instructions" AsmPseudoInstr.transf_program
-  @@ time "Generation of the jump table" Jumptablegen.transf_program instr_size.
+  @@ time "Generation of the jump table" Jumptablegen.transf_program instr_size
+  @@@ time "Generation of symbol table" Symbtablegen.transf_program instr_size.
 
 (** Force [Initializers] and [Cexec] to be extracted as well. *)
 
