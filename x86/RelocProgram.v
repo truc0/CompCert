@@ -30,24 +30,16 @@ Definition sec_size (instr_size: instruction -> Z) (s: section) : Z :=
 Definition sections_size instr_size stbl :=
   fold_left (fun sz sec => sz + (sec_size instr_size sec)) stbl 0.
 
-(** Positive indexes to sections are mapped by the identity function,
-    the 0-th section is a pre-defined null section *)
-(* Module SecTblParams. *)
-(*   Definition V := section. *)
-(*   Definition ofs := 1%N. *)
-(* End SecTblParams. *)
-
-(* Module SecTable := SeqTable(SecTblParams). *)
 (** Gnerate one section for each definition *)
-Definition sectable := list (ident * section).
-
-
+(** The section table is the map from ident to section *)
+Definition sectable := PTree.t section.
 
 (** ** Symbol table *)
 Inductive symbtype : Type := symb_func | symb_data | symb_notype.
 
+(** normal: point to a section *)
 Inductive secindex : Type :=
-| secindex_normal (idx:N)
+| secindex_normal (idx:ident)
 | secindex_comm
 | secindex_undef.
 
@@ -57,7 +49,7 @@ Inductive bindtype : Type :=
 
 Record symbentry : Type :=
 {
-  symbentry_id: ident;  (** The original identifier of the symbol *) 
+  (* symbentry_id: ident;  *) (** The original identifier of the symbol *) 
   symbentry_bind: bindtype;
   symbentry_type: symbtype;
   symbentry_value: Z;  (** This holds the alignment info if secindex is secindex_comm,
@@ -66,31 +58,14 @@ Record symbentry : Type :=
   symbentry_size: Z;
 }.
 
-(* Definition dummy_symbentry : symbentry := *)
-(*   {| symbentry_id := None; *)
-(*      symbentry_bind := bind_local; *)
-(*      symbentry_type := symb_notype; *)
-(*      symbentry_value := 0; *)
-(*      symbentry_secindex := secindex_undef; *)
-(*      symbentry_size := 0; *)
-(*   |}. *)
-
 Definition is_symbentry_internal e :=
   match symbentry_secindex e with
   | secindex_normal _ => true
   | _ => false
   end.
 
-
-(** Positive indexes to symbols are mapped by the identity function,
-    the 0-th section is a pre-defined dummy symbol *)
-(* Module SymbTblParams. *)
-(*   Definition V := symbentry. *)
-(*   Definition ofs := 1%N. *)
-(* End SymbTblParams. *)
-
-(* Module SymbTable := SeqTable(SymbTblParams). *)
-Definition symbtable := list symbentry.
+(** symbtable is the mapping from id to symbentry *)
+Definition symbtable := PTree.t symbentry.
 
 (** ** Relocation table *)
 Inductive reloctype : Type := reloc_abs | reloc_rel | reloc_null.
@@ -103,17 +78,9 @@ Record relocentry : Type :=
   reloc_addend : Z;
 }.
 
-(* Module RelocTblParams. *)
-(*   Definition V := relocentry. *)
-(*   Definition ofs := 0%N. *)
-(* End RelocTblParams. *)
-
 (* Module RelocTable := SeqTable(RelocTblParams). *)
 Definition reloctable := list relocentry.
 Definition reloctable_map := PTree.t reloctable.
-
-(** ** String table *)
-Definition strtable := PTree.t Z.
 
 (** ** Definition of program constructs *)
 Record program : Type := {
@@ -121,23 +88,12 @@ Record program : Type := {
   prog_main: ident;
   prog_sectable: sectable;
   prog_symbtable: symbtable;
-  prog_strtable: strtable;
   prog_reloctables: reloctable_map;
   prog_senv : Globalenvs.Senv.t;
 }.
 
 (** Generate the mapping from symbol ids to indexes *)
 Definition symb_index_map_type := PTree.t N.
-
-Definition acc_symb_index_map (rs:(N * symb_index_map_type)) (e:symbentry) : N * symb_index_map_type :=
-  let '(index, map) := rs in
-  let map' := PTree.set (symbentry_id e) index map in
-  (N.succ index, map').
-
-(** offset set to one because symbol table start at 1 *)
-Definition gen_symb_index_map (stbl: symbtable) : symb_index_map_type :=
-  let '(_, map) := fold_left acc_symb_index_map stbl (1%N, PTree.empty N) in
-  map.
 
 Definition reloc_ofs_map_type := ZTree.t relocentry.
 
@@ -171,17 +127,11 @@ Definition sec_shstrtbl_id := 9%N.
 (** Ultility function s*)
 (* Definition add_symb_to_list (t: list (ident * symbentry)) (s:symbentry) := *)
 (*   (symbentry_id s, s) :: t. *)
-Definition symbtable_to_idlist t := 
-  map (fun e => (symbentry_id e, e)) t.
-
-Definition symbtable_to_tree (t:symbtable) : PTree.t symbentry :=
-  PTree_Properties.of_list (symbtable_to_idlist t).
-
-(* Definition acc_symb_ids (ids: list ident) (s:symbentry) := *)
-(*   symbentry_id s :: ids. *)
+Definition symbtable_to_idlist (t:symbtable) := 
+  (PTree.elements t).
 
 Definition get_symbentry_ids (t:symbtable) : list ident :=
-  map symbentry_id t.
+  map fst (PTree.elements t).
 
 (** ** Various Properties *)
 (* Definition symbentry_id_neq (id:ident) (e:symbentry) := *)
@@ -212,13 +162,20 @@ Definition get_symbentry_ids (t:symbtable) : list ident :=
 (*   unfold add_symb_to_list. rewrite Heqo. auto. *)
 (* Qed. *)
 
-Lemma symbtable_to_idlist_id_eq : forall stbl id e,
-  In (id, e) (symbtable_to_idlist stbl) -> 
-  symbentry_id e = id.
-Proof.
-  induction stbl as [|e stbl]; cbn; intuition.
-  inv H0. auto.
-Qed.
+(* Lemma symbtable_to_idlist_id_eq : forall stbl id e, *)
+(*   In (id, e) (symbtable_to_idlist stbl) ->  *)
+(*   symbentry_id e = id. *)
+(* Proof. *)
+(*   unfold symbtable_to_idlist. intros. *)
+(*   eapply in_map_iff in H. destruct H as [? [? ?]]. *)
+(*   destruct x. *)
+(*   apply PTree.elements_complete in H0.  *)
+(*   simpl in H. subst. *)
+(*   erewrite PTree.gmap in H0. *)
+(*   unfold option_map in H0. destr_in H0. *)
+(*   (* induction stbl as [|e stbl]; cbn; intuition. *) *)
+(*   (* inv H0. auto. *) *)
+(* Qed. *)
 
 Import List.ListNotations.
 Require Import Permutation.
@@ -266,13 +223,13 @@ Require Import LocalLib.
 (*     rewrite <- app_assoc. f_equal. *)
 (* Qed. *)
 
-Lemma symbtable_to_idlist_permutation: forall stbl stbl',
-    Permutation stbl stbl' ->
-    Permutation (symbtable_to_idlist stbl)
-                (symbtable_to_idlist stbl').
-Proof.
-  apply Permutation_map.
-Qed.
+(* Lemma symbtable_to_idlist_permutation: forall stbl stbl', *)
+(*     Permutation stbl stbl' -> *)
+(*     Permutation (symbtable_to_idlist stbl) *)
+(*                 (symbtable_to_idlist stbl'). *)
+(* Proof. *)
+(*   apply Permutation_map. *)
+(* Qed. *)
 
 (* Lemma acc_symb_ids_add_symb_eq: forall stbl,  *)
 (*     fold_left acc_symb_ids stbl [] = map fst (fold_left add_symb_to_list stbl []). *)
@@ -293,99 +250,99 @@ Proof.
   unfold get_symbentry_ids.
   intros.
   unfold symbtable_to_idlist.
-  rewrite list_map_compose. cbn. auto.
+  auto.
 Qed.
 
-Lemma get_symbentry_ids_permutation: forall stbl stbl',
-    Permutation stbl stbl' ->
-    Permutation (get_symbentry_ids stbl) (get_symbentry_ids stbl').
-Proof.
-  unfold get_symbentry_ids.
-  intros.
-  apply Permutation_map. auto.
-Qed.
+(* Lemma get_symbentry_ids_permutation: forall stbl stbl', *)
+(*     Permutation stbl stbl' -> *)
+(*     Permutation (get_symbentry_ids stbl) (get_symbentry_ids stbl'). *)
+(* Proof. *)
+(*   unfold get_symbentry_ids. *)
+(*   intros. *)
+(*   apply Permutation_map. auto. *)
+(* Qed. *)
 
 
-Lemma in_idstbl_conv: forall idstbl id e,
-    Forall (fun '(id, e) => symbentry_id e = id) idstbl ->
-    In (id, e) (map  (fun x => (symbentry_id (snd x), snd x)) idstbl) <->
-    In (id, e) idstbl.
-Proof.
-  induction idstbl as [| e idstbl].
-  - cbn. split; auto.
-  - cbn. intros id e0 FALL; split.
-    + intros [IN| IN].
-      *  inv IN. rewrite Forall_forall in FALL.
-         generalize (FALL _ (in_eq _ _)).
-         destruct e. intros. subst. cbn. auto.
-      * right. eapply IHidstbl; eauto.
-        rewrite Forall_forall in *.
-        intros. eapply FALL; eauto. apply in_cons. auto.
-    + intros [EQ| IN].
-      * subst. cbn.
-        rewrite Forall_forall in FALL.
-        generalize (FALL _ (in_eq _ _)). 
-        intros. subst. auto.
-      * right.
-        erewrite IHidstbl; eauto.
-        rewrite Forall_forall in *.
-        intros. eapply FALL; eauto. apply in_cons. auto.
-Qed.
+(* Lemma in_idstbl_conv: forall idstbl id e, *)
+(*     Forall (fun '(id, e) => symbentry_id e = id) idstbl -> *)
+(*     In (id, e) (map  (fun x => (symbentry_id (snd x), snd x)) idstbl) <-> *)
+(*     In (id, e) idstbl. *)
+(* Proof. *)
+(*   induction idstbl as [| e idstbl]. *)
+(*   - cbn. split; auto. *)
+(*   - cbn. intros id e0 FALL; split. *)
+(*     + intros [IN| IN]. *)
+(*       *  inv IN. rewrite Forall_forall in FALL. *)
+(*          generalize (FALL _ (in_eq _ _)). *)
+(*          destruct e. intros. subst. cbn. auto. *)
+(*       * right. eapply IHidstbl; eauto. *)
+(*         rewrite Forall_forall in *. *)
+(*         intros. eapply FALL; eauto. apply in_cons. auto. *)
+(*     + intros [EQ| IN]. *)
+(*       * subst. cbn. *)
+(*         rewrite Forall_forall in FALL. *)
+(*         generalize (FALL _ (in_eq _ _)).  *)
+(*         intros. subst. auto. *)
+(*       * right. *)
+(*         erewrite IHidstbl; eauto. *)
+(*         rewrite Forall_forall in *. *)
+(*         intros. eapply FALL; eauto. apply in_cons. auto. *)
+(* Qed. *)
 
-Lemma idstbl_id_inv: forall idstbl,
-    Forall (fun '(id, e) => symbentry_id e = id) idstbl ->
-    (map (fun x : ident * symbentry => symbentry_id (snd x))
-         idstbl) =
-    map fst idstbl.
-Proof.
-  induction idstbl as [|e idstbl].
-  - cbn. auto.
-  - cbn. intros FALL.
-    rewrite Forall_forall in FALL.
-    generalize (FALL _ (in_eq _ _)).
-    destruct e. intros. subst. cbn.
-    f_equal. 
-    eapply IHidstbl; eauto.
-    rewrite Forall_forall. intros. 
-    eapply FALL. apply in_cons. auto.
-Qed.
+(* Lemma idstbl_id_inv: forall idstbl, *)
+(*     Forall (fun '(id, e) => symbentry_id e = id) idstbl -> *)
+(*     (map (fun x : ident * symbentry => symbentry_id (snd x)) *)
+(*          idstbl) = *)
+(*     map fst idstbl. *)
+(* Proof. *)
+(*   induction idstbl as [|e idstbl]. *)
+(*   - cbn. auto. *)
+(*   - cbn. intros FALL. *)
+(*     rewrite Forall_forall in FALL. *)
+(*     generalize (FALL _ (in_eq _ _)). *)
+(*     destruct e. intros. subst. cbn. *)
+(*     f_equal.  *)
+(*     eapply IHidstbl; eauto. *)
+(*     rewrite Forall_forall. intros.  *)
+(*     eapply FALL. apply in_cons. auto. *)
+(* Qed. *)
 
-Lemma elements_of_symbtable_to_idlist_perm': forall idstbl,
-    list_norepet (map fst idstbl) ->
-    Forall (fun '(id, e) => symbentry_id e = id) idstbl ->
-    Permutation (PTree.elements 
-                   (PTree_Properties.of_list
-                      (symbtable_to_idlist (map snd idstbl))))
-                idstbl.
-Proof.
-  intros.
-  unfold symbtable_to_idlist.
-  apply NoDup_Permutation.
-  apply NoDup_ptree_elements.
-  apply NoDup_map_inv with (f:=fst).
-  rewrite NoDup_list_norepet_equiv. auto.
-  intros (id,e). split.
-  - intros IN.
-    apply PTree.elements_complete in IN.
-    apply PTree_Properties.in_of_list in IN.
-    rewrite list_map_compose in IN.
-    eapply in_idstbl_conv; eauto.
-  - intros IN.
-    apply PTree.elements_correct.
-    rewrite list_map_compose; cbn.
-    apply PTree_Properties.of_list_norepet.
-    rewrite list_map_compose; cbn.
-    eapply Permutation_pres_list_norepet; eauto.    
-    erewrite idstbl_id_inv; eauto.
-    erewrite in_idstbl_conv; eauto.
-Qed.
+(* Lemma elements_of_symbtable_to_idlist_perm': forall idstbl, *)
+(*     list_norepet (map fst idstbl) -> *)
+(*     Forall (fun '(id, e) => symbentry_id e = id) idstbl -> *)
+(*     Permutation (PTree.elements  *)
+(*                    (PTree_Properties.of_list *)
+(*                       (symbtable_to_idlist (map snd idstbl)))) *)
+(*                 idstbl. *)
+(* Proof. *)
+(*   intros. *)
+(*   unfold symbtable_to_idlist. *)
+(*   apply NoDup_Permutation. *)
+(*   apply NoDup_ptree_elements. *)
+(*   apply NoDup_map_inv with (f:=fst). *)
+(*   rewrite NoDup_list_norepet_equiv. auto. *)
+(*   intros (id,e). split. *)
+(*   - intros IN. *)
+(*     apply PTree.elements_complete in IN. *)
+(*     apply PTree_Properties.in_of_list in IN. *)
+(*     rewrite list_map_compose in IN. *)
+(*     eapply in_idstbl_conv; eauto. *)
+(*   - intros IN. *)
+(*     apply PTree.elements_correct. *)
+(*     rewrite list_map_compose; cbn. *)
+(*     apply PTree_Properties.of_list_norepet. *)
+(*     rewrite list_map_compose; cbn. *)
+(*     eapply Permutation_pres_list_norepet; eauto.     *)
+(*     erewrite idstbl_id_inv; eauto. *)
+(*     erewrite in_idstbl_conv; eauto. *)
+(* Qed. *)
 
-Lemma elements_of_symbtable_to_tree_perm: forall idstbl,
-    list_norepet (map fst idstbl) ->
-    Forall (fun '(id, e) => symbentry_id e = id) idstbl ->
-    Permutation (PTree.elements (symbtable_to_tree (map snd idstbl))) idstbl.
-Proof.
-  intros stbl NORPT IDEQ.
-  unfold symbtable_to_tree.
-  eapply elements_of_symbtable_to_idlist_perm'; eauto.
-Qed.
+(* Lemma elements_of_symbtable_to_tree_perm: forall idstbl, *)
+(*     list_norepet (map fst idstbl) -> *)
+(*     Forall (fun '(id, e) => symbentry_id e = id) idstbl -> *)
+(*     Permutation (PTree.elements (symbtable_to_tree (map snd idstbl))) idstbl. *)
+(* Proof. *)
+(*   intros stbl NORPT IDEQ. *)
+(*   unfold symbtable_to_tree. *)
+(*   eapply elements_of_symbtable_to_idlist_perm'; eauto. *)
+(* Qed. *)
