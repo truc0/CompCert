@@ -2,7 +2,7 @@
 (* Author: Yuting Wang  *)
 (*         Jinhua Wu    *)
 (* Date:   Sep 13, 2019 *)
-(* Last updated: Jan 29,2022 by Jinhua Wu *)
+(* Last updated: Jan 31,2022 by Jinhua Wu *)
 (* *******************  *)
 
 Require Import Coqlib Integers AST Maps.
@@ -23,9 +23,6 @@ Section INSTR_SIZE.
 
 Variable instr_size : instruction -> Z.
 Hypothesis instr_size_bound : forall i, 0 < instr_size i <= Ptrofs.max_unsigned.
-
-(** identity to section index *)
-Definition ident_to_index id := Npos id.
 
 
 Definition def_size (def: AST.globdef Asm.fundef unit) : Z :=
@@ -65,17 +62,6 @@ End INSTR_SIZE.
 
 (** ** Compute the symbol table *)
 
-(* Section WITH_PROG_SECS. *)
-
-(* Variables (rdsec dsec csec:N). *)
-Section INSTR_SIZE.
-  Variable instr_size : instruction -> Z.
-
-
-(* Section WITH_SECS_SIZE. *)
-
-(* Variables (rdsize dsize csize: Z). *)
-
 Definition get_bind_ty id :=
   if is_def_local id then bind_local else bind_global.
 
@@ -90,7 +76,7 @@ Definition get_symbentry (id:ident) (def: (AST.globdef Asm.fundef unit)) : symbe
     match AST.gvar_init gvar with
     | nil => 
       (** This is an external data symbol *)
-      {|symbentry_id := id;
+      {|
         symbentry_bind := bindty;
         symbentry_type := symb_data;
         symbentry_value := 0;
@@ -100,7 +86,7 @@ Definition get_symbentry (id:ident) (def: (AST.globdef Asm.fundef unit)) : symbe
     | [Init_space sz] =>
       (** This is an external data symbol in the COMM section *)
       (** TODO: static uninitializd data is also put into this section*)
-      {|symbentry_id := id;
+      {|
         symbentry_bind := bind_global;
         symbentry_type := symb_data;
         symbentry_value := 8 ; (* 8 is a safe alignment for any data *)
@@ -111,27 +97,27 @@ Definition get_symbentry (id:ident) (def: (AST.globdef Asm.fundef unit)) : symbe
           (** Set section index to the id of the section*)
           | true =>
            (** This is an internal read-only data symbol *)           
-           {|symbentry_id := id;
+           {|
              symbentry_bind := bindty;
              symbentry_type := symb_data;
              symbentry_value := 0; (* section for each def, so offset is zero *)
-             symbentry_secindex := secindex_normal (ident_to_index id);
+             symbentry_secindex := secindex_normal id;
              symbentry_size := AST.init_data_list_size (AST.gvar_init gvar);
            |}
          | false =>
            (** This is an internal data symbol *)
-           {|symbentry_id := id;
+           {|
              symbentry_bind := bindty;
              symbentry_type := symb_data;
              symbentry_value := 0;
-             symbentry_secindex := secindex_normal (ident_to_index id);
+             symbentry_secindex := secindex_normal id;
              symbentry_size := AST.init_data_list_size (AST.gvar_init gvar);
            |}
          end
     end
   | (Gfun (External ef)) =>
     (** This is an external function symbol *)
-    {|symbentry_id := id;
+    {|
       symbentry_bind := bindty;
       symbentry_type := symb_func;
       symbentry_value := 0;
@@ -139,11 +125,11 @@ Definition get_symbentry (id:ident) (def: (AST.globdef Asm.fundef unit)) : symbe
       symbentry_size := 0;
     |}
   | (Gfun (Internal f)) =>
-    {|symbentry_id := id;
+    {|
       symbentry_bind := bindty;
       symbentry_type := symb_func;
       symbentry_value := 0;
-      symbentry_secindex := secindex_normal (ident_to_index id);
+      symbentry_secindex := secindex_normal id;
       symbentry_size := code_size instr_size (fn_code f);
     |}
   end.
@@ -153,14 +139,14 @@ Definition acc_symb (stbl: symbtable)
            (iddef: ident * (AST.globdef Asm.fundef unit)) := 
   let (id, def) := iddef in
   let e := get_symbentry id def in
-  e :: stbl.
+  PTree.set id e stbl.
 
 
 (** Generate the symbol and section table *)
 Definition gen_symb_table defs :=
   let rstbl :=
-      fold_left acc_symb defs nil in
-  rev rstbl.
+      fold_left acc_symb defs (PTree.empty symbentry) in
+  rstbl.
 
 
 (* End WITH_PROG_SECS. *)
@@ -280,25 +266,25 @@ Definition get_def_instrs (def: (globdef fundef unit)) : code :=
   | _ => []
   end.
 
-Definition acc_gen_section (acc: list (ident * section)) (iddef: ident * (globdef fundef unit)) : list (ident * section) :=
+Definition acc_gen_section (acc: sectable) (iddef: ident * (globdef fundef unit)) : sectable :=
   let (id, def) := iddef in
   match def with
-  | Gfun (Internal f) => acc ++ [(id, sec_text (fn_code f))]
+  | Gfun (Internal f) => PTree.set id (sec_text (fn_code f)) acc
   | Gvar v =>
     match gvar_init v with
     | [] => acc
     | [Init_space _] => acc
     | _ =>
       if gvar_readonly v then
-        acc ++ [(id, sec_rodata (gvar_init v))]
+        PTree.set id (sec_rodata (gvar_init v)) acc
       else
-        acc ++ [(id, sec_data (gvar_init v))]
+        PTree.set id (sec_rodata (gvar_init v)) acc
     end
   | _ => acc
   end.
 
 Definition create_sec_table (defs : list (ident * (globdef fundef unit))) : sectable :=
-  fold_left acc_gen_section defs [].
+  fold_left acc_gen_section defs (PTree.empty section).
 
 Definition instr_valid i := ~instr_invalid i.
 
@@ -375,11 +361,10 @@ Definition transf_program (p:Asm.program) : res program :=
   if check_wellformedness p then
     let symb_tbl := gen_symb_table (AST.prog_defs p) in
     let sec_tbl := create_sec_table (AST.prog_defs p) in
-    if zle (sections_size instr_size (map snd sec_tbl)) Ptrofs.max_unsigned then
+    if zle (sections_size instr_size (map snd (PTree.elements sec_tbl))) Ptrofs.max_unsigned then
       OK {| prog_public := AST.prog_public p;
             prog_main := AST.prog_main p;
             prog_sectable := sec_tbl;
-            prog_strtable := PTree.empty Z;
             prog_symbtable := symb_tbl;
             prog_reloctables := PTree.empty reloctable;
             prog_senv := Globalenvs.Genv.to_senv (Globalenvs.Genv.globalenv p)
@@ -389,4 +374,3 @@ Definition transf_program (p:Asm.program) : res program :=
   else
     Error (msg "Program not well-formed").
 
-End INSTR_SIZE.
