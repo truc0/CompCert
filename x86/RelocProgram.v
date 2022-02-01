@@ -74,7 +74,7 @@ Record relocentry : Type :=
 {
   reloc_offset: Z;
   reloc_type  : reloctype;
-  reloc_symb  : N;    (* Index into the symbol table *)
+  reloc_symb  : ident;    (* Index into the symbol table *)
   reloc_addend : Z;
 }.
 

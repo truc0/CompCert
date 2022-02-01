@@ -123,6 +123,7 @@ BACKEND=\
   LocalLib.v Jumptablegen.v CheckDef.v\
   RelocProgram.v \
   Symbtablegen.v \
+  Reloctablesgen.v \
   
 # C front-end modules (in cfrontend/)
 
