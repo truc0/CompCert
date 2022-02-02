@@ -94,7 +94,8 @@ Definition get_symbentry (id:ident) (symtbl: symbtable) : res symbentry :=
   end.
 
 (** Transform program1: input two id and merge their section, symbol entry and reloc table *)
-Definition transf_program1 (id1 id2: ident) (p: program) : res program :=
+(** return generated new symbol and transformed program *)
+Definition transf_program1 (id1 id2: ident) (p: program) : res (ident * program) :=
   if ident_eq id1 id2 then
     Error (msg "link two section with same identity")
   else
@@ -107,10 +108,73 @@ Definition transf_program1 (id1 id2: ident) (p: program) : res program :=
     do syme2 <- get_symbentry id2 p.(prog_symbtable);
     let reloc_map := transf_relocmap syme1 id id1 id2 p.(prog_reloctables) in
     let symbtbl := transf_symbtbl syme1 syme2 id id1 id2 p.(prog_symbtable) in
-    OK {| prog_public := p.(prog_public);
-          prog_main := p.(prog_main);
-          prog_sectable := sec_tbl';
-          prog_symbtable := symbtbl;
-          prog_reloctables := reloc_map;
-          prog_senv := p.(prog_senv);
-       |}.
+    OK (id,
+        {| prog_public := p.(prog_public);
+           prog_main := p.(prog_main);
+           prog_sectable := sec_tbl';
+           prog_symbtable := symbtbl;
+           prog_reloctables := reloc_map;
+           prog_senv := p.(prog_senv);
+        |}).
+
+
+(** merge section into one section in program p *)
+(** id list is the list of id of the same type section*)
+Fixpoint merge_sec' (id: ident) (idlist : list ident) (p: program) : res program :=
+  match idlist with
+  | [] => OK p
+  | i :: l' =>
+    do sec1 <- get_section id p.(prog_sectable);
+    do sec2 <- get_section i p.(prog_sectable);
+    do id_prog <- transf_program1 id i p;
+    let (id', p') := id_prog in
+    merge_sec' id' l' p'
+  end.
+
+Definition merge_sec (idlist: list ident) (p: program) :=
+  match idlist with
+  | [] => OK p
+  | id :: l => merge_sec' id l p
+  end.
+
+Definition filter_text_id (sectbl: sectable) (id:ident) :=
+  match sectbl ! id with
+  | Some sec =>
+    match sec with
+    | sec_text _ => true
+    | _ => false
+    end
+  | None => false
+  end.
+
+Definition filter_data_id (sectbl: sectable) (id:ident) :=
+  match sectbl ! id with
+  | Some sec =>
+    match sec with
+    | sec_data _ => true
+    | _ => false
+    end
+  | None => false
+  end.
+
+Definition filter_rodata_id (sectbl: sectable) (id:ident) :=
+  match sectbl ! id with
+  | Some sec =>
+    match sec with
+    | sec_rodata _ => true
+    | _ => false
+    end
+  | None => false
+  end.
+
+
+Definition transf_program (p: program) : res program :=
+  let sectbl := p.(prog_sectable) in
+  let idlist := map fst (PTree.elements sectbl) in
+  let idlist_text := filter (filter_text_id sectbl) idlist in
+  let idlist_data := filter (filter_data_id sectbl) idlist in
+  let idlist_rodata := filter (filter_rodata_id sectbl) idlist in
+  do p1 <- merge_sec idlist_text p;
+  do p2 <- merge_sec idlist_data p1;
+  merge_sec idlist_text p2.
+  
