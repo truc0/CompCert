@@ -1,7 +1,7 @@
 (* *******************  *)
 (* Author: Jinhua Wu    *)
 (* Date:   Sep 16, 2019 *)
-(* Last updated: Feb 2, 2022 by Jinhua Wu *)
+(* Last updated: Feb 3, 2022 by Jinhua Wu *)
 (* *******************  *)
 
 (** * Linking sections of same type *)
@@ -53,6 +53,30 @@ Definition link_reloctable (ofs: Z) (rel1 rel2: reloctable) : reloctable :=
   let rel2' := map (transf_relocentry ofs) rel2 in
   rel1++rel2'.
 
+(** Optimized linking: clear redundant symbol entries, and redirect the relocation entry in all relocation table*)
+Definition redundant_opt := true.
+
+Section WITH_SYMB_OFS.
+  Variable symb new_symb: ident.
+  Variable ofs : Z.
+
+Definition redirect_relocentry (e: relocentry) :=
+  if ident_eq e.(reloc_symb) symb then
+  {| reloc_offset := e.(reloc_offset);
+     reloc_type := e.(reloc_type);
+     reloc_symb := new_symb;
+     reloc_addend := e.(reloc_addend) + ofs |}
+  else e.
+
+Definition redirect_reloctable (tbl: reloctable) :=
+  map redirect_relocentry tbl.
+
+Definition redirect_reloc_map (m: reloctable_map) :=
+  PTree.map1  redirect_reloctable m.
+
+End WITH_SYMB_OFS.
+
+
 Section WITH_NEW_SYMB.
   Variable e1 e2 : symbentry.
   Variable new_symb: ident.
@@ -78,7 +102,14 @@ Definition transf_symbtbl (id1 id2 :ident) (symbtbl: symbtable) : symbtable :=
     let tbl1 := PTree.set id1 e1' symbtbl in
     let tbl2 := PTree.set id2 e2' tbl1 in
     PTree.set new_symb e tbl2.
-  
+
+(** remove the redundant symbol entry *)
+Definition transf_symbtbl' (id1 id2 :ident) (symbtbl: symbtable) : symbtable :=
+    let e := Build_symbentry e1.(symbentry_bind) e1.(symbentry_type) 0 (secindex_normal new_symb) (e1.(symbentry_size) + e2.(symbentry_size)) in
+    let tbl1 := PTree.remove id1 symbtbl in
+    let tbl2 := PTree.remove id2 tbl1 in
+    PTree.set new_symb e tbl2.
+
 End WITH_NEW_SYMB.
 
 Definition get_section (id:ident) (sectbl:sectable) :res section :=
@@ -107,7 +138,19 @@ Definition transf_program1 (id1 id2: ident) (p: program) : res (ident * program)
     do syme1 <- get_symbentry id1 p.(prog_symbtable);
     do syme2 <- get_symbentry id2 p.(prog_symbtable);
     let reloc_map := transf_relocmap syme1 id id1 id2 p.(prog_reloctables) in
-    let symbtbl := transf_symbtbl syme1 syme2 id id1 id2 p.(prog_symbtable) in
+    if redundant_opt then       (* redundant elimination *)
+      let symbtbl := transf_symbtbl' syme1 syme2 id id1 id2 p.(prog_symbtable) in
+      let reloc_map1 := redirect_reloc_map id2 id syme1.(symbentry_size) (redirect_reloc_map id1 id 0 reloc_map) in
+      OK (id,
+        {| prog_public := p.(prog_public);
+           prog_main := p.(prog_main);
+           prog_sectable := sec_tbl';
+           prog_symbtable := symbtbl;
+           prog_reloctables := reloc_map1;
+           prog_senv := p.(prog_senv);
+        |})
+    else
+      let symbtbl := transf_symbtbl syme1 syme2 id id1 id2 p.(prog_symbtable) in
     OK (id,
         {| prog_public := p.(prog_public);
            prog_main := p.(prog_main);
