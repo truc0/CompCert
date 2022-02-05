@@ -27,7 +27,7 @@ else
 ARCHDIRS=$(ARCH)_$(BITSIZE) $(ARCH)
 endif
 
-DIRS := lib common $(ARCHDIRS) backend cfrontend driver exportclight cparser
+DIRS := lib common $(ARCHDIRS) backend cfrontend driver exportclight cparser encode
 
 COQINCLUDES := $(foreach d, $(DIRS), -R $(d) compcert.$(d))
 
@@ -124,7 +124,13 @@ BACKEND=\
   RelocProgram.v \
   Symbtablegen.v \
   Reloctablesgen.v \
-  
+
+
+# Encoding of data into bytes
+
+ENCODE=Encode.v Bits.v Hex.v
+
+
 # C front-end modules (in cfrontend/)
 
 CFRONTEND=Ctypes.v Cop.v Csyntax.v Csem.v Ctyping.v Cstrategy.v Cexec.v \
@@ -155,7 +161,7 @@ DRIVER=Compopts.v Compiler.v Complements.v
 # All source files
 
 FILES=$(VLIB) $(COMMON) $(BACKEND) $(CFRONTEND) $(DRIVER) $(FLOCQ) \
-  $(MENHIRLIB) $(PARSER)
+  $(MENHIRLIB) $(PARSER) $(ENCODE)
 
 # Generated source files
 
