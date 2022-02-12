@@ -74,6 +74,13 @@ Program Definition encode_ireg_u3 (r:ireg) : res u3 :=
     OK (exist _ b _)
   else Error (msg "impossible").
 
+(* Unfinished!! Leave to you*)
+Definition decode_ireg (bs:bits) : res ireg :=
+  let n := bits_to_Z bs in
+  if Z.eqb n 0 then OK(RAX)
+  else Error(msg "reg not found")
+.
+
 Program Definition encode_freg_u3 (r:freg) : res u3 :=
   do b <- encode_freg r;
   if assertLength b 3 then    
@@ -103,19 +110,7 @@ Inductive AddrE: Type :=
 | AddrE7(uvar32_0:u32)
 | AddrE6(uvar3_0:u3)(uvar32_1:u32)
 | AddrE5(uvar2_0:u2)(uvar3_1:u3)(uvar3_2:u3)(uvar32_3:u32)
-| AddrE4(uvar3_0:u3)(uvar32_1:u32)
-| AddrE0(uvar3_0:u3).
-
-Inductive AddrM: Type :=
-| AddrM11(uvar3_0:u3)
-| AddrM10(uvar32_0:u32)
-| AddrM9(uvar2_0:u2)(uvar3_1:u3)(uvar3_2:u3)
-| AddrM8(uvar2_0:u2)(uvar3_1:u3)(uvar32_2:u32)
-| AddrM7(uvar3_0:u3)
-| AddrM6(uvar32_0:u32)
-| AddrM5(uvar3_0:u3)(uvar32_1:u32)
-| AddrM4(uvar2_0:u2)(uvar3_1:u3)(uvar3_2:u3)(uvar32_3:u32)
-| AddrM3(uvar3_0:u3)(uvar32_1:u32).
+| AddrE4(uvar3_0:u3)(uvar32_1:u32).
 
 (* Instruction in CAV21 automatically generated definition *)
 Inductive Instruction: Type :=
@@ -130,19 +125,22 @@ Inductive Instruction: Type :=
 | Pbswap32(uvar3_0:u3)
 | Pbsrl(uvar3_0:u3)(uvar3_1:u3)
 | Pbsfl(uvar3_0:u3)(uvar3_1:u3)
-| ADD_Ev_Gv(AddrE:AddrE)(uvar3_0:u3)
-| ADC_Ev_Gv(AddrE:AddrE)(uvar3_0:u3)
-| ADCI_Ev_Ib(AddrE:AddrE)(uvar8_1:u8)
+| Paddl_mi(AddrE:AddrE)(uvar32_1:u32)
+| Paddl_rr(uvar3_0:u3)(uvar3_1:u3)
+| Padcl_rr(uvar3_0:u3)(uvar3_1:u3)
+| Padcl_ri(uvar3_0:u3)(uvar8_1:u8)
 | Pjcc_rel(uvar4_0:u4)(uvar32_1:u32)
-| Pret_Iw(uvar16_0:u16)
+| Pret_iw(uvar16_0:u16)
 | Pret
-| nCALL_Ev(AddrE:AddrE)
+| Pcall_r(uvar3_0:u3)
 | Pcall_ofs(uvar32_0:u32)
 | Pnop
 | Pjmp_m(AddrE:AddrE)
+| Pjmp_r(uvar3_0:u3)
 | Pjmp_l_rel(uvar32_0:u32)
-| Pandps_GvEv(AddrE:AddrE)(uvar3_0:u3)
-| Pxorps_GvEv(AddrE:AddrE)(uvar3_0:u3)
+| Pandps_fm(AddrE:AddrE)(uvar3_0:u3)
+| Pxorps_fm(AddrE:AddrE)(uvar3_0:u3)
+| Pxorps_f(uvar3_0:u3)(uvar3_1:u3)
 | Pcomisd_ff(uvar3_0:u3)(uvar3_1:u3)
 | Pdivsd_ff(uvar3_0:u3)(uvar3_1:u3)
 | Pmuld_ff(uvar3_0:u3)(uvar3_1:u3)
@@ -152,44 +150,48 @@ Inductive Instruction: Type :=
 | Pcmov(uvar4_0:u4)(uvar3_1:u3)(uvar3_2:u3)
 | Ptestl_rr(uvar3_0:u3)(uvar3_1:u3)
 | Ptestl_ri(uvar3_0:u3)(uvar32_1:u32)
-| CMPI_Ev_Iz(AddrE:AddrE)(uvar32_1:u32)
-| CMP_Ev_Gv(AddrE:AddrE)(uvar3_0:u3)
+| Pcmpl_ri(uvar3_0:u3)(uvar32_1:u32)
+| Pcmpl_rr(uvar3_0:u3)(uvar3_1:u3)
 | Prorl_ri(AddrE:AddrE)(uvar8_1:u8)
 | Prolw_ri(AddrE:AddrE)(uvar8_1:u8)
 | Pshld_ri(uvar3_0:u3)(uvar3_1:u3)(uvar8_2:u8)
 | Psarl_rcl(uvar3_0:u3)
-| Psarl_EvIb(AddrE:AddrE)(uvar8_1:u8)
+| Psarl_ri(uvar3_0:u3)(uvar8_1:u8)
 | Pshrl_rcl(uvar3_0:u3)
-| Pshrl_EvIb(AddrE:AddrE)(uvar8_1:u8)
+| Pshrl_ri(uvar3_0:u3)(uvar8_1:u8)
 | Psall_rcl(uvar3_0:u3)
-| Psall_EvIb(AddrE:AddrE)(uvar8_1:u8)
+| Psall_ri(uvar3_0:u3)(uvar8_1:u8)
 | Pnotl(uvar3_0:u3)
 | Pxorl_rr(uvar3_0:u3)(uvar3_1:u3)
-| Pxorl_EvIz(AddrE:AddrE)(uvar32_1:u32)
+| Pxorl_ri(uvar3_0:u3)(uvar32_1:u32)
 | Porl_rr(uvar3_0:u3)(uvar3_1:u3)
-| Porl_EvIz(AddrE:AddrE)(uvar32_1:u32)
-| ANDI_Ev_Iz(AddrE:AddrE)(uvar32_1:u32)
-| AND_Ev_Gv(AddrE:AddrE)(uvar3_0:u3)
-| IDIV_Ev(AddrE:AddrE)
-| DIV_Ev(AddrE:AddrE)
-| CDQ
+| Porl_ri(uvar3_0:u3)(uvar32_1:u32)
+| Pandl_ri(uvar3_0:u3)(uvar32_1:u32)
+| Pandl_rr(uvar3_0:u3)(uvar3_1:u3)
+| Pidivl_r(uvar3_0:u3)
+| Pdivl_r(uvar3_0:u3)
+| Pcltd
 | Pmull_r(uvar3_0:u3)
-| IMUL_Gv_Ev_Iz(AddrE:AddrE)(uvar3_0:u3)(uvar32_2:u32)
+| Pimull_ri(uvar3_0:u3)(uvar3_1:u3)(uvar32_2:u32)
 | Pimull_rr(uvar3_0:u3)(uvar3_1:u3)
 | Psubl_rr(uvar3_0:u3)(uvar3_1:u3)
-| ADDI_Ev_Iz(AddrE:AddrE)(uvar32_1:u32)
+| Paddl_ri(uvar3_0:u3)(uvar32_1:u32)
 | Pnegl(uvar3_0:u3)
-| LEA_Gv_M(AddrM:AddrM)(uvar3_0:u3)
+| Pleal(AddrE:AddrE)(uvar3_0:u3)
 | Pcvttss2si_rf(uvar3_0:u3)(uvar3_1:u3)
-| Pcvttsi2sd_fr(uvar3_0:u3)(uvar3_1:u3)
+| Pcvtsi2sd_fr(uvar3_0:u3)(uvar3_1:u3)
 | Pcvtsi2ss_fr(uvar3_0:u3)(uvar3_1:u3)
 | Pcvttsd2si_rf(uvar3_0:u3)(uvar3_1:u3)
 | Pcvtss2sd_ff(uvar3_0:u3)(uvar3_1:u3)
 | Pcvtsd2ss_ff(uvar3_0:u3)(uvar3_1:u3)
-| Pmovsw_GvEv(AddrE:AddrE)(uvar3_0:u3)
-| Pmovzw_GvEv(AddrE:AddrE)(uvar3_0:u3)
-| Pmovsb_GvEv(AddrE:AddrE)(uvar3_0:u3)
-| Pmovzb_GvEv(AddrE:AddrE)(uvar3_0:u3)
+| Pmovsw_rm(AddrE:AddrE)(uvar3_0:u3)
+| Pmovsw_rr(uvar3_0:u3)(uvar3_1:u3)
+| Pmovzw_rm(AddrE:AddrE)(uvar3_0:u3)
+| Pmovzw_rr(uvar3_0:u3)(uvar3_1:u3)
+| Pmovsb_rm(AddrE:AddrE)(uvar3_0:u3)
+| Pmovsb_rr(uvar3_0:u3)(uvar3_1:u3)
+| Pmovzb_rm(AddrE:AddrE)(uvar3_0:u3)
+| Pmovzb_rr(uvar3_0:u3)(uvar3_1:u3)
 | Pmovw_rm(AddrE:AddrE)(uvar3_0:u3)
 | Pmovw_mr(AddrE:AddrE)(uvar3_0:u3)
 | Pmovb_rm(AddrE:AddrE)(uvar3_0:u3)
@@ -198,13 +200,15 @@ Inductive Instruction: Type :=
 | Pfstps_m(AddrE:AddrE)
 | Pfstpl_m(AddrE:AddrE)
 | Pfldl_m(AddrE:AddrE)
-| Pmovss_fEv(AddrE:AddrE)(uvar3_0:u3)
-| Pmovss_Evf(AddrE:AddrE)(uvar3_0:u3)
-| Pmovsd_fEv(AddrE:AddrE)(uvar3_0:u3)
-| Pmovsd_Evf(AddrE:AddrE)(uvar3_0:u3)
+| Pmovss_fm(AddrE:AddrE)(uvar3_0:u3)
+| Pmovss_mf(AddrE:AddrE)(uvar3_0:u3)
+| Pmovsd_fm(AddrE:AddrE)(uvar3_0:u3)
+| Pmovsd_ff(uvar3_0:u3)(uvar3_1:u3)
+| Pmovsd_mf(AddrE:AddrE)(uvar3_0:u3)
 | Pmovl_rm(AddrE:AddrE)(uvar3_0:u3)
 | Pmovl_mr(AddrE:AddrE)(uvar3_0:u3)
-| Pmovl_ri(uvar3_0:u3)(uvar32_1:u32).
+| Pmovl_ri(uvar3_0:u3)(uvar32_1:u32)
+| Pmovl_rr(uvar3_0:u3)(uvar3_1:u3).
 
 
 Section WITH_RELOC_OFS_MAP.
@@ -283,11 +287,7 @@ Definition translate_Addrmode_AddrE (sofs: Z) (i:instruction) (addr:addrmode): r
     end
   end.
 
-Definition decode_ireg (bs:bits) : res ireg :=
-  let n := bits_to_Z bs in
-  if Z.eqb n 0 then OK(RAX)
-  else Error(msg "reg not found")
-.
+
 
 
 (* Translate CAV21 addr mode to ccelf addr mode *)
@@ -351,7 +351,7 @@ Lemma translate_consistency1 : forall ofs i addr addrE,
   intros. destruct addr.
   unfold translate_Addrmode_AddrE in H.
   unfold translate_AddrE_Addrmode.
-  destruct base;destruct ofs0;try destruct p;destruct const.  
+  destruct base;destruct ofs0;try destruct p;destruct const.
   - monadInv H.
     rewrite EQ.
     cbn [bind].    
@@ -368,7 +368,7 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
   | Pmov_rr rd r1 =>
     do rdbits <- encode_ireg_u3 rd;
     do r1bits <- encode_ireg_u3 r1;
-    OK (Pmovl_rm (AddrE0 r1bits) rdbits)
+    OK (Pmovl_rr rdbits r1bits)
   | Asm.Pmovl_rm rd addr =>
     do rdbits <- encode_ireg_u3 rd;
     do a <- translate_Addrmode_AddrE ofs i addr;
@@ -384,23 +384,23 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
   | Asm.Pmovsd_ff rd r1 =>
     do rdbits <- encode_freg_u3 rd;
     do r1bits <- encode_freg_u3 r1;
-    OK (Pmovsd_fEv (AddrE0 r1bits) rdbits)
-  | Pmovsd_fm r addr =>
+    OK (Pmovsd_ff rdbits r1bits)
+  | Asm.Pmovsd_fm r addr =>
     do rbits <- encode_freg_u3 r;
     do a <- translate_Addrmode_AddrE ofs i addr;
-    OK (Pmovsd_fEv a rbits)
-  | Pmovsd_mf addr r =>
+    OK (Pmovsd_fm a rbits)
+  | Asm.Pmovsd_mf addr r =>
     do rbits <- encode_freg_u3 r;
     do a <- translate_Addrmode_AddrE ofs i addr;
-    OK (Pmovsd_Evf a rbits)
-  | Pmovss_fm r addr =>
+    OK (Pmovsd_mf a rbits)
+  | Asm.Pmovss_fm r addr =>
     do rbits <- encode_freg_u3 r;
     do a <- translate_Addrmode_AddrE ofs i addr;
-    OK (Pmovss_fEv a rbits)
-  | Pmovss_mf addr r =>
+    OK (Pmovss_fm a rbits)
+  | Asm.Pmovss_mf addr r =>
     do rbits <- encode_freg_u3 r;
     do a <- translate_Addrmode_AddrE ofs i addr;
-    OK (Pmovss_Evf a rbits)
+    OK (Pmovss_mf a rbits)
   | Asm.Pfldl_m addr =>
     do a <- translate_Addrmode_AddrE ofs i addr;
     OK (Pfldl_m a)
@@ -428,11 +428,11 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
   | Asm.Pmovzb_rr rd r =>
     do rdbits <- encode_ireg_u3 rd;
     do rbits <- encode_ireg_u3 r;
-    OK (Pmovzb_GvEv (AddrE0 rbits) rdbits)
+    OK (Pmovzb_rr rdbits rbits)
   | Asm.Pmovzb_rm r a =>
     do rbits <- encode_ireg_u3 r;
     do a <- translate_Addrmode_AddrE ofs i a;
-    OK (Pmovzb_GvEv a rbits)
+    OK (Pmovzb_rm a rbits)
   | _ => Error (msg "Unfinished")
   end.
     
