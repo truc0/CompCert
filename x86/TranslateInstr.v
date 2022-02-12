@@ -74,12 +74,51 @@ Program Definition encode_ireg_u3 (r:ireg) : res u3 :=
     OK (exist _ b _)
   else Error (msg "impossible").
 
-(* Unfinished!! Leave to you*)
 Definition decode_ireg (bs:bits) : res ireg :=
   let n := bits_to_Z bs in
-  if Z.eqb n 0 then OK(RAX)
+  if Z.eqb n 0 then OK(RAX)           (**r b["000"] *)
+  else if Z.eqb n 1 then OK(RCX)      (**r b["001"] *)
+  else if Z.eqb n 2 then OK(RDX)      (**r b["010"] *)
+  else if Z.eqb n 3 then OK(RBX)      (**r b["011"] *)
+  else if Z.eqb n 4 then OK(RSP)      (**r b["100"] *)
+  else if Z.eqb n 5 then OK(RBP)      (**r b["101"] *)
+  else if Z.eqb n 6 then OK(RSI)      (**r b["110"] *)
+  else if Z.eqb n 7 then OK(RDI)      (**r b["111"] *)
   else Error(msg "reg not found")
 .
+
+Lemma ireg_encode_consistency : 
+  forall r b e, 
+  encode_ireg_u3 r = OK(exist (fun d : list bool => Datatypes.length d = 3) b e) ->
+  decode_ireg b = OK(r).
+Proof.
+  intros.
+  unfold encode_ireg_u3 in H.
+  destruct r; simpl in H; 
+  inversion H;                (**r extract the encoded result b from H *)
+  subst; try reflexivity.
+Qed.
+
+Lemma ireg_decode_consistency :
+  forall r b e, 
+  decode_ireg b = OK(r) -> 
+  encode_ireg_u3 r = OK(exist (fun d : list bool => Datatypes.length d = 3) b e).
+Proof.
+  intros.
+  (** extract three bits from b *)
+  destruct b as [| b0 b]; try discriminate; inversion e. (**r the 1st one *)
+  destruct b as [| b1 b]; try discriminate; inversion e. (**r the 2nd one *)
+  destruct b as [| b2 b]; try discriminate; inversion e. (**r the 3rd one *)
+  destruct b; try discriminate.                          (**r b is not empty *)
+  (** case analysis on [b0, b1, b2] *)
+  destruct b0, b1, b2 eqn:Eb.
+  - unfold decode_ireg in H; simpl in H. (**r extract decoded result r from H *)
+    inversion H; subst.                  (**r subst r *)
+    unfold encode_ireg_u3; simpl.        (**r calculate encode_ireg_u3 *)
+    unfold char_to_bool. simpl. 
+    replace eq_refl with e.
+    reflexivity.
+Admitted.
 
 Program Definition encode_freg_u3 (r:freg) : res u3 :=
   do b <- encode_freg r;
