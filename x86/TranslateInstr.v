@@ -1,7 +1,7 @@
 Require Import Coqlib Maps Integers Floats Values AST Errors.
 Require Import Globalenvs.
 Require Import Asm RelocProgram.
-Require Import Hex compcert.encode.Bits Memdata Encode SeqTable.
+Require Import Hex compcert.encode.Bits Memdata Encode.
 Require Import Reloctablesgen.
 Require Import SymbolString.
 (* Import Hex compcert.encode.Bits.Bits. *)
