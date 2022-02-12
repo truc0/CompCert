@@ -845,6 +845,7 @@ module Target(System: SYSTEM):TARGET =
           | _ ->
               assert false
           end
+        | _ -> assert false (* FIXME*)
 
     let print_literal64 oc n lbl =
       fprintf oc "%a:	.quad	0x%Lx\n" label lbl n

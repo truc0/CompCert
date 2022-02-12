@@ -8,7 +8,7 @@
 Require Import Coqlib Maps Integers Floats Values AST Errors.
 Require Import Globalenvs.
 Require Import Asm RelocProgram.
-Require Import encode.Hex encode.Bits Memdata encode.Encode SeqTable.
+Require Import encode.Hex encode.Bits Memdata encode.Encode.
 Require Import Reloctablesgen.
 Require Import SymbolString.
 Import Hex Bits.

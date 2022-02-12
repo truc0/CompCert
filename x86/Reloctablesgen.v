@@ -12,7 +12,6 @@ Require Import Asm.
 Require Import Errors.
 Require Import Memtype.
 Require Import RelocProgram.
-Require Import SeqTable.
 Import ListNotations.
 
 Set Implicit Arguments.

@@ -124,6 +124,7 @@ BACKEND=\
   RelocProgram.v \
   Symbtablegen.v \
   Reloctablesgen.v \
+  RelocBingen.v
 
 
 # Encoding of data into bytes
