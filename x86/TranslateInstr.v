@@ -74,8 +74,9 @@ Program Definition encode_ireg_u3 (r:ireg) : res u3 :=
     OK (exist _ b _)
   else Error (msg "impossible").
 
-Definition decode_ireg (bs:bits) : res ireg :=
-  let n := bits_to_Z bs in
+Definition decode_ireg (bs: u3) : res ireg :=
+  let bs' := proj1_sig bs in
+  let n := bits_to_Z bs' in
   if Z.eqb n 0 then OK(RAX)           (**r b["000"] *)
   else if Z.eqb n 1 then OK(RCX)      (**r b["001"] *)
   else if Z.eqb n 2 then OK(RDX)      (**r b["010"] *)
@@ -88,11 +89,12 @@ Definition decode_ireg (bs:bits) : res ireg :=
 .
 
 Lemma ireg_encode_consistency : 
-  forall r b e, 
-  encode_ireg_u3 r = OK(exist (fun d : list bool => Datatypes.length d = 3) b e) ->
-  decode_ireg b = OK(r).
+  forall r encoded, 
+  encode_ireg_u3 r = OK(encoded) ->
+  decode_ireg encoded = OK(r).
 Proof.
   intros.
+  destruct encoded.
   unfold encode_ireg_u3 in H.
   destruct r; simpl in H; 
   inversion H;                (**r extract the encoded result b from H *)
@@ -100,15 +102,16 @@ Proof.
 Qed.
 
 Lemma ireg_decode_consistency :
-  forall r b e, 
-  decode_ireg b = OK(r) -> 
-  encode_ireg_u3 r = OK(exist (fun d : list bool => Datatypes.length d = 3) b e).
+  forall r encoded, 
+  decode_ireg encoded = OK(r) -> 
+  encode_ireg_u3 r = OK(encoded).
 Proof.
   intros.
+  destruct encoded as [b Hlen].
   (** extract three bits from b *)
-  destruct b as [| b0 b]; try discriminate; inversion e. (**r the 1st one *)
-  destruct b as [| b1 b]; try discriminate; inversion e. (**r the 2nd one *)
-  destruct b as [| b2 b]; try discriminate; inversion e. (**r the 3rd one *)
+  destruct b as [| b0 b]; try discriminate; inversion Hlen. (**r the 1st one *)
+  destruct b as [| b1 b]; try discriminate; inversion Hlen. (**r the 2nd one *)
+  destruct b as [| b2 b]; try discriminate; inversion Hlen. (**r the 3rd one *)
   destruct b; try discriminate.                          (**r b is a empty list now, eliminate other possibility *)
   (** case analysis on [b0, b1, b2] *)
   destruct b0, b1, b2 eqn:Eb;
@@ -116,8 +119,8 @@ Proof.
   inversion H; subst;                  (**r subst r *)
   unfold encode_ireg_u3; simpl;        (**r calculate encode_ireg_u3 *)
   unfold char_to_bool; simpl;
-  replace eq_refl with e; 
-  try reflexivity;                     (**r to solve OK(exsit _ _ e) = OK(exsit _ _ e) *)
+  replace eq_refl with Hlen;
+  try reflexivity;                     (**r to solve OK(exsit _ _ Hlen) = OK(exsit _ _ Hlen) *)
   try apply proof_irr.                 (**r to solve e = eq_refl *)
 Qed.
 
