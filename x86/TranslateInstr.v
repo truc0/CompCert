@@ -130,6 +130,55 @@ Program Definition encode_freg_u3 (r:freg) : res u3 :=
     OK (exist _ b _)
   else Error (msg "impossible").
 
+Definition decode_freg (bs: u3) : res freg :=
+  let bs' := proj1_sig bs in
+  let n := bits_to_Z bs' in
+  if Z.eqb n 0 then OK(XMM0)           (**r b["000"] *)
+  else if Z.eqb n 1 then OK(XMM1)      (**r b["001"] *)
+  else if Z.eqb n 2 then OK(XMM2)      (**r b["010"] *)
+  else if Z.eqb n 3 then OK(XMM3)      (**r b["011"] *)
+  else if Z.eqb n 4 then OK(XMM4)      (**r b["100"] *)
+  else if Z.eqb n 5 then OK(XMM5)      (**r b["101"] *)
+  else if Z.eqb n 6 then OK(XMM6)      (**r b["110"] *)
+  else if Z.eqb n 7 then OK(XMM7)      (**r b["111"] *)
+  else Error(msg "reg not found")
+.
+
+Lemma freg_encode_consistency : 
+  forall r encoded, 
+  encode_freg_u3 r = OK(encoded) ->
+  decode_freg encoded = OK(r).
+Proof.
+  intros.
+  destruct encoded.
+  unfold encode_freg_u3 in H.
+  destruct r; simpl in H; 
+  inversion H;                (**r extract the encoded result b from H *)
+  subst; try reflexivity.
+Qed.
+
+Lemma freg_decode_consistency :
+  forall r encoded, 
+  decode_freg encoded = OK(r) -> 
+  encode_freg_u3 r = OK(encoded).
+Proof.
+  intros.
+  destruct encoded as [b Hlen].
+  (** extract three bits from b *)
+  destruct b as [| b0 b]; try discriminate; inversion Hlen. (**r the 1st one *)
+  destruct b as [| b1 b]; try discriminate; inversion Hlen. (**r the 2nd one *)
+  destruct b as [| b2 b]; try discriminate; inversion Hlen. (**r the 3rd one *)
+  destruct b; try discriminate.                          (**r b is a empty list now, eliminate other possibility *)
+  (** case analysis on [b0, b1, b2] *)
+  destruct b0, b1, b2 eqn:Eb;
+  unfold decode_freg in H; simpl in H; (**r extract decoded result r from H *)
+  inversion H; subst;                  (**r subst r *)
+  unfold encode_freg_u3; simpl;        (**r calculate encode_freg_u3 *)
+  unfold char_to_bool; simpl;
+  replace eq_refl with Hlen;
+  try reflexivity;                     (**r to solve OK(exsit _ _ Hlen) = OK(exsit _ _ Hlen) *)
+  try apply proof_irr.                 (**r to solve e = eq_refl *)
+Qed.
 
 Program Definition encode_scale_u2 (ss: Z) :res u2 :=
   do s <- encode_scale ss;
