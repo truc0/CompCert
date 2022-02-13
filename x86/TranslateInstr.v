@@ -186,6 +186,57 @@ Program Definition encode_scale_u2 (ss: Z) :res u2 :=
     OK (exist _ s _)
   else Error (msg "impossible").
 
+Definition decode_scale (bs: u2) : res Z :=
+  let bs' := proj1_sig bs in
+  let n := bits_to_Z bs' in
+  if Z.eqb n 0 then OK(1%Z)           (**r b["000"] *)
+  else if Z.eqb n 1 then OK(2%Z)      (**r b["001"] *)
+  else if Z.eqb n 2 then OK(4%Z)      (**r b["010"] *)
+  else if Z.eqb n 3 then OK(8%Z)      (**r b["011"] *)
+  else Error(msg "reg not found")
+.
+
+Lemma scale_encode_consistency : 
+  forall ss encoded, 
+  encode_scale_u2 ss = OK(encoded) ->
+  decode_scale encoded = OK(ss).
+Proof.
+  intros.
+  destruct encoded.
+  unfold encode_scale_u2 in H; monadInv H.
+
+  destruct (assertLength x0 2); try discriminate.  (**r prove x = x0 *)
+  inversion EQ0; subst.
+
+  unfold encode_scale in EQ.
+  destruct ss eqn:Ess; try discriminate.
+  repeat (destruct p; try discriminate);           (**r generate subgoals for each scale 1/2/4/8 *)
+  inversion EQ as [Heq]; subst; simpl;             (**r replace x with exact value *)
+  unfold decode_scale; auto.                       (**r get result of function decode_scale *)
+Qed.
+
+Lemma scale_decode_consistency :
+  forall r encoded, 
+  decode_scale encoded = OK(r) -> 
+  encode_scale_u2 r = OK(encoded).
+Proof.
+  intros.
+  destruct encoded as [b Hlen].
+  (** extract three bits from b *)
+  destruct b as [| b0 b]; try discriminate; inversion Hlen. (**r the 1st one *)
+  destruct b as [| b1 b]; try discriminate; inversion Hlen. (**r the 2nd one *)
+  destruct b; try discriminate.                          (**r b is a empty list now, eliminate other possibility *)
+  (** case analysis on [b0, b1] *)
+  destruct b0, b1 eqn:Eb;
+  unfold decode_scale in H; simpl in H; (**r extract decoded result r from H *)
+  inversion H; subst;                  (**r subst r *)
+  unfold encode_scale_u3; simpl;        (**r calculate encode_scale_u3 *)
+  unfold char_to_bool; simpl;
+  replace eq_refl with Hlen;
+  try reflexivity;                     (**r to solve OK(exsit _ _ Hlen) = OK(exsit _ _ Hlen) *)
+  try apply proof_irr.                 (**r to solve e = eq_refl *)
+Qed.
+
 Program Definition encode_ofs_u32 (ofs :Z) :res u32 :=
   let ofs32 := bytes_to_bits_opt (bytes_of_int 4 ofs) in
   if assertLength ofs32 32 then
