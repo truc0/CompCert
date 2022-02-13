@@ -1,5 +1,5 @@
 Require Import Coqlib Maps Integers Floats Values AST Errors.
-Require Import Globalenvs.
+Require Import Axioms Globalenvs.
 Require Import Asm RelocProgram.
 Require Import Hex compcert.encode.Bits Memdata Encode.
 Require Import Reloctablesgen.
@@ -109,16 +109,17 @@ Proof.
   destruct b as [| b0 b]; try discriminate; inversion e. (**r the 1st one *)
   destruct b as [| b1 b]; try discriminate; inversion e. (**r the 2nd one *)
   destruct b as [| b2 b]; try discriminate; inversion e. (**r the 3rd one *)
-  destruct b; try discriminate.                          (**r b is not empty *)
+  destruct b; try discriminate.                          (**r b is a empty list now, eliminate other possibility *)
   (** case analysis on [b0, b1, b2] *)
-  destruct b0, b1, b2 eqn:Eb.
-  - unfold decode_ireg in H; simpl in H. (**r extract decoded result r from H *)
-    inversion H; subst.                  (**r subst r *)
-    unfold encode_ireg_u3; simpl.        (**r calculate encode_ireg_u3 *)
-    unfold char_to_bool. simpl. 
-    replace eq_refl with e.
-    reflexivity.
-Admitted.
+  destruct b0, b1, b2 eqn:Eb;
+  unfold decode_ireg in H; simpl in H; (**r extract decoded result r from H *)
+  inversion H; subst;                  (**r subst r *)
+  unfold encode_ireg_u3; simpl;        (**r calculate encode_ireg_u3 *)
+  unfold char_to_bool; simpl;
+  replace eq_refl with e; 
+  try reflexivity;                     (**r to solve OK(exsit _ _ e) = OK(exsit _ _ e) *)
+  try apply proof_irr.                 (**r to solve e = eq_refl *)
+Qed.
 
 Program Definition encode_freg_u3 (r:freg) : res u3 :=
   do b <- encode_freg r;
