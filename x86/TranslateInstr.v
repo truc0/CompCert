@@ -343,20 +343,20 @@ Definition translate_AddrE_Addrmode (sofs: Z) (i:instruction) (addr:AddrE) : res
     | AddrE11 disp =>
       OK (Addrmode None None (inl (bits_to_Z (proj1_sig disp))))
     | AddrE9 ss idx disp =>
-      do index <- decode_ireg (proj1_sig idx);
+      do index <- decode_ireg idx;
       if ireg_eq index RSP then
         Error (msg "index can not be RSP")
       else
         OK (Addrmode None (Some (index,(bits_to_Z (proj1_sig ss)))) (inl (bits_to_Z (proj1_sig disp))) )  
     | AddrE6 base disp =>
-      do b <- decode_ireg (proj1_sig base);
+      do b <- decode_ireg base;
       OK (Addrmode (Some b) None (inl (bits_to_Z (proj1_sig disp))) )
     (* | AddrE4 base disp => *)
     (*   do b <- decode_ireg (proj1_sig base); *)
     (*   OK (Addr) *)
     | AddrE5 ss idx base disp =>
-      do index <- decode_ireg (proj1_sig idx);
-      do b <- decode_ireg (proj1_sig base);
+      do index <- decode_ireg idx;
+      do b <- decode_ireg base;
       if ireg_eq index RSP then
         Error (msg "index can not be RSP")
       else OK (Addrmode (Some b) (Some (index,(bits_to_Z (proj1_sig ss)))) (inl (bits_to_Z (proj1_sig disp))) )
@@ -368,17 +368,17 @@ Definition translate_AddrE_Addrmode (sofs: Z) (i:instruction) (addr:AddrE) : res
     | AddrE11 _ =>
       OK (Addrmode None None (inr (xH,Ptrofs.repr addend)))
     | AddrE9 ss idx disp =>
-      do index <- decode_ireg (proj1_sig idx);      
+      do index <- decode_ireg idx;      
       OK (Addrmode None (Some (index,(bits_to_Z (proj1_sig ss)))) (inr (xH,Ptrofs.repr addend)) )
     | AddrE6 base disp =>
-      do b <- decode_ireg (proj1_sig base);
+      do b <- decode_ireg base;
       OK (Addrmode (Some b) None (inr (xH,Ptrofs.repr addend)))
     (* | AddrE4 base disp => *)
     (*   do b <- decode_ireg (proj1_sig base); *)
     (*   OK (Addr) *)
     | AddrE5 ss idx base disp =>
-      do index <- decode_ireg (proj1_sig idx);
-      do b <- decode_ireg (proj1_sig base);
+      do index <- decode_ireg idx;
+      do b <- decode_ireg base;
       if ireg_eq index RSP then
         Error (msg "index can not be RSP")
       else OK (Addrmode (Some b) (Some (index,(bits_to_Z (proj1_sig ss)))) (inr (xH,Ptrofs.repr addend)) )
