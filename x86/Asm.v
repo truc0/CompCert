@@ -66,7 +66,6 @@ Notation SP := RSP (only parsing).
 Definition label := positive.
 
 (** General form of an addressing mode. *)
-const(base,index,scale)
 
 Inductive addrmode: Type :=
   | Addrmode (base: option ireg)
