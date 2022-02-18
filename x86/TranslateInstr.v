@@ -237,13 +237,33 @@ Proof.
   try apply proof_irr.                 (**r to solve e = eq_refl *)
 Qed.
 
+Program Definition encode_ofs_u8 (ofs:Z) :res u8 :=
+  let ofs8 := bytes_to_bits_opt (bytes_of_int 1 ofs) in
+  if assertLength ofs8 8 then
+    OK (exist _ ofs8 _)
+  else Error (msg "impossible").
+
+Definition decode_ofs_u8 (bs:u8) : res Z :=
+  let bs' := proj1_sig bs in
+  OK(bits_to_Z bs').
+
+Program Definition encode_ofs_u16 (ofs:Z) :res u16 :=
+  let ofs16 := bytes_to_bits_opt (bytes_of_int 4 ofs) in
+  if assertLength ofs16 16 then
+    OK (exist _ ofs16 _)
+  else Error (msg "impossible").
+
+Definition decode_ofs_u16 (bs:u16) : res Z :=
+  let bs' := proj1_sig bs in
+  OK(bits_to_Z bs').
+
 Program Definition encode_ofs_u32 (ofs:Z) :res u32 :=
   let ofs32 := bytes_to_bits_opt (bytes_of_int 4 ofs) in
   if assertLength ofs32 32 then
     OK (exist _ ofs32 _)
   else Error (msg "impossible").
 
-Definition decode_ofs (bs:u32) : res Z :=
+Definition decode_ofs_u32 (bs:u32) : res Z :=
   let bs' := proj1_sig bs in
   OK(bits_to_Z bs').
 
@@ -739,7 +759,7 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
   | Asm.Prolw_ri rd imm =>(*define a new function*)
      do rdbits <- encode_ireg_u3 rd;
      do imm8 <- encode_ofs_u8 (Int.intval imm);
-     OK (Prolw_ri rdbits imm32)
+     OK (Prolw_ri rdbits imm8)
   | Asm.Prorl_ri rd imm =>(*define a new function*)
      do rdbits <- encode_ireg_u3 rd;
      do imm8 <- encode_ofs_u8 (Int.intval imm);
