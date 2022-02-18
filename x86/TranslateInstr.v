@@ -567,22 +567,321 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
   | Asm.Pmovb_mr addr r =>
     do a <- translate_Addrmode_AddrE ofs i addr;
     do rbits <- encode_ireg_u3 r;
-    OK (Pmovb_mr a rbits)
+    OK (Pmovb_mr a rbits)          
   | Asm.Pmovw_mr addr r =>
     do a <- translate_Addrmode_AddrE ofs i addr;
     do rbits <- encode_ireg_u3 r;
-    OK (Pmovw_mr a rbits)
+    OK (Pmovw_mr a rbits)           
   | Asm.Pmovzb_rr rd r =>
     do rdbits <- encode_ireg_u3 rd;
     do rbits <- encode_ireg_u3 r;
     OK (Pmovzb_rr rdbits rbits)
-  | Asm.Pmovzb_rm r a =>
+  | Asm.Pmovzb_rm r addr =>
     do rbits <- encode_ireg_u3 r;
-    do a <- translate_Addrmode_AddrE ofs i a;
-    OK (Pmovzb_rm a rbits)
-  | _ => Error (msg "Unfinished")
+    do a <- translate_Addrmode_AddrE ofs i addr;
+    OK (Pmovzb_rm a rbits)           
+  (*from there*)
+  | Asm.Pmovzw_rm rd addr =>
+    do rbits <- encode_ireg_u3 rd;
+    do a <- translate_Addrmode_AddrE ofs i addr;
+    OK (Pmovzw_rm a rbits)
+  | Asm.Pmovzw_rr rd rs =>
+     do rdbits <- encode_ireg_u3 rd;
+     do rbits <- encode_ireg_u3 rs;
+     OK (Pmovzw_rr rdbits rbits)
+  | Asm.Pmovsb_rm rd addr =>
+    do rbits <- encode_ireg_u3 rd;
+    do a <- translate_Addrmode_AddrE ofs i addr;
+    OK (Pmovsb_rm a rbits)
+  | Asm.Pmovsb_rr rd rs =>
+    do rdbits <- encode_ireg_u3 rd;
+    do rbits <- encode_ireg_u3 rs;
+    OK (Pmovsb_rr rdbits rbits)  
+  | Asm.Pmovzb_rr rd rs =>
+    do rdbits <- encode_ireg_u3 rd;
+    do rbits <- encode_ireg_u3 rs;
+    OK (Pmovzb_rr rdbits rbits) 
+  | Asm.Pmovzb_rr rd rs =>
+    do rdbits <- encode_ireg_u3 rd;
+    do rbits <- encode_ireg_u3 rs;
+    OK (Pmovzb_rr rdbits rbits)
+  | Asm.Pmovw_rm rd addr =>
+    do rbits <- encode_ireg_u3 rd;
+    do a <- translate_Addrmode_AddrE ofs i addr;
+    OK (Pmovzb_rm a rbits)         
+  | Asm.Pmovb_rm rd addr =>
+    do rdbits <- encode_ireg_u3 rd;
+    do a <- translate_Addrmode_AddrE ofs i addr;
+    OK (Pmovzb_rm a rdbits)           
+  | Asm.Pmovsw_rm rd addr =>
+     do rdbits <- encode_ireg_u3 rd;
+     do a <- translate_Addrmode_AddrE ofs i addr;
+     OK (Pmovsw_rm a rdbits)
+  | Asm.Pmovsw_rr rd rs =>
+    do rdbits <- encode_ireg_u3 rd;
+    do rbits <- encode_ireg_u3 rs;
+    OK (Pmovsw_rr rdbits rbits)
+  | Asm.Pmovzw_rm rd addr =>
+     do rdbits <- encode_ireg_u3 rd;
+     do a <- translate_Addrmode_AddrE ofs i addr;
+     OK (Pmovzw_rm a rdbits)          (*ok*)   
+  | Asm.Pmovsd_mf addr r1 =>
+    do a <- translate_Addrmode_AddrE ofs i addr;
+    do rbits <- encode_freg_u3 r1;
+    OK (Pmovsd_mf a rbits)
+  | Asm.Pnegl r =>
+     do rbits <- encode_ireg_u3 r;
+     OK (Pnegl rbits)
+  | Asm.Pleal r addr =>
+     do rbits <- encode_ireg_u3 r;
+     do a <- translate_Addrmode_AddrE ofs i addr;
+     OK (Pleal a rbits)
+  | Asm.Pcvttss2si_rf rd r1 =>
+     do rdbits <- encode_ireg_u3 rd;
+     do rbits <- encode_ireg_u3 r1;
+     OK (Pcvttss2si_rf rdbits rbits)
+  | Asm.Pcvtsi2sd_fr rd r1 =>
+     do rdbits <- encode_freg_u3 rd;
+     do rbits <- encode_ireg_u3 r1;
+     OK (Pcvtsi2sd_fr rdbits rbits)
+  | Asm.Pcvtsi2ss_fr rd r1 =>
+     do rdbits <- encode_freg_u3 rd;
+     do rbits <- encode_ireg_u3 r1;
+     OK (Pcvtsi2ss_fr rdbits rbits)
+  | Asm.Pcvttsd2si_rf rd r1 =>
+     do rdbits <- encode_ireg_u3 rd;
+     do rbits <- encode_freg_u3 r1;
+     OK (Pcvttsd2si_rf rdbits rbits)
+  | Asm.Pcvtss2sd_ff rd r1 =>
+     do rdbits <- encode_freg_u3 rd;
+     do rbits <- encode_freg_u3 r1;
+     OK (Pcvtss2sd_ff rdbits rbits)
+  | Asm.Pcvtsd2ss_ff rd r1=>
+     do rdbits <- encode_freg_u3 rd;
+     do rbits <- encode_freg_u3 r1;
+     OK (Pcvtsd2ss_ff rdbits rbits)
+  | Asm.Paddl_ri rd imm =>
+     do rdbits <- encode_ireg_u3 rd;
+     do imm32 <- encode_ofs_u32 (Int.intval imm);
+     OK (Paddl_ri rdbits imm32)
+  | Asm.Psubl_rr rd r1 =>
+     do rdbits <- encode_ireg_u3 rd;
+     do rbits <- encode_ireg_u3 r1;
+     OK (Psubl_rr rdbits rbits)
+  | Asm.Pimull_rr rd r1 =>
+     do rdbits <- encode_ireg_u3 rd;
+     do rbits <- encode_ireg_u3 r1;
+     OK (Pimull_rr rdbits rbits)
+  | Asm.Pimull_ri rd imm =>
+     do rdbits <- encode_ireg_u3 rd;
+     do imm32 <- encode_ofs_u32 (Int.intval imm);
+     OK (Pimull_ri rdbits rdbits imm32)
+  | Asm.Pmull_r r1 =>
+     do rbits <- encode_ireg_u3 r1;
+     OK (Pmull_r rbits)
+  | Asm.Pcltd => OK (Pcltd)
+  | Asm.Pdivl r1 =>
+     do rbits <- encode_ireg_u3 r1;
+     OK (Pdivl_r rbits)
+  | Asm.Pidivl r1 =>
+     do rbits <- encode_ireg_u3 r1;
+     OK (Pidivl_r rbits)
+  | Asm.Pandl_rr rd r1 =>
+     do rdbits <- encode_ireg_u3 rd;
+     do rbits <- encode_ireg_u3 r1;
+     OK (Pandl_rr rdbits rbits)
+  | Asm.Pandl_ri rd imm =>
+     do rdbits <- encode_ireg_u3 rd;
+     do imm32 <- encode_ofs_u32 (Int.intval imm);
+     OK (Pandl_ri rdbits imm32)
+  | Asm.Porl_ri rd imm =>
+     do rdbits <- encode_ireg_u3 rd;
+     do imm32 <- encode_ofs_u32 (Int.intval imm);
+     OK (Porl_ri rdbits imm32)
+  |Porl_rr rd r1 =>
+     do rdbits <- encode_ireg_u3 rd;
+     do rbits <- encode_ireg_u3 r1;
+     OK (Porl_rr rdbits rbits)
+  |Pxorl_rr rd r1 =>
+     do rdbits <- encode_ireg_u3 rd;
+     do rbits <- encode_ireg_u3 r1;
+     OK (Pxorl_rr rdbits rbits)
+  | Asm.Pxorl_ri rd imm =>
+     do rdbits <- encode_ireg_u3 rd;
+     do imm32 <- encode_ofs_u32 (Int.intval imm);
+     OK (Pxorl_ri rdbits imm32)
+  | Asm.Pnotl rd =>
+     do rdbits <- encode_ireg_u3 rd;
+     OK (Pnotl rdbits)
+  | Asm.Psall_ri rd imm =>(*define a new function*)
+     do rdbits <- encode_ireg_u3 rd;
+     do imm8 <- encode_ofs_u8 (Int.intval imm);
+     OK (Psall_ri rdbits imm8)
+  | Asm.Psall_rcl rd =>
+     do rdbits <- encode_ireg_u3 rd;
+     OK (Psall_rcl rdbits)
+  | Asm.Pshrl_ri rd imm =>(*define a new function*)
+     do rdbits <- encode_ireg_u3 rd;
+     do imm8 <- encode_ofs_u8 (Int.intval imm);
+     OK (Pshrl_ri rdbits imm8)
+  | Asm.Psarl_ri rd imm =>(*define a new function*)
+     do rdbits <- encode_ireg_u3 rd;
+     do imm8 <- encode_ofs_u8 (Int.intval imm);
+     OK (Psarl_ri rdbits imm8)
+  | Asm.Psarl_rcl rd =>
+     do rdbits <- encode_ireg_u3 rd;
+     OK (Psarl_rcl rdbits)
+  | Asm.Pshld_ri rd r1 imm =>(*define a new function*)
+     do rdbits <- encode_ireg_u3 rd;
+     do rbits <- encode_ireg_u3 r1;
+     do imm8 <- encode_ofs_u8 (Int.intval imm);
+     OK (Pshld_ri rdbits rbits imm8)
+  | Asm.Prolw_ri rd imm =>(*define a new function*)
+     do rdbits <- encode_ireg_u3 rd;
+     do imm8 <- encode_ofs_u8 (Int.intval imm);
+     OK (Prolw_ri rdbits imm32)
+  | Asm.Prorl_ri rd imm =>(*define a new function*)
+     do rdbits <- encode_ireg_u3 rd;
+     do imm8 <- encode_ofs_u8 (Int.intval imm);
+     OK (Prolw_ri rdbits imm8)
+  | Asm.Pcmpl_rr r1 r2 =>
+     do rdbits <- encode_ireg_u3 r1;
+     do rbits <- encode_ireg_u3 r2;
+     OK (Pcmpl_rr rdbits rbits)
+  | Asm.Pcmpl_ri r1 imm =>
+     do rdbits <- encode_ireg_u3 r1;
+     do imm32 <- encode_ofs_u32 (Int.intval imm);
+     OK (Pcmpl_ri rdbits imm32)
+  | Asm.Ptestl_ri r1 imm =>
+     do rdbits <- encode_ireg_u3 r1;
+     do imm32 <- encode_ofs_u32 (Int.intval imm);
+     OK (Ptestl_ri rdbits imm32)
+  | Asm.Ptestl_rr r1 r2 =>
+     do rdbits <- encode_ireg_u3 r1;
+     do rbits <- encode_ireg_u3 r2;
+     OK (Ptestl_rr rdbits rbits)
+  | Asm.Pcmov c rd r1 =>(*define a new function*)
+     do cond <-(*admit*)testcond2u4 c;
+     do rdbits <- encode_ireg_u3 rd;
+     do rbits <- encode_ireg_u3 r1;
+     OK (Pcmov cond rdbits rbits)
+  | Asm.Psetcc c rd =>
+     do cond <-(*admit*)testcond2u4 c;
+     do rdbits <- encode_ireg_u3 rd;
+     OK (Psetcc cond rdbits)
+  | Asm.Paddd_ff rd r1 =>
+     do rdbits <- encode_freg_u3 rd;
+     do rbits <- encode_freg_u3 r1;
+     OK (Paddd_ff rdbits rbits)
+  | Asm.Psubd_ff rd r1 =>
+     do rdbits <- encode_freg_u3 rd;
+     do rbits <- encode_freg_u3 r1;
+     OK (Psubd_ff rdbits rbits)
+  | Asm.Pmuld_ff rd r1 =>
+     do rdbits <- encode_freg_u3 rd;
+     do rbits <- encode_freg_u3 r1;
+     OK (Pmuld_ff rdbits rbits)
+  | Asm.Pdivsd_ff rd r1 =>
+     do rdbits <- encode_freg_u3 rd;
+     do rbits <- encode_freg_u3 r1;
+     OK (Pdivsd_ff rdbits rbits)
+  | Asm.Pcomisd_ff r1 r2 =>
+     do rdbits <- encode_freg_u3 rd;
+     do rbits <- encode_freg_u3 r1;
+     OK (Pcomisd_ff rdbits rbits)
+  | Asm.Pxorps_f rd =>
+     do rdbits <- encode_freg_u3 rd;
+     OK (Pxorps_f rdbits rdbits)
+  | Asm.Pxorps_fm frd addr =>
+     do rdbits <- encode_freg_u3 frd;
+     do a <- translate_Addrmode_AddrE ofs i addr;
+     OK (Pxorps_fm a rdbits)
+  | Asm.Pandps_fm frd a =>
+     do rdbits <- encode_freg_u3 frd;
+     do a <- translate_Addrmode_AddrE ofs i addr;
+     OK (Pandps_fm a rdbits)
+  | Asm.Pjmp_l_rel ofs =>(*admitttttttttttttttttttttted*)
+     do imm <- Z2u32 ofs;
+     OK (Pjmp_l_rel imm)
+  | Asm.Pjmp_r r sg =>(*admitttttttttttttttttttttted*)
+     do rdbits <- encode_ireg_u3 r;
+     (*how to use sg*)
+     OK (Pjmp_r rdbits)
+  | Asm.Pjmp_m addr =>
+     do a <- translate_Addrmode_AddrE ofs i addr;
+     OK (Pjmp_m a)
+  | Asm.Pnop =>
+     OK (Pnop)
+  | Asm.Pcall_r r sg => (*how to use sg*)
+     do rdbits <- encode_ireg_u3 r;
+     OK (Pcall_r rdbits)
+  | Asm.Pret => Pret
+  | Asm.Pret_iw imm => (*define encode_ofs_u16*)
+     do imm16 <- encode_ofs_u16 (Int.intval imm);
+     OK (Pret_iw imm16)
+  | Asm.Pjcc_rel c ofs =>
+     do cond <-(*admit*)testcond2u4 c;
+     do imm <- Z2u32 ofs;
+     OK (Pjcc_rel cond imm)
+  | Asm.Padcl_ri rd imm =>
+     do rdbits <- encode_ireg_u3 rd;
+     do imm32 <- encode_ofs_u32 (Int.intval imm);
+     OK (Padcl_ri rdbits imm32)
+  | Asm.Padcl_rr rd r2 =>
+     do rdbits <- encode_ireg_u3 rd;
+     do rbits <- encode_ireg_u3 r2;
+     OK (Padcl_rr rdbits rbits)
+  | Asm.Paddl_rr rd r2 =>
+     do rdbits <- encode_ireg_u3 rd;
+     do rbits <- encode_ireg_u3 r2;
+     OK (Paddl_rr rdbits rbits)
+  | Asm.Paddl_mi addr imm =>
+     do a <- translate_Addrmode_AddrE ofs i addr;
+     do imm32 <- encode_ofs_u32 (Int.intval imm);
+     OK (Paddl_mi a imm32)
+  | Asm.Pbsfl rd r1 =>
+     do rdbits <- encode_ireg_u3 rd;
+     do rbits <- encode_ireg_u3 r1;
+     OK (Pbsfl rbdits rbits)
+  | Asm.Pbsrl rd r1 =>
+     do rdbits <- encode_ireg_u3 rd;
+     do rbits <- encode_ireg_u3 r1;
+     OK (Pbsrl rbdits rbits)   
+  | Asm.Pbswap32 rd =>
+     do rdbits <- encode_ireg_u3 rd;
+     OK (Pbswqp32 rdibts)
+  | Asm.Pmaxsd rd r2 =>
+     do rdbits <- encode_ireg_u3 rd;
+     do rbits <- encode_ireg_u3 r2;
+     OK (Pmaxsd rdbits rbits)
+  | Asm.Pminsd rd r2 =>
+     do rdbits <- encode_ireg_u3 rd;
+     do rbits <- encode_ireg_u3 r2;  
+     OK (Pminsd rdbits rbits)
+  | Asm.Pmovsq_mr addr rs =>
+     do a <- translate_Addrmode_AddrE ofs i addr;
+     do rbits <- encode_ireg_u3 rs;
+     OK (Pmovsq_mr a rbits)
+  | Asm.Pmovsq_rm rd addr =>
+     do rdbits <- encode_ireg_u3 rd;   
+     do a <- translate_Addrmode_AddrE ofs i addr;
+     OK (Pmovsq_mr a rdbits)
+  | Asm.Prep_movsl => Prep_movsl
+  | Asm.Psbbl_rr  rd r2 =>              
+     do rdbits <- encode_ireg_u3 rd;
+     do rbits <- encode_ireg_u3 r2;
+     OK (Psbbl_rr rdbits rbits)
+  | Asm.Psqrtsd rd r1 =>
+     do rdbits <- encode_ireg_u3 rd;
+     do rbits <- encode_ireg_u3 r1;
+     OK (Pbsqrtsd rdbits rbits)
+  | Asm.Psubl_ri rd imm =>
+     do rdbits <- encode_ireg_u3 rd;
+     do imm32 <- encode_ofs_u32 (Int.intval imm);
+     OK (Psubl_ri rdbits imm32)
+  | _ => Error (msg "Not exists")
   end.
-    
+ 
 Definition translate_Instr (ofs: Z) (i:Instruction) : res instruction :=
   Error (msg "unfinished").
 
