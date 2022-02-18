@@ -230,7 +230,7 @@ Proof.
   destruct b0, b1 eqn:Eb;
   unfold decode_scale in H; simpl in H; (**r extract decoded result r from H *)
   inversion H; subst;                  (**r subst r *)
-  unfold encode_scale_u3; simpl;        (**r calculate encode_scale_u3 *)
+  unfold encode_scale_u2; simpl;        (**r calculate encode_scale_u2 *)
   unfold char_to_bool; simpl;
   replace eq_refl with Hlen;
   try reflexivity;                     (**r to solve OK(exsit _ _ Hlen) = OK(exsit _ _ Hlen) *)
