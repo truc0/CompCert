@@ -237,11 +237,15 @@ Proof.
   try apply proof_irr.                 (**r to solve e = eq_refl *)
 Qed.
 
-Program Definition encode_ofs_u32 (ofs :Z) :res u32 :=
+Program Definition encode_ofs_u32 (ofs:Z) :res u32 :=
   let ofs32 := bytes_to_bits_opt (bytes_of_int 4 ofs) in
   if assertLength ofs32 32 then
     OK (exist _ ofs32 _)
   else Error (msg "impossible").
+
+Definition decode_ofs (bs:u32) : res Z :=
+  let bs' := proj1_sig bs in
+  OK(bits_to_Z bs').
 
 (* Addressing mode in CAV21 automatically generated definition *)
 Inductive AddrE: Type :=
