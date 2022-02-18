@@ -70,7 +70,7 @@ Program Definition zero32 : u32 :=
 
 Program Definition encode_ireg_u3 (r:ireg) : res u3 :=
   do b <- encode_ireg r;
-  if assertLength b 3 then    
+  if assertLength b 3 then
     OK (exist _ b _)
   else Error (msg "impossible").
 
@@ -88,22 +88,22 @@ Definition decode_ireg (bs: u3) : res ireg :=
   else Error(msg "reg not found")
 .
 
-Lemma ireg_encode_consistency : 
-  forall r encoded, 
+Lemma ireg_encode_consistency :
+  forall r encoded,
   encode_ireg_u3 r = OK(encoded) ->
   decode_ireg encoded = OK(r).
 Proof.
   intros.
   destruct encoded.
   unfold encode_ireg_u3 in H.
-  destruct r; simpl in H; 
+  destruct r; simpl in H;
   inversion H;                (**r extract the encoded result b from H *)
   subst; try reflexivity.
 Qed.
 
 Lemma ireg_decode_consistency :
-  forall r encoded, 
-  decode_ireg encoded = OK(r) -> 
+  forall r encoded,
+  decode_ireg encoded = OK(r) ->
   encode_ireg_u3 r = OK(encoded).
 Proof.
   intros.
@@ -126,7 +126,7 @@ Qed.
 
 Program Definition encode_freg_u3 (r:freg) : res u3 :=
   do b <- encode_freg r;
-  if assertLength b 3 then    
+  if assertLength b 3 then
     OK (exist _ b _)
   else Error (msg "impossible").
 
@@ -144,22 +144,22 @@ Definition decode_freg (bs: u3) : res freg :=
   else Error(msg "reg not found")
 .
 
-Lemma freg_encode_consistency : 
-  forall r encoded, 
+Lemma freg_encode_consistency :
+  forall r encoded,
   encode_freg_u3 r = OK(encoded) ->
   decode_freg encoded = OK(r).
 Proof.
   intros.
   destruct encoded.
   unfold encode_freg_u3 in H.
-  destruct r; simpl in H; 
+  destruct r; simpl in H;
   inversion H;                (**r extract the encoded result b from H *)
   subst; try reflexivity.
 Qed.
 
 Lemma freg_decode_consistency :
-  forall r encoded, 
-  decode_freg encoded = OK(r) -> 
+  forall r encoded,
+  decode_freg encoded = OK(r) ->
   encode_freg_u3 r = OK(encoded).
 Proof.
   intros.
@@ -182,7 +182,7 @@ Qed.
 
 Program Definition encode_scale_u2 (ss: Z) :res u2 :=
   do s <- encode_scale ss;
-  if assertLength s 2 then    
+  if assertLength s 2 then
     OK (exist _ s _)
   else Error (msg "impossible").
 
@@ -196,8 +196,8 @@ Definition decode_scale (bs: u2) : res Z :=
   else Error(msg "reg not found")
 .
 
-Lemma scale_encode_consistency : 
-  forall ss encoded, 
+Lemma scale_encode_consistency :
+  forall ss encoded,
   encode_scale_u2 ss = OK(encoded) ->
   decode_scale encoded = OK(ss).
 Proof.
@@ -216,8 +216,8 @@ Proof.
 Qed.
 
 Lemma scale_decode_consistency :
-  forall r encoded, 
-  decode_scale encoded = OK(r) -> 
+  forall r encoded,
+  decode_scale encoded = OK(r) ->
   encode_scale_u2 r = OK(encoded).
 Proof.
   intros.
@@ -266,6 +266,9 @@ Program Definition encode_ofs_u32 (ofs:Z) :res u32 :=
 Definition decode_ofs_u32 (bs:u32) : res Z :=
   let bs' := proj1_sig bs in
   OK(bits_to_Z bs').
+
+Program Definition testcond_to_u4 (cond:testcond) : res u4 :=
+  OK (exist _ b["0000"] _).
 
 (* Addressing mode in CAV21 automatically generated definition *)
 Inductive AddrE: Type :=
@@ -396,13 +399,13 @@ Definition translate_Addrmode_AddrE (sofs: Z) (res_iofs: res Z) (addr:addrmode):
         do addend <- get_instr_reloc_addend' rtbl_ofs_map (iofs + sofs);
         if Z.eqb (Ptrofs.unsigned ofs) addend then
           match obase,oindex with
-          | None,None =>                    
+          | None,None =>
             OK (AddrE11 zero32)
           | Some base,None =>
             do r <- encode_ireg_u3 base;
               OK (AddrE6 r zero32)
           | None,Some (idx,ss) =>
-            do index <- encode_ireg_u3 idx;          
+            do index <- encode_ireg_u3 idx;
             do scale <- encode_scale_u2 ss;
             if ireg_eq idx RSP then
               (* OK (AddrE7 zero32) *)
@@ -412,11 +415,11 @@ Definition translate_Addrmode_AddrE (sofs: Z) (res_iofs: res Z) (addr:addrmode):
           | Some base,Some (idx,ss) =>
             do scale <- encode_scale_u2 ss;
             do index <- encode_ireg_u3 idx;
-            do breg <- encode_ireg_u3 base;          
+            do breg <- encode_ireg_u3 base;
             if ireg_eq idx RSP then
               Error (msg "index can not be RSP")
-                    (* OK (AddrE4 breg zero32)            *)      
-            else                                                   
+                    (* OK (AddrE4 breg zero32)            *)
+            else
               OK (AddrE5 scale index breg zero32)
           end
         else Error (msg "addend is not equal to ofs")
@@ -426,13 +429,13 @@ Definition translate_Addrmode_AddrE (sofs: Z) (res_iofs: res Z) (addr:addrmode):
       do iofs <- res_iofs;
       match ZTree.get (iofs + sofs)%Z rtbl_ofs_map with
       | None =>
-        do ofs32 <- encode_ofs_u32 ofs;        
+        do ofs32 <- encode_ofs_u32 ofs;
         match obase,oindex with
-        | None,None =>            
+        | None,None =>
           OK (AddrE11 ofs32)
         | Some base,None =>
-          do r <- encode_ireg_u3 base;          
-          OK (AddrE6 r ofs32)             
+          do r <- encode_ireg_u3 base;
+          OK (AddrE6 r ofs32)
         | None,Some (idx,ss) =>
           do r <- encode_ireg_u3 idx;
           do scale <- encode_scale_u2 ss;
@@ -440,17 +443,17 @@ Definition translate_Addrmode_AddrE (sofs: Z) (res_iofs: res Z) (addr:addrmode):
             (* OK (AddrE7 ofs32) *)
             Error (msg "index can not be RSP")
           else
-            OK (AddrE9 scale r ofs32)                          
+            OK (AddrE9 scale r ofs32)
         | Some base,Some (idx,ss) =>
           do scale <- encode_scale_u2 ss;
           do index <- encode_ireg_u3 idx;
-          do breg <- encode_ireg_u3 base;            
+          do breg <- encode_ireg_u3 base;
           if ireg_eq idx RSP then
             Error (msg "index can not be RSP")
                   (* OK (AddrE4 breg_sig ofs32) *)
           else
             OK (AddrE5 scale index breg ofs32)
-        end          
+        end
       | _ => Error (msg "impossible")
       end
     end
@@ -473,7 +476,7 @@ Definition translate_AddrE_Addrmode (sofs: Z) (res_iofs : res Z) (addr:AddrE) : 
       if ireg_eq index RSP then
         Error (msg "index can not be RSP")
       else
-        OK (Addrmode None (Some (index,(bits_to_Z (proj1_sig ss)))) (inl (bits_to_Z (proj1_sig disp))) )  
+        OK (Addrmode None (Some (index,(bits_to_Z (proj1_sig ss)))) (inl (bits_to_Z (proj1_sig disp))) )
     | AddrE6 base disp =>
       do b <- decode_ireg base;
       OK (Addrmode (Some b) None (inl (bits_to_Z (proj1_sig disp))) )
@@ -494,7 +497,7 @@ Definition translate_AddrE_Addrmode (sofs: Z) (res_iofs : res Z) (addr:AddrE) : 
     | AddrE11 _ =>
       OK (Addrmode None None (inr (xH,Ptrofs.repr addend)))
     | AddrE9 ss idx disp =>
-      do index <- decode_ireg idx;      
+      do index <- decode_ireg idx;
       OK (Addrmode None (Some (index,(bits_to_Z (proj1_sig ss)))) (inr (xH,Ptrofs.repr addend)) )
     | AddrE6 base disp =>
       do b <- decode_ireg base;
@@ -589,11 +592,11 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
   | Asm.Pmovb_mr addr r =>
     do a <- translate_Addrmode_AddrE addr;
     do rbits <- encode_ireg_u3 r;
-    OK (Pmovb_mr a rbits)          
+    OK (Pmovb_mr a rbits)
   | Asm.Pmovw_mr addr r =>
     do a <- translate_Addrmode_AddrE addr;
     do rbits <- encode_ireg_u3 r;
-    OK (Pmovw_mr a rbits)           
+    OK (Pmovw_mr a rbits)
   | Asm.Pmovzb_rr rd r =>
     do rdbits <- encode_ireg_u3 rd;
     do rbits <- encode_ireg_u3 r;
@@ -601,7 +604,7 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
   | Asm.Pmovzb_rm r addr =>
     do rbits <- encode_ireg_u3 r;
     do a <- translate_Addrmode_AddrE ofs i addr;
-    OK (Pmovzb_rm a rbits)           
+    OK (Pmovzb_rm a rbits)
   (*from there*)
   | Asm.Pmovzw_rm rd addr =>
     do rbits <- encode_ireg_u3 rd;
@@ -618,23 +621,15 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
   | Asm.Pmovsb_rr rd rs =>
     do rdbits <- encode_ireg_u3 rd;
     do rbits <- encode_ireg_u3 rs;
-    OK (Pmovsb_rr rdbits rbits)  
-  | Asm.Pmovzb_rr rd rs =>
-    do rdbits <- encode_ireg_u3 rd;
-    do rbits <- encode_ireg_u3 rs;
-    OK (Pmovzb_rr rdbits rbits) 
-  | Asm.Pmovzb_rr rd rs =>
-    do rdbits <- encode_ireg_u3 rd;
-    do rbits <- encode_ireg_u3 rs;
-    OK (Pmovzb_rr rdbits rbits)
+    OK (Pmovsb_rr rdbits rbits)
   | Asm.Pmovw_rm rd addr =>
     do rbits <- encode_ireg_u3 rd;
     do a <- translate_Addrmode_AddrE ofs i addr;
-    OK (Pmovzb_rm a rbits)         
+    OK (Pmovzb_rm a rbits)
   | Asm.Pmovb_rm rd addr =>
     do rdbits <- encode_ireg_u3 rd;
     do a <- translate_Addrmode_AddrE ofs i addr;
-    OK (Pmovzb_rm a rdbits)           
+    OK (Pmovzb_rm a rdbits)
   | Asm.Pmovsw_rm rd addr =>
      do rdbits <- encode_ireg_u3 rd;
      do a <- translate_Addrmode_AddrE ofs i addr;
@@ -643,14 +638,6 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
     do rdbits <- encode_ireg_u3 rd;
     do rbits <- encode_ireg_u3 rs;
     OK (Pmovsw_rr rdbits rbits)
-  | Asm.Pmovzw_rm rd addr =>
-     do rdbits <- encode_ireg_u3 rd;
-     do a <- translate_Addrmode_AddrE ofs i addr;
-     OK (Pmovzw_rm a rdbits)          (*ok*)   
-  | Asm.Pmovsd_mf addr r1 =>
-    do a <- translate_Addrmode_AddrE ofs i addr;
-    do rbits <- encode_freg_u3 r1;
-    OK (Pmovsd_mf a rbits)
   | Asm.Pnegl r =>
      do rbits <- encode_ireg_u3 r;
      OK (Pnegl rbits)
@@ -660,7 +647,7 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
      OK (Pleal a rbits)
   | Asm.Pcvttss2si_rf rd r1 =>
      do rdbits <- encode_ireg_u3 rd;
-     do rbits <- encode_ireg_u3 r1;
+     do rbits <- encode_freg_u3 r1;
      OK (Pcvttss2si_rf rdbits rbits)
   | Asm.Pcvtsi2sd_fr rd r1 =>
      do rdbits <- encode_freg_u3 rd;
@@ -720,11 +707,11 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
      do rdbits <- encode_ireg_u3 rd;
      do imm32 <- encode_ofs_u32 (Int.intval imm);
      OK (Porl_ri rdbits imm32)
-  |Porl_rr rd r1 =>
+  | Asm.Porl_rr rd r1 =>
      do rdbits <- encode_ireg_u3 rd;
      do rbits <- encode_ireg_u3 r1;
      OK (Porl_rr rdbits rbits)
-  |Pxorl_rr rd r1 =>
+  | Asm.Pxorl_rr rd r1 =>
      do rdbits <- encode_ireg_u3 rd;
      do rbits <- encode_ireg_u3 r1;
      OK (Pxorl_rr rdbits rbits)
@@ -765,7 +752,7 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
   | Asm.Prorl_ri rd imm =>(*define a new function*)
      do rdbits <- encode_ireg_u3 rd;
      do imm8 <- encode_ofs_u8 (Int.intval imm);
-     OK (Prolw_ri rdbits imm8)
+     OK (Prorl_ri rdbits imm8)
   | Asm.Pcmpl_rr r1 r2 =>
      do rdbits <- encode_ireg_u3 r1;
      do rbits <- encode_ireg_u3 r2;
@@ -783,12 +770,12 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
      do rbits <- encode_ireg_u3 r2;
      OK (Ptestl_rr rdbits rbits)
   | Asm.Pcmov c rd r1 =>(*define a new function*)
-     do cond <-(*admit*)testcond2u4 c;
+     do cond <-(*admit*)testcond_to_u4 c;
      do rdbits <- encode_ireg_u3 rd;
      do rbits <- encode_ireg_u3 r1;
      OK (Pcmov cond rdbits rbits)
   | Asm.Psetcc c rd =>
-     do cond <-(*admit*)testcond2u4 c;
+     do cond <-(*admit*)testcond_to_u4 c;
      do rdbits <- encode_ireg_u3 rd;
      OK (Psetcc cond rdbits)
   | Asm.Paddd_ff rd r1 =>
@@ -803,13 +790,9 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
      do rdbits <- encode_freg_u3 rd;
      do rbits <- encode_freg_u3 r1;
      OK (Pmuld_ff rdbits rbits)
-  | Asm.Pdivsd_ff rd r1 =>
-     do rdbits <- encode_freg_u3 rd;
-     do rbits <- encode_freg_u3 r1;
-     OK (Pdivsd_ff rdbits rbits)
   | Asm.Pcomisd_ff r1 r2 =>
-     do rdbits <- encode_freg_u3 rd;
-     do rbits <- encode_freg_u3 r1;
+     do rdbits <- encode_freg_u3 r1;
+     do rbits <- encode_freg_u3 r2;
      OK (Pcomisd_ff rdbits rbits)
   | Asm.Pxorps_f rd =>
      do rdbits <- encode_freg_u3 rd;
@@ -818,12 +801,12 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
      do rdbits <- encode_freg_u3 frd;
      do a <- translate_Addrmode_AddrE ofs i addr;
      OK (Pxorps_fm a rdbits)
-  | Asm.Pandps_fm frd a =>
+  | Asm.Pandps_fm frd addr =>
      do rdbits <- encode_freg_u3 frd;
      do a <- translate_Addrmode_AddrE ofs i addr;
      OK (Pandps_fm a rdbits)
   | Asm.Pjmp_l_rel ofs =>(*admitttttttttttttttttttttted*)
-     do imm <- Z2u32 ofs;
+     do imm <- encode_ofs_u32 ofs;
      OK (Pjmp_l_rel imm)
   | Asm.Pjmp_r r sg =>(*admitttttttttttttttttttttted*)
      do rdbits <- encode_ireg_u3 r;
@@ -837,18 +820,18 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
   | Asm.Pcall_r r sg => (*how to use sg*)
      do rdbits <- encode_ireg_u3 r;
      OK (Pcall_r rdbits)
-  | Asm.Pret => Pret
+  | Asm.Pret => OK(Pret)
   | Asm.Pret_iw imm => (*define encode_ofs_u16*)
      do imm16 <- encode_ofs_u16 (Int.intval imm);
      OK (Pret_iw imm16)
   | Asm.Pjcc_rel c ofs =>
-     do cond <-(*admit*)testcond2u4 c;
-     do imm <- Z2u32 ofs;
+     do cond <-(*admit*)testcond_to_u4 c;
+     do imm <- encode_ofs_u32 ofs;
      OK (Pjcc_rel cond imm)
   | Asm.Padcl_ri rd imm =>
      do rdbits <- encode_ireg_u3 rd;
-     do imm32 <- encode_ofs_u32 (Int.intval imm);
-     OK (Padcl_ri rdbits imm32)
+     do imm8 <- encode_ofs_u8 (Int.intval imm);
+     OK (Padcl_ri rdbits imm8)
   | Asm.Padcl_rr rd r2 =>
      do rdbits <- encode_ireg_u3 rd;
      do rbits <- encode_ireg_u3 r2;
@@ -864,38 +847,38 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
   | Asm.Pbsfl rd r1 =>
      do rdbits <- encode_ireg_u3 rd;
      do rbits <- encode_ireg_u3 r1;
-     OK (Pbsfl rbdits rbits)
+     OK (Pbsfl rdbits rbits)
   | Asm.Pbsrl rd r1 =>
      do rdbits <- encode_ireg_u3 rd;
      do rbits <- encode_ireg_u3 r1;
-     OK (Pbsrl rbdits rbits)   
+     OK (Pbsrl rdbits rbits)
   | Asm.Pbswap32 rd =>
      do rdbits <- encode_ireg_u3 rd;
-     OK (Pbswqp32 rdibts)
+     OK (Pbswap32 rdbits)
   | Asm.Pmaxsd rd r2 =>
-     do rdbits <- encode_ireg_u3 rd;
-     do rbits <- encode_ireg_u3 r2;
+     do rdbits <- encode_freg_u3 rd;
+     do rbits <- encode_freg_u3 r2;
      OK (Pmaxsd rdbits rbits)
   | Asm.Pminsd rd r2 =>
-     do rdbits <- encode_ireg_u3 rd;
-     do rbits <- encode_ireg_u3 r2;  
+     do rdbits <- encode_freg_u3 rd;
+     do rbits <- encode_freg_u3 r2;
      OK (Pminsd rdbits rbits)
   | Asm.Pmovsq_mr addr rs =>
      do a <- translate_Addrmode_AddrE ofs i addr;
-     do rbits <- encode_ireg_u3 rs;
+     do rbits <- encode_freg_u3 rs;
      OK (Pmovsq_mr a rbits)
   | Asm.Pmovsq_rm rd addr =>
-     do rdbits <- encode_ireg_u3 rd;   
+     do rdbits <- encode_freg_u3 rd;
      do a <- translate_Addrmode_AddrE ofs i addr;
      OK (Pmovsq_mr a rdbits)
-  | Asm.Prep_movsl => Prep_movsl
-  | Asm.Psbbl_rr  rd r2 =>              
+  | Asm.Prep_movsl => OK(Prep_movsl)
+  | Asm.Psbbl_rr  rd r2 =>
      do rdbits <- encode_ireg_u3 rd;
      do rbits <- encode_ireg_u3 r2;
      OK (Psbbl_rr rdbits rbits)
   | Asm.Psqrtsd rd r1 =>
-     do rdbits <- encode_ireg_u3 rd;
-     do rbits <- encode_ireg_u3 r1;
+     do rdbits <- encode_freg_u3 rd;
+     do rbits <- encode_freg_u3 r1;
      OK (Pbsqrtsd rdbits rbits)
   | Asm.Psubl_ri rd imm =>
      do rdbits <- encode_ireg_u3 rd;
@@ -903,7 +886,7 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
      OK (Psubl_ri rdbits imm32)
   | _ => Error (msg "Not exists")
   end.
- 
+
 Definition translate_Instr (ofs: Z) (i:Instruction) : res instruction :=
   let translate_AddrE_Addrmode := translate_AddrE_Addrmode ofs (Instr_reloc_offset i) in
   Error (msg "unfinished").
