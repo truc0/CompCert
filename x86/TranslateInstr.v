@@ -267,8 +267,75 @@ Definition decode_ofs_u32 (bs:u32) : res Z :=
   let bs' := proj1_sig bs in
   OK(bits_to_Z bs').
 
-Program Definition testcond_to_u4 (cond:testcond) : res u4 :=
-  OK (exist _ b["0000"] _).
+Program Definition encode_testcond_u4 (c:testcond) : u4 :=
+  match c with
+  | Cond_e   => b["0100"]   (**r 4 *)
+  | Cond_ne  => b["0101"]   (**r 5 *)
+  | Cond_b   => b["0010"]   (**r 2 *)
+  | Cond_be  => b["0110"]   (**r 6 *)
+  | Cond_ae  => b["0011"]   (**r 3 *)
+  | Cond_a   => b["0111"]   (**r 7 *)
+  | Cond_l   => b["1100"]   (**r C *)
+  | Cond_le  => b["1110"]   (**r E *)
+  | Cond_ge  => b["1101"]   (**r D *)
+  | Cond_g   => b["1111"]   (**r F *)
+  | Cond_p   => b["1010"]   (**r A *)
+  | Cond_np  => b["1011"]   (**r B *)
+  end.
+
+Definition decode_testcond_u4 (bs:u4) : res testcond :=
+  let bs' := proj1_sig bs in
+  let n := bits_to_Z bs' in
+  if Z.eqb n 4 then OK(Cond_e)            (**r 4 b["0100"] *)
+  else if Z.eqb n 5  then OK(Cond_ne)     (**r 5 b["0101"] *)
+  else if Z.eqb n 2  then OK(Cond_b)      (**r 2 b["0010"] *)
+  else if Z.eqb n 6  then OK(Cond_be)     (**r 6 b["0110"] *)
+  else if Z.eqb n 3  then OK(Cond_ae)     (**r 3 b["0011"] *)
+  else if Z.eqb n 7  then OK(Cond_a)      (**r 7 b["0111"] *)
+  else if Z.eqb n 12 then OK(Cond_l)      (**r C b["1100"] *)
+  else if Z.eqb n 14 then OK(Cond_le)     (**r E b["1110"] *)
+  else if Z.eqb n 13 then OK(Cond_ge)     (**r D b["1101"] *)
+  else if Z.eqb n 15 then OK(Cond_g)      (**r F b["1111"] *)
+  else if Z.eqb n 10 then OK(Cond_p)      (**r A b["1010"] *)
+  else if Z.eqb n 11 then OK(Cond_np)     (**r B b["1011"] *)
+  else Error(msg "reg not found")
+.
+
+Lemma testcond_encode_consistency : forall c bs,
+  encode_testcond_u4 c = bs ->
+  decode_testcond_u4 bs = OK(c).
+Proof.
+  (**r enumerate all possibility of c *)
+  destruct c;
+  simpl; unfold char_to_bool; simpl;
+  intros; subst;
+  unfold decode_testcond_u4; simpl;
+  auto.
+Qed.
+
+Lemma testcond_decode_consistency : forall c bs,
+  decode_testcond_u4 bs = OK(c) ->
+  encode_testcond_u4 c = bs.
+Proof.
+  intros.
+  destruct bs as [b Hlen].
+  (** extract three bits from b *)
+  destruct b as [| b0 b]; try discriminate; inversion Hlen. (**r the 1st one *)
+  destruct b as [| b1 b]; try discriminate; inversion Hlen. (**r the 2nd one *)
+  destruct b as [| b2 b]; try discriminate; inversion Hlen. (**r the 3rd one *)
+  destruct b as [| b3 b]; try discriminate; inversion Hlen. (**r the 4th one *)
+  destruct b; try discriminate.                             (**r b is a empty list now, eliminate other possibility *)
+  (** case analysis on [b0, b1, b2] *)
+  destruct b0, b1, b2, b3 eqn:Eb;
+  unfold decode_testcond_u4 in H; simpl in H; (**r extract decoded result r from H *)
+  inversion H; subst;                         (**r subst r *)
+  unfold encode_testcond_u4; simpl;           (**r calculate encode_testcond_u4 *)
+  cbv delta in *;
+  unfold char_to_bool; simpl;
+  replace eq_refl with Hlen;
+  try reflexivity;                            (**r to solve OK(exsit _ _ Hlen) = OK(exsit _ _ Hlen) *)
+  try apply proof_irr.                        (**r to solve e = eq_refl *)
+Qed.
 
 (* Addressing mode in CAV21 automatically generated definition *)
 Inductive AddrE: Type :=
@@ -770,12 +837,12 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
      do rbits <- encode_ireg_u3 r2;
      OK (Ptestl_rr rdbits rbits)
   | Asm.Pcmov c rd r1 =>(*define a new function*)
-     do cond <-(*admit*)testcond_to_u4 c;
+     do cond <-(*admit*)encode_testcond_u4 c;
      do rdbits <- encode_ireg_u3 rd;
      do rbits <- encode_ireg_u3 r1;
      OK (Pcmov cond rdbits rbits)
   | Asm.Psetcc c rd =>
-     do cond <-(*admit*)testcond_to_u4 c;
+     do cond <-(*admit*)encode_testcond_u4 c;
      do rdbits <- encode_ireg_u3 rd;
      OK (Psetcc cond rdbits)
   | Asm.Paddd_ff rd r1 =>
@@ -825,7 +892,7 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
      do imm16 <- encode_ofs_u16 (Int.intval imm);
      OK (Pret_iw imm16)
   | Asm.Pjcc_rel c ofs =>
-     do cond <-(*admit*)testcond_to_u4 c;
+     do cond <-(*admit*)encode_testcond_u4 c;
      do imm <- encode_ofs_u32 ofs;
      OK (Pjcc_rel cond imm)
   | Asm.Padcl_ri rd imm =>
