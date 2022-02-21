@@ -837,12 +837,12 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
      do rbits <- encode_ireg_u3 r2;
      OK (Ptestl_rr rdbits rbits)
   | Asm.Pcmov c rd r1 =>(*define a new function*)
-     do cond <-(*admit*)encode_testcond_u4 c;
+     let cond := encode_testcond_u4 c in
      do rdbits <- encode_ireg_u3 rd;
      do rbits <- encode_ireg_u3 r1;
      OK (Pcmov cond rdbits rbits)
   | Asm.Psetcc c rd =>
-     do cond <-(*admit*)encode_testcond_u4 c;
+     let cond := encode_testcond_u4 c in 
      do rdbits <- encode_ireg_u3 rd;
      OK (Psetcc cond rdbits)
   | Asm.Paddd_ff rd r1 =>
@@ -892,7 +892,7 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
      do imm16 <- encode_ofs_u16 (Int.intval imm);
      OK (Pret_iw imm16)
   | Asm.Pjcc_rel c ofs =>
-     do cond <-(*admit*)encode_testcond_u4 c;
+     let cond := encode_testcond_u4 c in
      do imm <- encode_ofs_u32 ofs;
      OK (Pjcc_rel cond imm)
   | Asm.Padcl_ri rd imm =>
