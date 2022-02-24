@@ -254,19 +254,21 @@ Inductive Instruction: Type :=
 | Pmovl_rr(uvar3_0:u3)(uvar3_1:u3).
 
 
+Definition Instr_reloc_offset (i:Instruction): res Z := Error (msg "unfinished").
+
 Section WITH_RELOC_OFS_MAP.
 
 Variable rtbl_ofs_map: reloc_ofs_map_type.
 
 (* Translate ccelf addressing mode to cav21 addr mode *)
-Definition translate_Addrmode_AddrE (sofs: Z) (i:instruction) (addr:addrmode): res AddrE :=
+Definition translate_Addrmode_AddrE (sofs: Z) (res_iofs: res Z) (addr:addrmode): res AddrE :=
   match addr with
   | Addrmode obase oindex disp  =>
     match disp with
     | inr (id, ofs) =>
       match id with
       | xH =>
-        do iofs <- instr_reloc_offset i;
+        do iofs <- res_iofs;
         do addend <- get_instr_reloc_addend' rtbl_ofs_map (iofs + sofs);
         if Z.eqb (Ptrofs.unsigned ofs) addend then
           match obase,oindex with
@@ -297,7 +299,7 @@ Definition translate_Addrmode_AddrE (sofs: Z) (i:instruction) (addr:addrmode): r
       | _ => Error(msg "id must be 1")
       end
     | inl ofs =>
-      do iofs <- instr_reloc_offset i;
+      do iofs <- res_iofs;
       match ZTree.get (iofs + sofs)%Z rtbl_ofs_map with
       | None =>
         do ofs32 <- encode_ofs_u32 ofs;        
@@ -334,9 +336,9 @@ Definition translate_Addrmode_AddrE (sofs: Z) (i:instruction) (addr:addrmode): r
 
 
 (* Translate CAV21 addr mode to ccelf addr mode *)
-Definition translate_AddrE_Addrmode (sofs: Z) (i:instruction) (addr:AddrE) : res addrmode :=
+Definition translate_AddrE_Addrmode (sofs: Z) (res_iofs : res Z) (addr:AddrE) : res addrmode :=
   (* need to relocate? *)
-  do iofs <- instr_reloc_offset i;
+  do iofs <- res_iofs;
   match ZTree.get (iofs + sofs)%Z rtbl_ofs_map with
   | None =>
     match addr with
@@ -386,27 +388,27 @@ Definition translate_AddrE_Addrmode (sofs: Z) (i:instruction) (addr:AddrE) : res
     end
   end.
 
-
 (* consistency proof *)
-Lemma translate_consistency1 : forall ofs i addr addrE,
-    translate_Addrmode_AddrE ofs i addr = OK addrE ->
-    translate_AddrE_Addrmode ofs i addrE = OK addr.
+Lemma translate_consistency1 : forall ofs iofs addr addrE,
+    translate_Addrmode_AddrE ofs iofs addr = OK addrE ->
+    translate_AddrE_Addrmode ofs iofs addrE = OK addr.
   intros. destruct addr.
   unfold translate_Addrmode_AddrE in H.
   unfold translate_AddrE_Addrmode.
-  destruct base;destruct ofs0;try destruct p;destruct const.
-  - monadInv H.
-    rewrite EQ.
-    cbn [bind].    
-    destruct (ZTree.get (x + ofs)%Z rtbl_ofs_map);try congruence.
-    monadInv EQ0.
-    destruct (ireg_eq i1 RSP);try congruence.
-    monadInv EQ5.
+  (* destruct base;destruct (ZTree.get);try destruct p;destruct const;try congruence. *)
+  (* - monadInv H. *)
+  (*   rewrite EQ. *)
+  (*   cbn [bind].     *)
+  (*   destruct (ZTree.get (x + ofs)%Z rtbl_ofs_map);try congruence. *)
+  (*   monadInv EQ0. *)
+  (*   destruct (ireg_eq i1 RSP);try congruence. *)
+  (*   monadInv EQ5. *)
 Admitted.
 
 
 (* ccelf instruction to cav21 instruction, unfinished!!! *)
 Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
+  let translate_Addrmode_AddrE := translate_Addrmode_AddrE ofs (instr_reloc_offset i) in
   match i with
   | Pmov_rr rd r1 =>
     do rdbits <- encode_ireg_u3 rd;
@@ -414,7 +416,7 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
     OK (Pmovl_rr rdbits r1bits)
   | Asm.Pmovl_rm rd addr =>
     do rdbits <- encode_ireg_u3 rd;
-    do a <- translate_Addrmode_AddrE ofs i addr;
+    do a <- translate_Addrmode_AddrE addr;
     OK (Pmovl_rm a rdbits)
   | Asm.Pmovl_ri rd imm =>
     do rdbits <- encode_ireg_u3 rd;
@@ -422,7 +424,7 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
     OK (Pmovl_ri rdbits imm32)
   | Asm.Pmovl_mr addr r =>
     do rbits <- encode_ireg_u3 r;
-    do a <- translate_Addrmode_AddrE ofs i addr;
+    do a <- translate_Addrmode_AddrE addr;
     OK (Pmovl_mr a rbits)
   | Asm.Pmovsd_ff rd r1 =>
     do rdbits <- encode_freg_u3 rd;
@@ -430,42 +432,42 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
     OK (Pmovsd_ff rdbits r1bits)
   | Asm.Pmovsd_fm r addr =>
     do rbits <- encode_freg_u3 r;
-    do a <- translate_Addrmode_AddrE ofs i addr;
+    do a <- translate_Addrmode_AddrE addr;
     OK (Pmovsd_fm a rbits)
   | Asm.Pmovsd_mf addr r =>
     do rbits <- encode_freg_u3 r;
-    do a <- translate_Addrmode_AddrE ofs i addr;
+    do a <- translate_Addrmode_AddrE addr;
     OK (Pmovsd_mf a rbits)
   | Asm.Pmovss_fm r addr =>
     do rbits <- encode_freg_u3 r;
-    do a <- translate_Addrmode_AddrE ofs i addr;
+    do a <- translate_Addrmode_AddrE addr;
     OK (Pmovss_fm a rbits)
   | Asm.Pmovss_mf addr r =>
     do rbits <- encode_freg_u3 r;
-    do a <- translate_Addrmode_AddrE ofs i addr;
+    do a <- translate_Addrmode_AddrE addr;
     OK (Pmovss_mf a rbits)
   | Asm.Pfldl_m addr =>
-    do a <- translate_Addrmode_AddrE ofs i addr;
+    do a <- translate_Addrmode_AddrE  addr;
     OK (Pfldl_m a)
   | Asm.Pfstpl_m addr =>
-    do a <- translate_Addrmode_AddrE ofs i addr;
+    do a <- translate_Addrmode_AddrE addr;
     OK (Pfstpl_m a)
   | Asm.Pflds_m addr =>
-    do a <- translate_Addrmode_AddrE ofs i addr;
+    do a <- translate_Addrmode_AddrE addr;
     OK (Pflds_m a)
   | Asm.Pfstps_m addr =>
-    do a <- translate_Addrmode_AddrE ofs i addr;
+    do a <- translate_Addrmode_AddrE addr;
     OK (Pfstps_m a)
   (* | Asm.Pxchg_rr rd r => *)
   (*   do rdbits <- encode_ireg_u3 rd; *)
   (*   do rbits <- encode_ireg_u3 r; *)
   (*   Pxchg_rr rdbits rbits *)
   | Asm.Pmovb_mr addr r =>
-    do a <- translate_Addrmode_AddrE ofs i addr;
+    do a <- translate_Addrmode_AddrE addr;
     do rbits <- encode_ireg_u3 r;
     OK (Pmovb_mr a rbits)
   | Asm.Pmovw_mr addr r =>
-    do a <- translate_Addrmode_AddrE ofs i addr;
+    do a <- translate_Addrmode_AddrE addr;
     do rbits <- encode_ireg_u3 r;
     OK (Pmovw_mr a rbits)
   | Asm.Pmovzb_rr rd r =>
@@ -474,13 +476,24 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
     OK (Pmovzb_rr rdbits rbits)
   | Asm.Pmovzb_rm r a =>
     do rbits <- encode_ireg_u3 r;
-    do a <- translate_Addrmode_AddrE ofs i a;
+    do a <- translate_Addrmode_AddrE  a;
     OK (Pmovzb_rm a rbits)
   | _ => Error (msg "Unfinished")
   end.
     
 Definition translate_Instr (ofs: Z) (i:Instruction) : res instruction :=
+  let translate_AddrE_Addrmode := translate_AddrE_Addrmode ofs (Instr_reloc_offset i) in
   Error (msg "unfinished").
+
+Lemma instr_ofs_consistency : forall i I ofs,
+    translate_instr ofs i = OK I ->
+    instr_reloc_offset i = Instr_reloc_offset I.
+Admitted.
+
+Lemma Instr_ofs_consistency : forall i I ofs,
+    translate_Instr ofs I = OK i ->
+    Instr_reloc_offset I = instr_reloc_offset i.
+Admitted.
 
 
 Lemma translate_instr_consistency1 : forall ofs i I,
