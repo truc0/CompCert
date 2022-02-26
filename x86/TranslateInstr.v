@@ -1224,21 +1224,18 @@ Definition translate_Instr (ofs: Z) (i:Instruction) : res instruction :=
   | Pjmp_l_rel imm =>
     do ofs <- decode_ofs_u32 imm;
     OK (Asm.Pjmp_l_rel (Int.unsigned ofs))
-  (* Pjmp_r
-  | Pjmp_r rdbits sg =>
+  | Pjmp_r rdbits =>
     do r <- decode_ireg rdbits;
     (*how to use sg*)
-    OK (Asm.Pjmp_r r)
-  *)
+    OK (Asm.Pjmp_r r (mksignature [] Tvoid (mkcallconv None false false)))
   | Pjmp_m a =>
     do addr <- translate_AddrE_Addrmode a;
     OK (Asm.Pjmp_m addr)
   | Pnop => OK (Asm.Pnop)
-  (* Pcall_r
-  | Pcall_r rdbits => (*how to use sg*)
+  | Pcall_r rdbits => 
+    (*how to use sg*)
     do r <- decode_ireg rdbits;
-    OK (Asm.Pcall_r r)
-   *)
+    OK (Asm.Pcall_r r (mksignature [] Tvoid (mkcallconv None false false)))
   | Pret => OK(Asm.Pret)
   | Pret_iw imm16 => 
     do imm <- decode_ofs_u16 imm16;
