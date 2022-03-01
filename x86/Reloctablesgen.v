@@ -2,7 +2,7 @@
 (* Author: Yuting Wang  *)
 (*         Jinhua Wu    *)
 (* Date:   Sep 16, 2019 *)
-(* Last updated: Feb 1, 2022 by Jinhua Wu *)
+(* Last updated: Feb 27, 2022 by Jinhua Wu *)
 (* *******************  *)
 
 (** * Generation of the relocation table and references to it *)
@@ -474,7 +474,7 @@ Definition transf_program (p:program) : res program :=
   (* then *)
   (*   if list_norepet_dec ident_eq (List.map symbentry_id (prog_symbtable p)) *)
   (*   then *)
-  OK {| 
+  OK {| prog_defs := prog_defs p;
         prog_public := prog_public p;
         prog_main := prog_main p;
         prog_sectable := sec';

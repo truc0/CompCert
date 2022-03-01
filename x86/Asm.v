@@ -1493,6 +1493,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
     end
   | Pjmp_r r sg =>
     let addr := (rs r) in
+    (* why jmp must jump to function entry? *)
     match Genv.find_funct ge addr with
     | Some _ =>
       Next (rs#PC <- addr) m
@@ -1519,6 +1520,14 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
           end
       | _ => Stuck
       end
+  (* SANCC *)
+  | Pjmp_m a =>
+    let addr := eval_addrmode a rs in
+    match loadvv (if Archi.ptr64 then Many64 else Many32) m addr with
+    | Some v =>      
+      Next (rs#PC <- v) m
+    | None => Stuck
+    end
   | Pcall_s id sg =>
     let addr := Genv.symbol_address ge id Ptrofs.zero in
     match Genv.find_funct ge addr with
@@ -1671,8 +1680,7 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
   | (* SANCC *) Pandpd_fm _ _ 
   | (* SANCC *) Pxorps_fm _ _
   | (* SANCC *) Pandps_fm _ _ 
-  | (* SANCC *) Prolw_ri _ _ 
-  | (* SANCC *) Pjmp_m _ => Stuck
+  | (* SANCC *) Prolw_ri _ _ => Stuck
   end.
 
 (** Translation of the LTL/Linear/Mach view of machine registers

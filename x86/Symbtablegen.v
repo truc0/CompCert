@@ -2,7 +2,7 @@
 (* Author: Yuting Wang  *)
 (*         Jinhua Wu    *)
 (* Date:   Sep 13, 2019 *)
-(* Last updated: Jan 31,2022 by Jinhua Wu *)
+(* Last updated: Feb 24, 2022 by Jinhua Wu *)
 (* *******************  *)
 
 Require Import Coqlib Integers AST Maps.
@@ -362,7 +362,8 @@ Definition transf_program (p:Asm.program) : res program :=
     let symb_tbl := gen_symb_table (AST.prog_defs p) in
     let sec_tbl := create_sec_table (AST.prog_defs p) in
     if zle (sections_size instr_size (map snd (PTree.elements sec_tbl))) Ptrofs.max_unsigned then
-      OK {| prog_public := AST.prog_public p;
+      OK {| prog_defs := AST.prog_defs p;
+            prog_public := AST.prog_public p;
             prog_main := AST.prog_main p;
             prog_sectable := sec_tbl;
             prog_symbtable := symb_tbl;

@@ -27,7 +27,7 @@ else
 ARCHDIRS=$(ARCH)_$(BITSIZE) $(ARCH)
 endif
 
-DIRS := lib common $(ARCHDIRS) backend cfrontend driver exportclight cparser encode
+DIRS := lib common $(ARCHDIRS) backend cfrontend driver exportclight cparser encode elf
 
 COQINCLUDES := $(foreach d, $(DIRS), -R $(d) compcert.$(d))
 
@@ -124,13 +124,15 @@ BACKEND=\
   RelocProgram.v \
   Symbtablegen.v \
   Reloctablesgen.v \
-  RelocBingen.v
-
+  RelocBingen.v \
+  SymbtableEncode.v RelocElfgen.v ReloctablesEncode.v\
 
 # Encoding of data into bytes
 
 ENCODE=Encode.v Bits.v Hex.v
 
+# Elf file format
+ELF = RelocElf.v
 
 # C front-end modules (in cfrontend/)
 

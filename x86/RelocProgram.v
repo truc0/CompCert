@@ -2,7 +2,7 @@
 (* Author: Yuting Wang  *)
 (*         Jinhua Wu    *)
 (* Date:   Sep 13, 2019 *)
-(* Last updated:  Jan 29, 2022 by Jinhua Wu*)
+(* Last updated:  Feb 27, 2022 by Jinhua Wu*)
 (* *******************  *)
 
 (** * Template of languages with information about symbols and relocation *)
@@ -83,7 +83,11 @@ Definition reloctable := list relocentry.
 Definition reloctable_map := PTree.t reloctable.
 
 (** ** Definition of program constructs *)
+
+Definition gdef := AST.globdef fundef unit.
+
 Record program : Type := {
+  prog_defs : list (ident * gdef); (** Only used in external function reasoning *)
   prog_public: list ident;
   prog_main: ident;
   prog_sectable: sectable;
