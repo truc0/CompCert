@@ -288,7 +288,7 @@ Definition acc_strtbl (res_acc: res (list byte * PTree.t Z * Z)) (id: ident) : r
 
 (* content of strtbl, map from ident to index in the strtbl, the accumulate ofs *)
 Definition gen_strtbl (symbols : list ident) : res (list byte * PTree.t Z * Z) :=
-  fold_left acc_strtbl symbols (OK ([], PTree.empty Z, 1)).
+  fold_left acc_strtbl symbols (OK ([HB["00"]], PTree.empty Z, 1)).
 
 
 (* ident to section index mapping *)
@@ -422,28 +422,42 @@ Section GEN_RELOC_SECS.
   Variable (symb_idxmap sec_idxmap :PTree.t Z).
   (* symbol table index in headers table *)
   Variable (symbtbl_idx: Z).
+  (* use the section name instead of new name *)
+  Variable (strmap: PTree.t Z).
   
-
-
 Definition acc_reloc_sections_headers acc (id_reloctbl:ident * list relocentry) :=
   do acc' <- acc;
-  let '(secs, hs, idx, ofs) := acc' in
+  let '(secs, hs, ofs) := acc' in
   let (id, reloctbl) := id_reloctbl in
   match sec_idxmap ! id with
   | None => Error [MSG "Reloction table generation: no related section header index!"; CTX id]
   | Some sec_h_idx  =>
-    let h := gen_rel_sec_header reloctbl idx ofs symbtbl_idx (sec_h_idx + 1) (* attention to the null header ! *) in  
+    match strmap ! id with
+    | None => Error [MSG "Reloction table generation: no related string for "; CTX id]
+    | Some strtbl_ofs =>
+    let h := gen_rel_sec_header reloctbl strtbl_ofs ofs symbtbl_idx (sec_h_idx + 1) (* attention to the null header ! *) in  
     do sec <- encode_reloctable symb_idxmap reloctbl;
-    OK (secs++[sec], hs++[h], idx+1, ofs + Z.of_nat (length sec))
+    OK (secs++[sec], hs++[h], ofs + Z.of_nat (length sec))
+    end
   end.
-         
-Definition gen_reloc_sections_headers (idl_reloctbl: list (ident * list relocentry)) (start_idx: Z) (start_ofs: Z) : res (list section * list section_header * Z * Z ) :=
-  fold_left acc_reloc_sections_headers idl_reloctbl (OK ([],[],start_idx,start_ofs)).
+
+(* reloc sections, reloc headers, size of section *)
+Definition gen_reloc_sections_headers (idl_reloctbl: list (ident * list relocentry)) (start_ofs: Z) : res (list section * list section_header * Z ) :=
+  fold_left acc_reloc_sections_headers idl_reloctbl (OK ([],[],start_ofs)).
+
+End GEN_RELOC_SECS.
 
 (* symb_idxmap: get the index in symbtbl *)
 (* sec_idxmap: get the index of header of the section that be relocated in the section header table*)
-Definition gen_reloc_sections_and_shstrtbl (p: program) (symb_idxmap: PTree.t Z) (st: elf_state) :=
-  
+(* strmap: we do not generate new string for reloc section, we use the related section name *)
+Definition gen_reloc_sections_and_shstrtbl (p: program) (symb_idxmap sec_idxmap :PTree.t Z) (strmap: PTree.t Z) (st: elf_state) :=
+  let idl_reloctbl := PTree.elements p.(prog_reloctables) in
+  let sec_ofs := st.(e_sections_ofs) in
+  let symbtbl_idx := st.(e_headers_idx) - 1 in
+  do r <- gen_reloc_sections_headers symb_idxmap sec_idxmap symbtbl_idx strmap idl_reloctbl sec_ofs;
+  let '(secs, hs, size) := r in
+  let st1 := update_elf_state st secs hs [] size (Z.of_nat (length idl_reloctbl)) 0 in
+  OK st1.
 
 Definition gen_reloc_elf (p:program) :=
   (** *Generate text and data section , related headers and shstrtbl *)
