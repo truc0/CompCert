@@ -132,7 +132,7 @@ BACKEND=\
 ENCODE=Encode.v Bits.v Hex.v
 
 # Elf file format
-ELF = RelocElf.v
+ELF = RelocElf.v EncodeRelocElf.v
 
 # C front-end modules (in cfrontend/)
 
@@ -164,7 +164,7 @@ DRIVER=Compopts.v Compiler.v Complements.v
 # All source files
 
 FILES=$(VLIB) $(COMMON) $(BACKEND) $(CFRONTEND) $(DRIVER) $(FLOCQ) \
-  $(MENHIRLIB) $(PARSER) $(ENCODE)
+  $(MENHIRLIB) $(PARSER) $(ENCODE) $(ELF)
 
 # Generated source files
 

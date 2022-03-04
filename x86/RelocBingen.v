@@ -858,7 +858,7 @@ Definition transf_program (p:program) : res program :=
                        end) (OK 0) (map fst (PTree.elements (prog_symbtable p)));
   if zlt szstrings Int.max_unsigned
   then 
-  OK {| 
+  OK {| prog_defs := prog_defs p;
         prog_public := prog_public p;
         prog_main := prog_main p;
         prog_sectable := stbl;

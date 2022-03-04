@@ -89,6 +89,10 @@ Require AsmPseudoInstr.
 Require Jumptablegen.
 Require Symbtablegen.
 Require Reloctablesgen.
+Require RelocBingen.
+(* ELF generation *)
+Require RelocElfgen.
+Require EncodeRelocElf.
 
 (** Pretty-printers (defined in Caml). *)
 Parameter print_Clight: Clight.program -> unit.
@@ -203,7 +207,11 @@ Definition transf_c_program (p: Csyntax.program) : res Asm.program :=
   @@@ time "Elimination of other pseudo instructions" AsmPseudoInstr.transf_program
   @@ time "Generation of the jump table" Jumptablegen.transf_program instr_size
   @@@ time "Generation of symbol table" Symbtablegen.transf_program
-  @@@ time "Generation of relocation table" Reloctablesgen.transf_program instr_size.
+  @@@ time "Generation of relocation table" Reloctablesgen.transf_program instr_size
+  @@@ time "Encoding of instructions and data" RelocBingen.transf_program
+  (* @@ time "Removing addendums" RemoveAddend.transf_program *)
+  @@@ time "Generation of the reloctable Elf" RelocElfgen.gen_reloc_elf
+  @@@ time "Encoding of the reloctable Elf" EncodeRelocElf.encode_elf_file.
  
 (** Force [Initializers] and [Cexec] to be extracted as well. *)
 

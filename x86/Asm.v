@@ -1521,13 +1521,13 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
       | _ => Stuck
       end
   (* SANCC *)
-  | Pjmp_m a =>
-    let addr := eval_addrmode a rs in
-    match loadvv (if Archi.ptr64 then Many64 else Many32) m addr with
-    | Some v =>      
-      Next (rs#PC <- v) m
-    | None => Stuck
-    end
+  (* | Pjmp_m a => *)
+  (*   let addr := eval_addrmode a rs in *)
+  (*   match loadvv (if Archi.ptr64 then Many64 else Many32) m addr with *)
+  (*   | Some v =>       *)
+  (*     Next (rs#PC <- v) m *)
+  (*   | None => Stuck *)
+  (*   end *)
   | Pcall_s id sg =>
     let addr := Genv.symbol_address ge id Ptrofs.zero in
     match Genv.find_funct ge addr with
@@ -1679,7 +1679,8 @@ Definition exec_instr (f: function) (i: instruction) (rs: regset) (m: mem) : out
   | (* SANCC *) Pxorpd_fm _ _
   | (* SANCC *) Pandpd_fm _ _ 
   | (* SANCC *) Pxorps_fm _ _
-  | (* SANCC *) Pandps_fm _ _ 
+  | (* SANCC *) Pandps_fm _ _
+  | (* SANCC *) Pjmp_m _
   | (* SANCC *) Prolw_ri _ _ => Stuck
   end.
 
