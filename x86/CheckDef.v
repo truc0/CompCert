@@ -10,7 +10,8 @@ Require Import Coqlib Integers AST Maps.
 
 (** Local definitions include string literals and built-in functions *)
 
-Parameter is_def_builtin: ident -> bool.
+(* unused *)
+(* Parameter is_def_builtin: ident -> bool. *)
 
 Parameter is_def_string_literal: ident -> bool.
 
