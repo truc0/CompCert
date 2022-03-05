@@ -16,15 +16,14 @@ Import ListNotations.
 
 Local Open Scope error_monad_scope.
 
-Section INSTRSIZE.
-
-  Variable instr_size : instruction -> Z. (* SANCC *)
+Section INSTR_SIZE.
+  Variable instr_size : instruction -> Z.
 
 Fixpoint findAllLabel (l: list label)(all:list instruction): res (list Z) :=
   match l with
   |[] => OK []
   |h :: t =>
-   match label_pos instr_size h 0 all (*SANCC*)with
+   match label_pos instr_size h 0 all with
    |None => Error (msg"Label not found")
    |Some pos =>
     do tail <-  (findAllLabel t all);
@@ -101,5 +100,5 @@ Definition transf_fundef (f: Asm.fundef) : res Asm.fundef :=
 Definition transf_program (p: Asm.program) : res Asm.program :=
   transform_partial_program transf_fundef p.
 
-End INSTRSIZE.
+End INSTR_SIZE.
 

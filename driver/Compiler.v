@@ -86,6 +86,7 @@ Require AsmBuiltinInline.
 Require AsmStructRet.
 Require AsmFloatLiteral.
 Require AsmPseudoInstr.
+Require Asmlabelgen.
 Require Jumptablegen.
 Require Symbtablegen.
 Require Reloctablesgen.
@@ -205,6 +206,7 @@ Definition transf_c_program (p: Csyntax.program) : res Asm.program :=
   @@@ time "Pad Instructions with struct return" AsmStructRet.transf_program
   @@ time "Generation of the float literal" AsmFloatLiteral.transf_program
   @@@ time "Elimination of other pseudo instructions" AsmPseudoInstr.transf_program
+  @@@ time "Make local jumps use offsets instead of labels" Asmlabelgen.transf_program instr_size
   @@ time "Generation of the jump table" Jumptablegen.transf_program instr_size
   @@@ time "Generation of symbol table" Symbtablegen.transf_program
   @@@ time "Generation of relocation table" Reloctablesgen.transf_program instr_size
