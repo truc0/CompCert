@@ -314,9 +314,9 @@ Definition transl_section (id:ident) (sec:section) :=
   | sec_data d =>
     do reltbl <- transl_init_data_list d;
     OK reltbl
-  | sec_rodata d =>
-    do reltbl <- transl_init_data_list d;
-    OK reltbl
+  (* | sec_rodata d => *)
+  (*   do reltbl <- transl_init_data_list d; *)
+  (*   OK reltbl *)
   | _ => Error (msg "Section impossible to be bytes")
   end.
 
@@ -456,7 +456,7 @@ Definition print_section (s: section) :=
   match s with
   | sec_text _ => "text"
   | sec_data _ => "data"
-  | sec_rodata _ => "rodata"
+  (* | sec_rodata _ => "rodata" *)
   | sec_bytes _ => "bytes"
   end.
 

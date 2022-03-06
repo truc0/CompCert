@@ -352,8 +352,12 @@ Definition acc_headers (symbtbl: symbtable) (shstrmap: PTree.t Z) (res_acc: res 
             OK (acc++[h],ofs + e.(symbentry_size))
           else
             Error [MSG "Inconsistency, section length not equal to symbentry filed "; CTX id]
-        | symb_data =>
+        | symb_rwdata =>
           let h := gen_data_sec_header sec idx ofs in
+          OK (acc++[h],ofs + e.(symbentry_size))
+        (* read-only infomation in symb table *)
+        | symb_rodata =>
+          let h := gen_rodata_sec_header sec idx ofs in
           OK (acc++[h],ofs + e.(symbentry_size))
         |  _ => Error [MSG "Impossible: no type for section "; CTX id]
         end

@@ -16,14 +16,14 @@ Require Import Globalenvs Asm.
 Inductive section : Type :=
 | sec_text (code: list instruction)
 | sec_data (init: list init_data)
-| sec_rodata (init: list init_data)
+(* | sec_rodata (init: list init_data) *)
 | sec_bytes (bs: list byte).
 
 Definition sec_size (instr_size: instruction -> Z) (s: section) : Z :=
   match s with
   | sec_text c => code_size instr_size c
   | sec_data d => AST.init_data_list_size d
-  | sec_rodata d => AST.init_data_list_size d
+  (* | sec_rodata d => AST.init_data_list_size d *)
   | sec_bytes bs => Z.of_nat (length bs)
   end.
 
@@ -35,7 +35,9 @@ Definition sections_size instr_size stbl :=
 Definition sectable := PTree.t section.
 
 (** ** Symbol table *)
-Inductive symbtype : Type := symb_func | symb_data | symb_notype.
+
+(* Different from the elf file format, we use read-write and read-only two type to represent data *)
+Inductive symbtype : Type := symb_func | symb_rwdata | symb_rodata | symb_notype.
 
 (** normal: point to a section *)
 Inductive secindex : Type :=

@@ -823,9 +823,9 @@ Definition transl_section (sec : section) (reloctbl: reloctable) : res section :
   | sec_data dl =>
     do databytes <- transl_init_data_list (gen_reloc_ofs_map reloctbl) dl;
     OK (sec_bytes databytes)
-  | sec_rodata rdl =>
-    do rodatabytes <- transl_init_data_list (gen_reloc_ofs_map reloctbl) rdl;
-    OK (sec_bytes rodatabytes)
+  (* | sec_rodata rdl => *)
+  (*   do rodatabytes <- transl_init_data_list (gen_reloc_ofs_map reloctbl) rdl; *)
+  (*   OK (sec_bytes rodatabytes) *)
   | _ => Error (msg "There are bytes before binary generation")
   end.
 
