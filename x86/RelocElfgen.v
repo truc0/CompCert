@@ -199,7 +199,7 @@ Definition gen_symtab_sec_header (symbtbl: list symbentry) (shstrtbl_idx: Z) (se
      sh_flags    := [];
      sh_addr     := 0;
      sh_offset   := elf_header_size +  sec_ofs;
-     sh_size     := Z.mul symb_entry_size (Z.of_nat (length symbtbl));
+     sh_size     := Z.mul symb_entry_size (Z.of_nat (length symbtbl) + 1); (* don't forget dummy symbtable *)
      sh_link     := strtbl_idx;
      sh_info     := one_greater_last_local_symb_index symbtbl;
      sh_addralign := 1;
@@ -399,8 +399,11 @@ Definition gen_text_data_sections_and_shstrtbl (p: program) (st:elf_state) : res
   let (headers0, ofs0) := res_headers_ofs in
   (* generate section bytes which only contains func and data *)
   do sectbl0 <- gen_sections sectbl;
-  let elf_state1 := update_elf_state st sectbl0 headers0 shstrtbl0 ofs0 (Z.of_nat (length headers0)) shstrtbl_size0 in
-  OK (elf_state1, secidxmap).
+  let secs_size_check := get_sections_size (prog_sectable p) in
+  if Z.eqb ofs0 secs_size_check then
+    let elf_state1 := update_elf_state st sectbl0 headers0 shstrtbl0 ofs0 (Z.of_nat (length headers0)) shstrtbl_size0 in
+    OK (elf_state1, secidxmap)
+  else Error [MSG "Section size inconsistent between symbol table and section table"].
 
 (* input: program, ident to section header index, state *)
 (* output: state, indet to symbol entry index mapping, ident to string index in strtbl mapping *)
@@ -414,12 +417,18 @@ Definition gen_symtbl_section_strtbl_and_shstr (p: program) (secidxmap : PTree.t
   let '(strtbl, strmap, strtbl_size) := str_res in
   let strtbl_h := gen_strtab_sec_header strtbl st.(e_shstrtbl_ofs) st.(e_sections_ofs) in
   (* add string table to elf state *)
-  let st1 := update_elf_state st [strtbl] [strtbl_h] strtab_str strtbl_size 1 (Z.of_nat (length strtab_str)) in
-  (* encode symbol table into section *)
-  do symbsec <- create_symbtable_section idl_symbtbl' strmap secidxmap;
-  let symb_h := gen_symtab_sec_header symbtbl st1.(e_shstrtbl_ofs) st1.(e_sections_ofs) st.(e_headers_idx) in (* we need strtable section header index *)
-  let st2 := update_elf_state st1 [symbsec] [symb_h] symtab_str symb_h.(sh_size) 1 (Z.of_nat (length symtab_str)) in
-  OK (st2, symtbl_idx_map, strmap).
+  (* Add checking for debug *)
+  if Z.eqb (Z.of_nat (length strtbl)) strtbl_size then
+    let st1 := update_elf_state st [strtbl] [strtbl_h] strtab_str strtbl_size 1 (Z.of_nat (length strtab_str)) in    
+    (* encode symbol table into section *)
+    do symbsec <- create_symbtable_section idl_symbtbl' strmap secidxmap;
+    let symb_h := gen_symtab_sec_header symbtbl st1.(e_shstrtbl_ofs) st1.(e_sections_ofs) st.(e_headers_idx) in (* we need strtable section header index *)
+    if Z.eqb (Z.of_nat (length symbsec)) symb_h.(sh_size) then
+      let st2 := update_elf_state st1 [symbsec] [symb_h] symtab_str symb_h.(sh_size) 1 (Z.of_nat (length symtab_str)) in
+      OK (st2, symtbl_idx_map, strmap)
+    else
+      Error [MSG "Symbol table size inconsistent"]
+  else Error [MSG "String table size generated from symbtable inconsistent"].
 
 Section GEN_RELOC_SECS.
 
@@ -446,7 +455,7 @@ Definition acc_reloc_sections_headers acc (id_reloctbl:ident * list relocentry) 
     end
   end.
 
-(* reloc sections, reloc headers, size of section *)
+(* reloc sections, reloc headers, starting ofs of relocation table section in elf file*)
 Definition gen_reloc_sections_headers (idl_reloctbl: list (ident * list relocentry)) (start_ofs: Z) : res (list section * list section_header * Z ) :=
   fold_left acc_reloc_sections_headers idl_reloctbl (OK ([],[],start_ofs)).
 
@@ -460,8 +469,8 @@ Definition gen_reloc_sections_and_shstrtbl (p: program) (symb_idxmap sec_idxmap 
   let sec_ofs := st.(e_sections_ofs) in
   let symbtbl_idx := st.(e_headers_idx) - 1 in
   do r <- gen_reloc_sections_headers symb_idxmap sec_idxmap symbtbl_idx strmap idl_reloctbl sec_ofs;
-  let '(secs, hs, size) := r in
-  let st1 := update_elf_state st secs hs [] size (Z.of_nat (length idl_reloctbl)) 0 in
+  let '(secs, hs, sec_ofs') := r in
+  let st1 := update_elf_state st secs hs [] (sec_ofs'-sec_ofs) (Z.of_nat (length idl_reloctbl)) 0 in
   OK st1.
 
 (* shstrtable generation *)
@@ -471,7 +480,10 @@ Definition gen_shstrtbl (st: elf_state) :=
   (* st.(e_shstrtbl_ofs): the shstrtbl_name location in shstrtbl *)
   let shstrtbl_h := gen_strtab_sec_header st1.(e_shstrtbl) st.(e_shstrtbl_ofs) st1.(e_sections_ofs) in
   (* the secs_size is the shstrtbl size *)
-  update_elf_state st1 [st1.(e_shstrtbl)] [shstrtbl_h] [] st1.(e_shstrtbl_ofs) 1 0.
+  if Z.eqb (Z.of_nat (length st1.(e_shstrtbl))) st1.(e_shstrtbl_ofs) then
+   OK ( update_elf_state st1 [st1.(e_shstrtbl)] [shstrtbl_h] [] st1.(e_shstrtbl_ofs) 1 0)
+  else
+    Error [MSG "Section header string table size inconsistent"].
     
 Definition gen_reloc_elf (p:program) :=
   (** *Generate text and data section , related headers and shstrtbl *)
@@ -483,7 +495,9 @@ Definition gen_reloc_elf (p:program) :=
   (** *Generate reloction table section and headers *)
   do st3 <- gen_reloc_sections_and_shstrtbl p symtbl_idx_map secidxmap strmap st2;
   (** *Generate section header string table and header *)
-  let st4 := gen_shstrtbl st3 in
+  do st4 <- gen_shstrtbl st3;
+  (* debug: check section size *)
+  if Z.eqb st4.(e_sections_ofs) (fold_right (fun s acc => acc + Z.of_nat (length s)) 0 (st4.(e_sections))) then
   (** *Generate ELF header *)
   let elf_h := gen_elf_header st4 in
   (* file too big ? *)
@@ -496,8 +510,8 @@ Definition gen_reloc_elf (p:program) :=
           elf_head := elf_h;
           elf_sections := st4.(e_sections);
           elf_section_headers := st4.(e_headers) |}
-  else Error (msg "Sections too big (e_shoff above bounds)").
-
+  else Error (msg "Sections too big (e_shoff above bounds)")
+  else Error (msg "Generate ELF header fail: shofs inconsistent").
 End INSTR_SIZE.
 
 (* Definition gen_reloc_elf (p:program) : res elf_file := *)
