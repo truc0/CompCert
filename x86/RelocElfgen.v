@@ -333,7 +333,7 @@ Definition ident_to_index (idl : list ident) (start: Z): PTree.t Z :=
 
 (* generate section header from text and data section, not include strtbl, symbtbl, reltbl*)
 (* also return the section accumulated size *)
-Definition acc_headers (symbtbl: symbtable) (shstrmap: PTree.t Z) (res_acc: res (list section_header * Z)) (id_sec: ident * RelocProgram.section) : res (list section_header * Z) := 
+Definition acc_headers (symbtbl: symbtable) (shstrmap: PTree.t Z) (res_acc: res (list section_header * Z)) (id_sec: ident * RelocProgram.section) : res (list section_header * Z) :=
   do (acc, ofs) <- res_acc;
   let (id, sec0) := id_sec in
   match sec0 with
@@ -361,7 +361,8 @@ Definition acc_headers (symbtbl: symbtable) (shstrmap: PTree.t Z) (res_acc: res 
     end
   | _ => Error [MSG "Section haven't been encoded"; CTX id]
   end.
-  
+
+(* return section headers and the size of sections *)
 Definition gen_section_header (idl_sectbl: list (ident * RelocProgram.section)) (symbtbl: symbtable) (shstrmap: PTree.t Z) : res (list section_header * Z) :=
   fold_left  (acc_headers symbtbl shstrmap) idl_sectbl (OK ([],0)).
 
@@ -385,7 +386,8 @@ Definition shstrtab_str := SB[".shstrtab"] ++ [HB["00"]].
 Definition strtab_str := SB[".strtab"] ++ [HB["00"]].
 Definition symtab_str := SB[".symtab"] ++ [HB["00"]].
 
-Definition gen_text_data_sections_and_shstrtbl (p: program) (st:elf_state) : res (elf_state * PTree.t Z) :=
+(* return elf_state, section id to index mapping, id to string idx in shstring table mapping *)
+Definition gen_text_data_sections_and_shstrtbl (p: program) (st:elf_state) : res (elf_state * PTree.t Z * PTree.t Z) :=
   (* generate ident to section index mapping *)
   let idl_sectbl := PTree.elements (prog_sectable p) in
   let secidl := map fst idl_sectbl in
@@ -402,12 +404,12 @@ Definition gen_text_data_sections_and_shstrtbl (p: program) (st:elf_state) : res
   let secs_size_check := get_sections_size (prog_sectable p) in
   if Z.eqb ofs0 secs_size_check then
     let elf_state1 := update_elf_state st sectbl0 headers0 shstrtbl0 ofs0 (Z.of_nat (length headers0)) shstrtbl_size0 in
-    OK (elf_state1, secidxmap)
+    OK (elf_state1, secidxmap, shstrmap)
   else Error [MSG "Section size inconsistent between symbol table and section table"].
 
 (* input: program, ident to section header index, state *)
-(* output: state, indet to symbol entry index mapping, ident to string index in strtbl mapping *)
-Definition gen_symtbl_section_strtbl_and_shstr (p: program) (secidxmap : PTree.t Z) (st: elf_state) :res (elf_state * PTree.t Z * PTree.t Z) :=
+(* output: state, indet to symbol entry index mapping, ident to string index in strtbl mapping (unused and remove it)*)
+Definition gen_symtbl_section_strtbl_and_shstr (p: program) (secidxmap : PTree.t Z) (st: elf_state) :res (elf_state * PTree.t Z) :=
   let idl_symbtbl := PTree.elements (prog_symbtable p) in
   let idl_symbtbl' := sort_symbtable idl_symbtbl in
   let symbidl := map fst idl_symbtbl' in
@@ -425,7 +427,7 @@ Definition gen_symtbl_section_strtbl_and_shstr (p: program) (secidxmap : PTree.t
     let symb_h := gen_symtab_sec_header symbtbl st1.(e_shstrtbl_ofs) st1.(e_sections_ofs) st.(e_headers_idx) in (* we need strtable section header index *)
     if Z.eqb (Z.of_nat (length symbsec)) symb_h.(sh_size) then
       let st2 := update_elf_state st1 [symbsec] [symb_h] symtab_str symb_h.(sh_size) 1 (Z.of_nat (length symtab_str)) in
-      OK (st2, symtbl_idx_map, strmap)
+      OK (st2, symtbl_idx_map)
     else
       Error [MSG "Symbol table size inconsistent"]
   else Error [MSG "String table size generated from symbtable inconsistent"].
@@ -449,7 +451,7 @@ Definition acc_reloc_sections_headers acc (id_reloctbl:ident * list relocentry) 
     match strmap ! id with
     | None => Error [MSG "Reloction table generation: no related string for "; CTX id]
     | Some strtbl_ofs =>
-    let h := gen_rel_sec_header reloctbl strtbl_ofs ofs symbtbl_idx (sec_h_idx + 1) (* attention to the null header ! *) in  
+    let h := gen_rel_sec_header reloctbl strtbl_ofs ofs symbtbl_idx sec_h_idx (* attention to the null header ! no need to +1 because the idxmap generated from symbol table has the consideration of null header*) in  
     do sec <- encode_reloctable symb_idxmap reloctbl;
     OK (secs++[sec], hs++[h], ofs + Z.of_nat (length sec))
     end
@@ -487,13 +489,13 @@ Definition gen_shstrtbl (st: elf_state) :=
     
 Definition gen_reloc_elf (p:program) :=
   (** *Generate text and data section , related headers and shstrtbl *)
-  do st1_secidxmap <- gen_text_data_sections_and_shstrtbl p initial_elf_state;
-  let (st1, secidxmap) := st1_secidxmap in
+  do st1_secidxmap_shstrmap <- gen_text_data_sections_and_shstrtbl p initial_elf_state;
+  let '(st1, secidxmap, shstrmap) := st1_secidxmap_shstrmap in
   (** *Generate string table and symbtbl from symbol table *)
-  do st2_symbmap_strmap <- gen_symtbl_section_strtbl_and_shstr p secidxmap st1;
-  let '(st2, symtbl_idx_map, strmap) := st2_symbmap_strmap in
+  do st2_symbmap <- gen_symtbl_section_strtbl_and_shstr p secidxmap st1;
+  let '(st2, symtbl_idx_map) := st2_symbmap in
   (** *Generate reloction table section and headers *)
-  do st3 <- gen_reloc_sections_and_shstrtbl p symtbl_idx_map secidxmap strmap st2;
+  do st3 <- gen_reloc_sections_and_shstrtbl p symtbl_idx_map secidxmap shstrmap st2;
   (** *Generate section header string table and header *)
   do st4 <- gen_shstrtbl st3;
   (* debug: check section size *)

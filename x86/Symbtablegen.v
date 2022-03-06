@@ -278,7 +278,7 @@ Definition acc_gen_section (acc: sectable) (iddef: ident * (globdef fundef unit)
       if gvar_readonly v then
         PTree.set id (sec_rodata (gvar_init v)) acc
       else
-        PTree.set id (sec_rodata (gvar_init v)) acc
+        PTree.set id (sec_data (gvar_init v)) acc
     end
   | _ => acc
   end.
