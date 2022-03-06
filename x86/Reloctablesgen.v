@@ -323,7 +323,12 @@ Definition transl_section (id:ident) (sec:section) :=
 Definition acc_section (reloc_map : res reloctable_map) (id:ident) (sec:section) :=
   do relmap <- reloc_map;
   do reloctbl <- transl_section id sec;
-  OK (PTree.set id reloctbl relmap).
+  match reloctbl with
+  (* empty checking *)
+  | [] => OK relmap
+  | _ =>
+    OK (PTree.set id reloctbl relmap)
+  end.
 
 Definition transl_sectable (stbl: sectable) :=
   PTree.fold acc_section stbl (OK (PTree.empty reloctable)).
