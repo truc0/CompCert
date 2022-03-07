@@ -20,8 +20,14 @@ all_s: $(PROGS:%=%.s)
 
 all_gcc: $(PROGS:%=%.gcc)
 
+all_myelf: $(PROGS:%=%.myelf)
+
 %.compcert: %.c
 	$(CCOMP) $(CCOMPFLAGS) -o $*.compcert $*.c $(LIBS)
+
+%.myelf: %.c
+	$(CCOMP) $(CCOMPFLAGS) -c $*.c -o $*.myelf $(LIBS)
+
 
 %.s: %.c
 	$(CCOMP) $(CCOMPFLAGS) -S $*.c

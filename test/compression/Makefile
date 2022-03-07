@@ -1,7 +1,9 @@
 include ../../Makefile.config
 
 CC=../../ccomp 
-CFLAGS=$(CCOMPOPTS) -U__GNUC__ -stdlib ../../runtime -dclight -dasm
+# CFLAGS=$(CCOMPOPTS) -U__GNUC__ -stdlib ../../runtime -dclight -dasm
+CFLAGS=$(CCOMPOPTS) -U__GNUC__ -stdlib ../../runtime -relf
+
 LIBS=
 TIME=ocaml unix.cma ../../tools/xtime.ml -mintime 2.0 -minruns 2
 

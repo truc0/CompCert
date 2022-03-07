@@ -1,9 +1,14 @@
 include ../../Makefile.config
 
 CCOMP=../../ccomp
+# CCOMPFLAGS=$(CCOMPOPTS) -stdlib ../../runtime \
+#  -dparse -dc -dclight -dasm -fall \
+#  -DARCH_$(ARCH) -DMODEL_$(MODEL)
+
 CCOMPFLAGS=$(CCOMPOPTS) -stdlib ../../runtime \
- -dparse -dc -dclight -dasm -fall \
+ -relf -fall \
  -DARCH_$(ARCH) -DMODEL_$(MODEL)
+
 INTERPFLAGS=-stdlib ../../runtime -interp -quiet -fall
 LIBS=$(LIBMATH)
 

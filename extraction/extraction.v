@@ -134,6 +134,7 @@ Extract Constant SymbolString.create_label_ident => "JumptableString.create_labe
 Extract Constant CheckDef.is_def_string_literal => "CheckDefImpl.is_def_string_literal".
 Extract Constant CheckDef.is_def_static => "CheckDefImpl.is_def_static".
 Extract Constant CheckDef.is_def_float_literal => "FloatliteralString.is_def_float_literal".
+Extract Constant CheckDef.is_def_jumptbl => "JumptableString.is_def_jumptbl".
 
 (* LabelNew *)
 Extract Constant AsmLabelNew.set_current_function => "LabelNew.set_current_function".
