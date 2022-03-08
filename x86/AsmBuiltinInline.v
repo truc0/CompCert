@@ -12,6 +12,7 @@ Require Import Globalenvs.
 Require Import String.
 Require Import AsmLabelNew.
 Require Import Conventions1.
+Require Import Machregs.
 Import ListNotations.
 
 Local Open Scope error_monad_scope.
@@ -213,7 +214,7 @@ Definition expand_fma args result i132 i213 i231 :=
 (* Copy from ccelf-no-perm x86/Conventions1.v *)
 (** [size_arguments s] returns the number of [Outgoing] slots used
   to call a function with signature [s]. *)
-Require Import Machregs.
+
 Definition int_param_regs := DI :: SI :: DX :: CX :: R8 :: R9 :: nil.
 Definition float_param_regs := X0 :: X1 :: X2 :: X3 :: X4 :: X5 :: X6 :: X7 :: nil.
 
@@ -252,7 +253,8 @@ Definition expand_builtin_va_start_32 r :=
     let sz := align (fn_stacksize cur_func) 8 - size_chunk Mptr in
     let t0 := Z.add sz 4 in
     (* let t0 := Z.add (fn_stacksize cur_func) 4 in *)
-    let t1 := Z.mul 4 (size_arguments (fn_sig cur_func)) in
+    (* fix bug: typesize definition different from ccelf-no-perm!! *)
+    let t1 := (size_arguments (fn_sig cur_func)) in
     let ofs := Z.add t0 t1 in
     OK [Pleal RAX (linear_addr RSP ofs);
        Pmovl_mr (linear_addr r 0) RAX]
