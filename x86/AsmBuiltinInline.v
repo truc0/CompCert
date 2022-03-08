@@ -31,11 +31,12 @@ Definition linear_addr reg ofs :=
 Definition global_addr id ofs := 
   Addrmode None None (inr(id, ofs)).
 
-Definition addressing_of_builtin_arg arg := 
+Definition addressing_of_builtin_arg (arg: builtin_arg preg) :res addrmode := 
   match arg with
   | BA (IR r) => OK (linear_addr r 0)
   | BA_addrstack ofs => OK (linear_addr RSP (Ptrofs.unsigned ofs))
   | BA_addrglobal id ofs => OK (global_addr id ofs)
+  | BA_addptr (BA (IR r)) (BA_int n) => OK (linear_addr r (Int.unsigned n) )
   | _ => Error (msg "addressing_of_builtin_arg: builtin argument not supported")
   end.
 

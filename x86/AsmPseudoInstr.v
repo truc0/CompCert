@@ -40,9 +40,8 @@ Definition transf_instr (i: instruction) (code: code) : res (list instruction) :
     let i2 := Pjcc cond2 lbl in
     let i3 := Plabel lbl' in
     OK ([i1]++[i2]++[i3])
-  (* SANCC  *)
-  (* | Pbswap16 rd => *)
-  (*   OK [Prolw_ri rd (Int.repr 8)] *)
+  | Pbswap16 rd =>
+    OK [Prolw_ri rd (Int.repr 8)]
   |_ => OK [i] 
   end.
 
