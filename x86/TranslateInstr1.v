@@ -6,69 +6,55 @@ Require Import Reloctablesgen.
 Require Import SymbolString.
 (* Import Hex compcert.encode.Bits.Bits. *)
 Require Import Coq.Logic.Eqdep_dec.
-Require Import RelocBingen.
+(* Require Import RelocBingen. *)
+Require Import EncDecRet BPProperty.
 Import Hex Bits.
 Import ListNotations.
 
 Local Open Scope error_monad_scope.
 Local Open Scope hex_scope.
 Local Open Scope bits_scope.
-Local Open Scope nat_scope.
 
 (** *CAV21: Instruction ,CompCertELF: instruction*)
 
-Definition assertLength {A} (l:list A) n: {length l = n} +
-                                          {length l <> n}.
-Proof.
-  decide equality.
-Defined.
+(** * Encoding of instructions and functions *)
 
-Definition builtIn (n:nat): Type := {d:list bool| length d = n}.
-
-Lemma builtin_inj: forall {n} (a b:builtIn n),
-    proj1_sig a = proj1_sig b -> a = b.
-Proof.
-  intros n a b H.
-  induction a, b.
-  simpl in H.
-  subst x0.
-  f_equal.
-  apply UIP_dec.
-  apply Nat.eq_dec.
-Qed.
-
-Definition u1 := builtIn 1.
-
-Definition u2 := builtIn 2.
-
-Definition u3 := builtIn 3.
-
-Definition u4 := builtIn 4.
-
-Definition u8 := builtIn 8.
-
-Definition u16 := builtIn 16.
-
-Definition u32 := builtIn 32.
-
-Definition u64 := builtIn 64.
-
-Definition nat_to_bits8_opt n : bits :=
-  [( n/128 mod 2 =? 1);
-  ( n/64 mod 2 =? 1);
-  ( n/32 mod 2 =? 1);
-  ( n/16 mod 2 =? 1);
-  ( n/8 mod 2 =? 1);
-  ( n/4 mod 2 =? 1);
-  ( n/2 mod 2 =? 1);
-  ( n mod 2 =? 1)].
-
-Fixpoint bytes_to_bits_opt (lb:list byte) : bits :=
-  match lb with
-  | [] => []
-  | b::lb' =>(nat_to_bits8_opt (Z.to_nat (Byte.unsigned b))) ++
-                                                           (bytes_to_bits_opt lb')
+Definition encode_ireg (r: ireg) : res bits :=
+  match r with
+  | RAX => OK (b["000"])
+  | RCX => OK (b["001"])
+  | RDX => OK (b["010"])
+  | RBX => OK (b["011"])
+  | RSP => OK (b["100"])
+  | RBP => OK (b["101"])
+  | RSI => OK (b["110"])
+  | RDI => OK (b["111"])
+  | _ => Error (msg "Encoding of register not supported")
   end.
+
+Definition encode_freg (r: freg) : res bits :=
+  match r with
+  | XMM0 => OK (b["000"])
+  | XMM1 => OK (b["001"])
+  | XMM2 => OK (b["010"])
+  | XMM3 => OK (b["011"])
+  | XMM4 => OK (b["100"])
+  | XMM5 => OK (b["101"])
+  | XMM6 => OK (b["110"])
+  | XMM7 => OK (b["111"])
+  | _ => Error (msg "Encoding of freg not supported")
+  end.
+
+Definition encode_scale (s: Z) : res bits :=
+  match s with
+  | 1 => OK b["00"]
+  | 2 => OK b["01"]
+  | 4 => OK b["10"]
+  | 8 => OK b["11"]
+  | _ => Error (msg "Translation of scale failed")
+  end.
+
+
 Program Definition zero32 : u32 :=
   bytes_to_bits_opt (bytes_of_int 4 0).
 
@@ -344,153 +330,27 @@ Proof.
   try apply proof_irr.                        (**r to solve e = eq_refl *)
 Qed.
 
-(* Addressing mode in CAV21 automatically generated definition *)
-Inductive AddrE: Type :=
-| AddrE12(uvar3_0:u3)
-| AddrE11(uvar32_0:u32)
-| AddrE10(uvar2_0:u2)(uvar3_1:u3)(uvar3_2:u3)
-| AddrE9(uvar2_0:u2)(uvar3_1:u3)(uvar32_2:u32)
-| AddrE8(uvar3_0:u3)
-| AddrE7(uvar32_0:u32)
-| AddrE6(uvar3_0:u3)(uvar32_1:u32)
-| AddrE5(uvar2_0:u2)(uvar3_1:u3)(uvar3_2:u3)(uvar32_3:u32)
-| AddrE4(uvar3_0:u3)(uvar32_1:u32)
-| AddrE0(uvar3_0:u3).
-
-(* Instruction in CAV21 automatically generated definition *)
-Inductive Instruction: Type :=
-| Ptestq_EvGv(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar3_3:u3)
-| Ptestq_ri(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar32_4:u32)
-| Pcmpq_GvEv(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar3_3:u3)
-| Pcmpq_EvGv(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar3_3:u3)
-| Pcmpq_ri(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar32_4:u32)
-| Prorq_ri(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar8_4:u8)
-| Psarq_ri(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar8_4:u8)
-| Psarq_rcl(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)
-| Psalq_ri(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar8_4:u8)
-| Psalq_rcl(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)
-| Pnotq(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)
-| Pxorq_GvEv(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar3_3:u3)
-| Pxorq_EvGv(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar3_3:u3)
-| Pxorq_ri(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar32_4:u32)
-| Porq_GvEv(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar3_3:u3)
-| Porq_EvGv(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar3_3:u3)
-| Porq_ri(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar32_4:u32)
-| Pandq_GvEv(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar3_3:u3)
-| Pandq_EvGv(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar3_3:u3)
-| Pandq_ri(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar32_4:u32)
-| Pdivq(uvar1_0:u1)(uvar3_1:u3)
-| Pidivq(uvar1_0:u1)(uvar3_1:u3)
-| Pmulq_r(uvar1_0:u1)(uvar3_1:u3)
-| Pimulq_GvEv(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar3_3:u3)
-| Pimulq_r(uvar1_0:u1)(uvar3_1:u3)
-| Pimulq_ri(uvar1_0:u1)(uvar1_1:u1)(uvar3_2:u3)(uvar3_3:u3)(uvar32_4:u32)
-| Psubq_GvEv(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar3_3:u3)
-| Psubq_EvGv(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar3_3:u3)
-| Psubq_ri(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar32_4:u32)
-| Paddq_GvEv(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar3_3:u3)
-| Paddq_EvGv(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar3_3:u3)
-| Paddq_ri(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar32_4:u32)
-| Pnegq(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)
-| Pleaq(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar3_3:u3)
-| Pmovq_EvGv(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar3_3:u3)
-| Pmovq_GvEv(AddrE:AddrE)(uvar1_0:u1)(uvar1_1:u1)(uvar1_2:u1)(uvar3_3:u3)
-| Pmovq_ri(uvar1_0:u1)(uvar3_1:u3)(uvar64_2:u64)
-| Psubl_ri(uvar3_0:u3)(uvar32_1:u32)
-| Pbsqrtsd(uvar3_0:u3)(uvar3_1:u3)
-| Psbbl_rr(uvar3_0:u3)(uvar3_1:u3)
-| Prep_movsl
-| Pmovsq_rm(AddrE:AddrE)(uvar3_0:u3)
-| Pmovsq_mr(AddrE:AddrE)(uvar3_0:u3)
-| Pminsd(uvar3_0:u3)(uvar3_1:u3)
-| Pmaxsd(uvar3_0:u3)(uvar3_1:u3)
-| Pbswap32(uvar3_0:u3)
-| Pbsrl(uvar3_0:u3)(uvar3_1:u3)
-| Pbsfl(uvar3_0:u3)(uvar3_1:u3)
-| Paddl_mi(AddrE:AddrE)(uvar32_1:u32)
-| Paddl_rr(uvar3_0:u3)(uvar3_1:u3)
-| Padcl_rr(uvar3_0:u3)(uvar3_1:u3)
-| Padcl_ri(uvar3_0:u3)(uvar8_1:u8)
-| Pjcc_rel(uvar4_0:u4)(uvar32_1:u32)
-| Pret_iw(uvar16_0:u16)
-| Pret
-| Pcall_r(uvar3_0:u3)
-| Pcall_ofs(uvar32_0:u32)
-| Pnop
-| Pjmp_Ev(AddrE:AddrE)
-| Pjmp_l_rel(uvar32_0:u32)
-| Pandps_fm(AddrE:AddrE)(uvar3_0:u3)
-| Pxorps_GvEv(AddrE:AddrE)(uvar3_0:u3)
-| Pcomisd_ff(uvar3_0:u3)(uvar3_1:u3)
-| Pdivsd_ff(uvar3_0:u3)(uvar3_1:u3)
-| Pmuld_ff(uvar3_0:u3)(uvar3_1:u3)
-| Psubd_ff(uvar3_0:u3)(uvar3_1:u3)
-| Paddd_ff(uvar3_0:u3)(uvar3_1:u3)
-| Psetcc(uvar4_0:u4)(uvar3_1:u3)
-| Pcmov(uvar4_0:u4)(uvar3_1:u3)(uvar3_2:u3)
-| Ptestl_rr(uvar3_0:u3)(uvar3_1:u3)
-| Ptestl_ri(uvar3_0:u3)(uvar32_1:u32)
-| Pcmpl_ri(uvar3_0:u3)(uvar32_1:u32)
-| Pcmpl_rr(uvar3_0:u3)(uvar3_1:u3)
-| Prorl_ri(uvar3_0:u3)(uvar8_1:u8)
-| Prolw_ri(uvar3_0:u3)(uvar8_1:u8)
-| Pshld_ri(uvar3_0:u3)(uvar3_1:u3)(uvar8_2:u8)
-| Psarl_rcl(uvar3_0:u3)
-| Psarl_ri(uvar3_0:u3)(uvar8_1:u8)
-| Pshrl_rcl(uvar3_0:u3)
-| Pshrl_ri(uvar3_0:u3)(uvar8_1:u8)
-| Psall_rcl(uvar3_0:u3)
-| Psall_ri(uvar3_0:u3)(uvar8_1:u8)
-| Pnotl(uvar3_0:u3)
-| Pxorl_rr(uvar3_0:u3)(uvar3_1:u3)
-| Pxorl_ri(uvar3_0:u3)(uvar32_1:u32)
-| Porl_rr(uvar3_0:u3)(uvar3_1:u3)
-| Porl_ri(uvar3_0:u3)(uvar32_1:u32)
-| Pandl_ri(uvar3_0:u3)(uvar32_1:u32)
-| Pandl_rr(uvar3_0:u3)(uvar3_1:u3)
-| Pidivl_r(uvar3_0:u3)
-| Pdivl_r(uvar3_0:u3)
-| Pcltd
-| Pmull_r(uvar3_0:u3)
-| Pimull_ri(uvar3_0:u3)(uvar3_1:u3)(uvar32_2:u32)
-| Pimull_rr(uvar3_0:u3)(uvar3_1:u3)
-| Psubl_rr(uvar3_0:u3)(uvar3_1:u3)
-| Paddl_ri(uvar3_0:u3)(uvar32_1:u32)
-| Pnegl(uvar3_0:u3)
-| Pleal(AddrE:AddrE)(uvar3_0:u3)
-| Pcvttss2si_rf(uvar3_0:u3)(uvar3_1:u3)
-| Pcvtsi2sd_fr(uvar3_0:u3)(uvar3_1:u3)
-| Pcvtsi2ss_fr(uvar3_0:u3)(uvar3_1:u3)
-| Pcvttsd2si_rf(uvar3_0:u3)(uvar3_1:u3)
-| Pcvtss2sd_ff(uvar3_0:u3)(uvar3_1:u3)
-| Pcvtsd2ss_ff(uvar3_0:u3)(uvar3_1:u3)
-| Pmovsw_GvEv(AddrE:AddrE)(uvar3_0:u3)
-| Pmovzw_GvEv(AddrE:AddrE)(uvar3_0:u3)
-| Pmovsb_GvEv(AddrE:AddrE)(uvar3_0:u3)
-| Pmovzb_rm(AddrE:AddrE)(uvar3_0:u3)
-| Pmovw_rm(AddrE:AddrE)(uvar3_0:u3)
-| Pmovw_mr(AddrE:AddrE)(uvar3_0:u3)
-| Pmovb_rm(AddrE:AddrE)(uvar3_0:u3)
-| Pmovb_mr(AddrE:AddrE)(uvar3_0:u3)
-| Pxchg_rr(uvar3_0:u3)(uvar3_1:u3)
-| Pflds_m(AddrE:AddrE)
-| Pfstps_m(AddrE:AddrE)
-| Pfstpl_m(AddrE:AddrE)
-| Pfldl_m(AddrE:AddrE)
-| Pmovss_fm(AddrE:AddrE)(uvar3_0:u3)
-| Pmovss_mf(AddrE:AddrE)(uvar3_0:u3)
-| Pmovsd_fm(AddrE:AddrE)(uvar3_0:u3)
-| Pmovsd_mf(AddrE:AddrE)(uvar3_0:u3)
-| Pmovl_rm(AddrE:AddrE)(uvar3_0:u3)
-| Pmovl_mr(AddrE:AddrE)(uvar3_0:u3)
-| Pmovl_ri(uvar3_0:u3)(uvar32_1:u32).
-
-
 Definition Instr_reloc_offset (i:Instruction): res Z := Error (msg "unfinished").
 
 Section WITH_RELOC_OFS_MAP.
 
 Variable rtbl_ofs_map: reloc_ofs_map_type.
+
+
+Definition get_reloc_addend (ofs:Z) : res Z :=
+  match ZTree.get ofs rtbl_ofs_map with
+  | None => Error [MSG "Cannot find the relocation entry at the offset "; POS (Z.to_pos ofs)]
+  | Some e => OK (reloc_addend e)
+  end.
+
+Definition get_instr_reloc_addend (ofs:Z) (i:instruction) : res Z :=
+  do iofs <- instr_reloc_offset i;
+  get_reloc_addend (ofs + iofs).
+
+
+Definition get_instr_reloc_addend' (ofs:Z): res Z :=
+  get_reloc_addend ofs.
+
 
 (* Translate ccelf addressing mode to cav21 addr mode *)
 (* sofs: instruction ofs, res_iofs: relocated location in the instruction*)
@@ -503,14 +363,20 @@ Definition translate_Addrmode_AddrE (sofs: Z) (res_iofs: res Z) (addr:addrmode):
       match id with
       | xH =>
         do iofs <- res_iofs;
-        do addend <- get_instr_reloc_addend' rtbl_ofs_map (iofs + sofs);
+        do addend <- get_instr_reloc_addend' (iofs + sofs);
         if Z.eqb (Ptrofs.unsigned ofs) addend then
+          (*32bit mode the addend placed in instruction *)
+          do imm32 <- encode_ofs_u32 addend;
           match obase,oindex with
           | None,None =>
-            OK (AddrE11 zero32)
+            OK (AddrE11 imm32)
           | Some base,None =>
+            (* some bug only fix here not fixed in reverse *)
             do r <- encode_ireg_u3 base;
-              OK (AddrE6 r zero32)
+            if ireg_eq base RSP then
+              OK (AddrE4 r imm32)
+            else
+              OK (AddrE6 r imm32)
           | None,Some (idx,ss) =>
             do index <- encode_ireg_u3 idx;
             do scale <- encode_scale_u2 ss;
@@ -518,7 +384,7 @@ Definition translate_Addrmode_AddrE (sofs: Z) (res_iofs: res Z) (addr:addrmode):
               (* OK (AddrE7 zero32) *)
               Error (msg "index can not be RSP")
             else
-              OK (AddrE9 scale index zero32)
+              OK (AddrE9 scale index imm32)
           | Some base,Some (idx,ss) =>
             do scale <- encode_scale_u2 ss;
             do index <- encode_ireg_u3 idx;
@@ -527,7 +393,7 @@ Definition translate_Addrmode_AddrE (sofs: Z) (res_iofs: res Z) (addr:addrmode):
               Error (msg "index can not be RSP")
                     (* OK (AddrE4 breg zero32)            *)
             else
-              OK (AddrE5 scale index breg zero32)
+              OK (AddrE5 scale index breg imm32)
           end
         else Error (msg "addend is not equal to ofs")
       | _ => Error(msg "id must be 1")
@@ -542,7 +408,10 @@ Definition translate_Addrmode_AddrE (sofs: Z) (res_iofs: res Z) (addr:addrmode):
           OK (AddrE11 ofs32)
         | Some base,None =>
           do r <- encode_ireg_u3 base;
-          OK (AddrE6 r ofs32)
+          if ireg_eq base RSP then
+              OK (AddrE4 r ofs32)
+          else
+              OK (AddrE6 r ofs32)
         | None,Some (idx,ss) =>
           do r <- encode_ireg_u3 idx;
           do scale <- encode_scale_u2 ss;
@@ -566,7 +435,7 @@ Definition translate_Addrmode_AddrE (sofs: Z) (res_iofs: res Z) (addr:addrmode):
     end
   end.
 
-
+(* FIXME: some bug fixed in above but not here *)
 (* Translate CAV21 addr mode to ccelf addr mode *)
 Definition translate_AddrE_Addrmode (sofs: Z) (res_iofs : res Z) (addr:AddrE) : res addrmode :=
   (* need to relocate? *)
@@ -597,7 +466,7 @@ Definition translate_AddrE_Addrmode (sofs: Z) (res_iofs : res Z) (addr:AddrE) : 
     | _ => Error (msg "unsupported or impossible")
     end
   | Some _ =>
-    do addend <- get_instr_reloc_addend' rtbl_ofs_map (iofs + sofs);
+    do addend <- get_instr_reloc_addend' (* rtbl_ofs_map *) (iofs + sofs);
     match addr with
     | AddrE11 _ =>
       OK (Addrmode None None (inr (xH,Ptrofs.repr addend)))
@@ -620,6 +489,9 @@ Definition translate_AddrE_Addrmode (sofs: Z) (res_iofs : res Z) (addr:AddrE) : 
     end
   end.
 
+(* 64bit addrmode translation *)
+(* TODO *)
+
 (* consistency proof *)
 Lemma translate_consistency1 : forall ofs iofs addr addrE,
     translate_Addrmode_AddrE ofs iofs addr = OK addrE ->
@@ -637,9 +509,49 @@ Lemma translate_consistency1 : forall ofs iofs addr addrE,
   (*   monadInv EQ5. *)
 Admitted.
 
+
+
+(*encode 64bit reg ,return *)
+Definition encode_ireg64 (r:ireg) :(bits*bits):=
+  match r with
+  | RAX =>  (b["0"],b[ "000"])
+  | RBX =>  (b["0"],b[ "011"])
+  | RCX =>  (b["0"],b[ "001"])
+  | RDX =>  (b["0"],b[ "010"])
+  | RSI =>  (b["0"],b[ "110"])
+  | RDI =>  (b["0"],b[ "111"])
+  | RBP =>  (b["0"],b[ "101"])
+  | RSP =>  (b["0"],b[ "100"])
+  | R8 => (b["1"],b["000"])
+  | R9 => (b["1"],b["001"])
+  | R10 =>  (b["1"],b["010"])
+  | R11 =>  (b["1"],b["011"])
+  | R12 =>  (b["1"],b["100"])
+  | R13 =>  (b["1"],b["101"])
+  | R14 => (b["1"],b["110"])
+  | R15 => (b["1"],b["111"])
+end.
+
+Program Definition encode_ireg_u4 (r:ireg) : res (u1*u3):=
+  let (R,b) := encode_ireg64 r in
+  if assertLength R 1 then
+    if assertLength b 3 then
+      OK (R,b)
+    else Error(msg"impossible")
+  else Error(msg"impossible").
+
+(* FIXME *)
+Program Definition encode_ofs_u64 (ofs:Z) : res u64 :=
+  let ofs64 := bytes_to_bits_opt (bytes_of_int 8 ofs) in
+  if assertLength ofs64 64 then
+    OK (exist _ ofs64 _)
+  else Error (msg "impossible").
+    
+
 (* ccelf instruction to cav21 instruction, unfinished!!! *)
 Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
-  let translate_Addrmode_AddrE := translate_Addrmode_AddrE ofs (instr_reloc_offset i) in
+  let res_iofs := instr_reloc_offset i in
+  let translate_Addrmode_AddrE := translate_Addrmode_AddrE ofs res_iofs in
   match i with
   | Pmov_rr rd r1 =>
     do rdbits <- encode_ireg_u3 rd;
@@ -915,11 +827,23 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
   | Asm.Pjmp_m addr =>
      do a <- translate_Addrmode_AddrE addr;
      OK (Pjmp_Ev a)
-  | Asm.Pnop =>
+  | Asm.Pnop | Asm.Plabel _ =>
      OK (Pnop)
   | Asm.Pcall_r r sg => (*how to use sg*)
      do rdbits <- encode_ireg_u3 r;
      OK (Pcall_r rdbits)
+  | Asm.Pcall_s id sg =>
+    match id with
+    | xH =>
+      do iofs <- res_iofs;
+      do addend <- get_instr_reloc_addend' (iofs + ofs);
+      (* FIXME: different in 64bit mode? *)
+      (* CSLED: need 64bit call instruction *)
+      do imm32 <- encode_ofs_u32 addend;
+      OK (Pcall_ofs imm32)
+    | _ =>
+      Error [MSG "id must be 1: Pcall_s"]
+    end
   | Asm.Pret => OK(Pret)
   | Asm.Pret_iw imm => (*define encode_ofs_u16*)
      do imm16 <- encode_ofs_u16 (Int.intval imm);
@@ -984,5 +908,50 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
      do rdbits <- encode_ireg_u3 rd;
      do imm32 <- encode_ofs_u32 (Int.intval imm);
      OK (Psubl_ri rdbits imm32)
-  | _ => Error (msg "Not exists")
+  | Asm.Pmov_mr_a addr rs =>
+    do a <- translate_Addrmode_AddrE addr;
+    do rbits <- encode_ireg_u3 rs;
+    OK (Pmovl_rm a rbits)
+  | Asm.Pmov_rm_a rs addr =>
+    do a <- translate_Addrmode_AddrE addr;
+    do rbits <- encode_ireg_u3 rs;
+    OK (Pmovl_rm a rbits)
+  | Asm.Pmovsd_mf_a addr rs =>
+    do a <- translate_Addrmode_AddrE addr;
+    do rbits <- encode_freg_u3 rs;
+    OK (Pmovsd_mf a rbits)
+  | Asm.Pmovsd_fm_a rs addr =>
+    do a <- translate_Addrmode_AddrE addr;
+    do rbits <- encode_freg_u3 rs;
+    OK (Pmovsd_fm a rbits)  
+  | Asm.Pxorl_r r =>
+    do rbits <- encode_ireg_u3 r;
+    OK (Pxorl_rr rbits rbits)
+  | Asm.Pxorpd_f r =>
+    do rbits <- encode_freg_u3 r;
+    OK (Pxorpd_GvEv (AddrE0 rbits) rbits)
+  | Asm.Pdivd_ff rd rs =>
+    do rdbits <- encode_freg_u3 rd;
+    do rbits <- encode_freg_u3 rs;
+    OK (Pdivsd_ff rdbits rbits)
+  | Asm.Pdivs_ff rd rs =>
+    do rdbits <- encode_freg_u3 rd;
+    do rbits <- encode_freg_u3 rs;
+    OK (Pdivss_ff rdbits rbits)
+  | Asm.Pxorpd_fm rd addr =>
+    do rdbits <- encode_freg_u3 rd;
+    do a <- translate_Addrmode_AddrE addr;
+    OK (Pxorpd_GvEv a rdbits) 
+  (* (* 64bit *) *)
+  (* | Asm.Pmovq_ri rd imm => *)
+  (*   do Rrdbits <- encode_ireg_u4 rd; *)
+  (*   let (R,rdbits) := Rrdbits in *)
+  (*   do imm64 <- encode_ofs_u64 (Int64.intval imm); *)
+  (*   OK (Pmovq_ri R rdbits imm64)        *)
+  (* | Asm.Pmovq_rm rd addr => *)
+    
+  | _ => Error [MSG "Not exists "; MSG (instr_to_string i)]
+              
   end.
+
+End WITH_RELOC_OFS_MAP.

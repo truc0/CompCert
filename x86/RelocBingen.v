@@ -11,6 +11,7 @@ Require Import Asm RelocProgram.
 Require Import encode.Hex encode.Bits Memdata encode.Encode.
 Require Import Reloctablesgen.
 Require Import SymbolString.
+Require Import TranslateInstr1.
 Import Hex Bits.
 Import ListNotations.
 
@@ -19,42 +20,42 @@ Local Open Scope hex_scope.
 Local Open Scope bits_scope.
 
 
-(** * Encoding of instructions and functions *)
+(* (** * Encoding of instructions and functions *) *)
 
-Definition encode_ireg (r: ireg) : res bits :=
-  match r with
-  | RAX => OK (b["000"])
-  | RCX => OK (b["001"])
-  | RDX => OK (b["010"])
-  | RBX => OK (b["011"])
-  | RSP => OK (b["100"])
-  | RBP => OK (b["101"])
-  | RSI => OK (b["110"])
-  | RDI => OK (b["111"])
-  | _ => Error (msg "Encoding of register not supported")
-  end.
+(* Definition encode_ireg (r: ireg) : res bits := *)
+(*   match r with *)
+(*   | RAX => OK (b["000"]) *)
+(*   | RCX => OK (b["001"]) *)
+(*   | RDX => OK (b["010"]) *)
+(*   | RBX => OK (b["011"]) *)
+(*   | RSP => OK (b["100"]) *)
+(*   | RBP => OK (b["101"]) *)
+(*   | RSI => OK (b["110"]) *)
+(*   | RDI => OK (b["111"]) *)
+(*   | _ => Error (msg "Encoding of register not supported") *)
+(*   end. *)
 
-Definition encode_freg (r: freg) : res bits :=
-  match r with
-  | XMM0 => OK (b["000"])
-  | XMM1 => OK (b["001"])
-  | XMM2 => OK (b["010"])
-  | XMM3 => OK (b["011"])
-  | XMM4 => OK (b["100"])
-  | XMM5 => OK (b["101"])
-  | XMM6 => OK (b["110"])
-  | XMM7 => OK (b["111"])
-  | _ => Error (msg "Encoding of freg not supported")
-  end.
+(* Definition encode_freg (r: freg) : res bits := *)
+(*   match r with *)
+(*   | XMM0 => OK (b["000"]) *)
+(*   | XMM1 => OK (b["001"]) *)
+(*   | XMM2 => OK (b["010"]) *)
+(*   | XMM3 => OK (b["011"]) *)
+(*   | XMM4 => OK (b["100"]) *)
+(*   | XMM5 => OK (b["101"]) *)
+(*   | XMM6 => OK (b["110"]) *)
+(*   | XMM7 => OK (b["111"]) *)
+(*   | _ => Error (msg "Encoding of freg not supported") *)
+(*   end. *)
 
-Definition encode_scale (s: Z) : res bits :=
-  match s with
-  | 1 => OK b["00"]
-  | 2 => OK b["01"]
-  | 4 => OK b["10"]
-  | 8 => OK b["11"]
-  | _ => Error (msg "Translation of scale failed")
-  end.
+(* Definition encode_scale (s: Z) : res bits := *)
+(*   match s with *)
+(*   | 1 => OK b["00"] *)
+(*   | 2 => OK b["01"] *)
+(*   | 4 => OK b["10"] *)
+(*   | 8 => OK b["11"] *)
+(*   | _ => Error (msg "Translation of scale failed") *)
+(*   end. *)
 
 Section WITH_RELOC_OFS_MAP.
 
@@ -772,10 +773,13 @@ Definition encode_instr (ofs:Z) (i: instruction) : res (list byte) :=
            MSG (instr_to_string i)]
   end.
 
+
+(* use generated encoder*)
 Definition acc_instrs r i := 
   do r' <- r;
   let '(ofs, code) := r' in
-  do c <- encode_instr ofs i;
+  do i1 <- translate_instr rtbl_ofs_map ofs i;
+  do c <- EncDecRet.encode_Instruction i1;
   OK (ofs + instr_size i, rev c ++ code).
 
 (** Translation of a sequence of instructions in a function *)
