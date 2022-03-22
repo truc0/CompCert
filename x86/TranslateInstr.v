@@ -237,33 +237,87 @@ Proof.
   try apply proof_irr.                 (**r to solve e = eq_refl *)
 Qed.
 
-Program Definition encode_ofs_u8 (ofs:Z) :res u8 :=
-  let ofs8 := bytes_to_bits_opt (bytes_of_int 1 ofs) in
-  if assertLength ofs8 8 then
-    OK (exist _ ofs8 _)
-  else Error (msg "impossible").
+(** Wordsize BEGIN *)
+(** TODO: these module should not be exported *)
+
+Module Wordsize_32.
+  Definition wordsize := 32%nat.
+  Remark wordsize_not_zero: wordsize <> 0%nat.
+  Proof. unfold wordsize; congruence. Qed.
+End Wordsize_32.
+
+Module int32 := Make(Wordsize_32).
+
+Module Wordsize_16.
+  Definition wordsize := 16%nat.
+  Remark wordsize_not_zero: wordsize <> 0%nat.
+  Proof. unfold wordsize; congruence. Qed.
+End Wordsize_16.
+
+Module int16 := Make(Wordsize_16).
+
+Module Wordsize_8.
+  Definition wordsize := 8%nat.
+  Remark wordsize_not_zero: wordsize <> 0%nat.
+  Proof. unfold wordsize; congruence. Qed.
+End Wordsize_8.
+
+Module int8 := Make(Wordsize_8).
+
+Definition in_int_range_b (intval:Z) (modulus:Z) :=
+  Z.leb (-1) intval || Z.leb intval modulus. 
+
+Definition in_int_range (intval:Z) (modulus:Z) :=
+  Z.le (-1) intval /\ Z.le intval modulus. 
+
+(** Wordsize END *)
+
+Program Definition encode_ofs_u8 (ofs:int) :res u8 :=
+  let intval := Int.unsigned ofs in
+  if in_int_range_b intval int8.modulus then
+    let ofs8 := bytes_to_bits_opt (bytes_of_int 1 intval) in
+    if assertLength ofs8 8 then
+      OK (exist _ ofs8 _)
+    else Error (msg "impossible")
+  else Error (msg "Not in range").
 
 Definition decode_ofs_u8 (bs:u8) : res int :=
   let bs' := proj1_sig bs in
   let z := bits_to_Z bs' in
   OK (Int.repr z).
 
-Program Definition encode_ofs_u16 (ofs:Z) :res u16 :=
-  let ofs16 := bytes_to_bits_opt (bytes_of_int 4 ofs) in
-  if assertLength ofs16 16 then
-    OK (exist _ ofs16 _)
-  else Error (msg "impossible").
+Lemma encode_decode_ofs_u8 : forall ofs bs,
+  encode_ofs_u8 ofs = OK(bs) ->
+  decode_ofs_u8 bs = OK(ofs).
+Admitted.
+
+Lemma decode_encode_ofs_u8 : forall ofs bs,
+  decode_ofs_u8 bs = OK(ofs) ->
+  encode_ofs_u8 ofs = OK(bs).
+Admitted.
+
+Program Definition encode_ofs_u16 (ofs:int) :res u16 :=
+  let intval := Int.unsigned ofs in
+  if in_int_range_b intval int16.modulus then
+    let ofs16 := bytes_to_bits_opt (bytes_of_int 1 intval) in
+    if assertLength ofs16 16 then
+      OK (exist _ ofs16 _)
+    else Error (msg "impossible")
+  else Error (msg "Not in range").
 
 Definition decode_ofs_u16 (bs:u16) : res int :=
   let bs' := proj1_sig bs in
   let z := bits_to_Z bs' in
   OK(Int.repr z).
 
-Program Definition encode_ofs_u32 (ofs:Z) :res u32 :=
-  let ofs32 := bytes_to_bits_opt (bytes_of_int 4 ofs) in
-  if assertLength ofs32 32 then
-    OK (exist _ ofs32 _)
-  else Error (msg "impossible").
+Program Definition encode_ofs_u32 (ofs:int) :res u32 :=
+  let intval := Int.unsigned ofs in
+  if in_int_range_b intval int32.modulus then
+    let ofs32 := bytes_to_bits_opt (bytes_of_int 1 intval) in
+    if assertLength ofs32 32 then
+      OK (exist _ ofs32 _)
+    else Error (msg "impossible")
+  else Error (msg "Not in range").
 
 Definition decode_ofs_u32 (bs:u32) : res int :=
   let bs' := proj1_sig bs in
@@ -1318,6 +1372,15 @@ Admitted.
 Lemma translate_instr_consistency1 : forall ofs i I,
     translate_instr ofs i = OK I ->
     translate_Instr ofs I = OK i.
+Proof.
+  intros.
+  destruct i; try discriminate;   (**r remove Err cases *)
+  simpl in H; monadInv H;         (**r unfold `do` in H *)
+  simpl; unfold bind.             (**r unfold translate_Instr in goal *)
+  - apply ireg_encode_consistency in EQ; rewrite EQ.
+    apply ireg_encode_consistency in EQ1; rewrite EQ1.
+    auto.
+  - apply ireg_encode_consistency in EQ; rewrite EQ.
 Admitted.
 
 Lemma translate_Instr_consistency1 : forall ofs i I,
