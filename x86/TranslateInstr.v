@@ -37,6 +37,57 @@ Proof.
   apply Nat.eq_dec.
 Qed.
 
+(** TODO: may use function in std library to replace this *)
+Fixpoint list_bool_eqb (a b:list bool): bool :=
+  match a, b with
+  | nil, nil => true
+  | nil, _   => false
+  | _  , nil => false
+  | ha :: ta, hb :: tb => (Bool.eqb ha hb) && (list_bool_eqb ta tb)
+  end.
+
+Definition builtin_eqb (n:nat) (a b:builtIn n): bool :=
+  list_bool_eqb (proj1_sig a) (proj1_sig b).
+
+Lemma list_bool_eqb_refl: forall a, list_bool_eqb a a = true.
+Proof.
+  induction a.
+  - auto.
+  - simpl. rewrite IHa.
+    destruct a; auto. (** equivalent to Bool.eqb_eq *)
+Qed.
+
+Lemma list_bool_eqb_eq: forall a b, list_bool_eqb a b = true -> a = b.
+Proof.
+  induction a.
+  - destruct b; simpl; auto.
+    intros. discriminate.
+  - destruct b eqn:Eb; simpl; intros.
+    + discriminate.
+    + rewrite andb_true_iff in H.
+      destruct H as [H1 H2].
+      (* a = b0 *)
+      assert (H3: Is_true (eqb a b0)). { rewrite H1. apply Is_true_eq_left. auto. }
+      apply Bool.eqb_eq in H3; subst.
+      replace l with a0; auto.
+Qed.
+
+Lemma builtin_eqb_refl: forall n a, builtin_eqb n a a = true.
+Proof.
+  intros.
+  unfold builtin_eqb.
+  apply list_bool_eqb_refl.
+Qed.
+
+Lemma builtin_eqb_eq: forall n a b, builtin_eqb n a b = true -> a = b.
+Proof.
+  intros.
+  unfold builtin_eqb in H.
+  apply list_bool_eqb_eq in H.
+  apply builtin_inj in H.
+  auto.
+Qed.
+
 Definition u2 := builtIn 2.
 
 Definition u3 := builtIn 3.
@@ -265,10 +316,10 @@ End Wordsize_8.
 Module int8 := Make(Wordsize_8).
 
 Definition in_int_range_b (intval:Z) (modulus:Z) :=
-  Z.leb (-1) intval || Z.leb intval modulus. 
+  Z.leb (-1) intval || Z.leb intval modulus.
 
 Definition in_int_range (intval:Z) (modulus:Z) :=
-  Z.le (-1) intval /\ Z.le intval modulus. 
+  Z.le (-1) intval /\ Z.le intval modulus.
 
 (** Wordsize END *)
 
@@ -938,7 +989,7 @@ Definition translate_instr (ofs: Z) (i:instruction) : res Instruction :=
      do rbits <- encode_ireg_u3 r1;
      OK (Pcmov cond rdbits rbits)
   | Asm.Psetcc c rd =>
-     let cond := encode_testcond_u4 c in 
+     let cond := encode_testcond_u4 c in
      do rdbits <- encode_ireg_u3 rd;
      OK (Psetcc cond rdbits)
   | Asm.Paddd_ff rd r1 =>
@@ -1193,10 +1244,12 @@ Definition translate_Instr (ofs: Z) (i:Instruction) : res instruction :=
     do rd <- decode_ireg rdbits;
     OK (Asm.Pimull_rr rd r1)
   | Pimull_ri rdbits rbits imm32 =>
-    do imm <- decode_ofs_u32 imm32;
-    do rd  <- decode_ireg rdbits;
-    (* Why repeat *)
-    OK (Asm.Pimull_ri rd imm)
+    if builtin_eqb 3 rdbits rbits then
+      do imm <- decode_ofs_u32 imm32;
+      do rd  <- decode_ireg rdbits;
+      (* TODO: Why repeat *)
+      OK (Asm.Pimull_ri rd imm)
+    else Error (msg "The first and second arg of Pimull_ri should be the same")
   | Pmull_r rbits =>
     do r1 <- decode_ireg rbits;
     OK (Asm.Pmull_r r1)
@@ -1307,9 +1360,11 @@ Definition translate_Instr (ofs: Z) (i:Instruction) : res instruction :=
     do r1 <- decode_freg rdbits;
     OK (Asm.Pcomisd_ff r1 r2)
   | Pxorps_f rdbits rbits =>
-    (** why repeat *)
-    do rd <- decode_freg rdbits;
-    OK (Asm.Pxorps_f rd)
+    (** TODO: is the repeat arg of Pxorps_f a standard *)
+    if builtin_eqb 3 rdbits rbits then
+      do rd <- decode_freg rdbits;
+      OK (Asm.Pxorps_f rd)
+    else Error (msg "Args of Pxorps_f should be the same")
   | Pxorps_fm a rdbits =>
     do addr <- translate_AddrE_Addrmode a;
     do frd  <- decode_freg rdbits;
@@ -1329,12 +1384,12 @@ Definition translate_Instr (ofs: Z) (i:Instruction) : res instruction :=
     do addr <- translate_AddrE_Addrmode a;
     OK (Asm.Pjmp_m addr)
   | Pnop => OK (Asm.Pnop)
-  | Pcall_r rdbits => 
+  | Pcall_r rdbits =>
     (*how to use sg*)
     do r <- decode_ireg rdbits;
     OK (Asm.Pcall_r r (mksignature [] Tvoid (mkcallconv None false false)))
   | Pret => OK(Asm.Pret)
-  | Pret_iw imm16 => 
+  | Pret_iw imm16 =>
     do imm <- decode_ofs_u16 imm16;
     OK (Asm.Pret_iw imm)
     (* Pjcc_rel type of ofs *)
@@ -1442,8 +1497,8 @@ Proof.
 
   - (* Asm.Pmovl_rm *) admit. (** TODO: Instr_reloc_offset is admitted, this cannot be proved *)
   - (* Asm.Pmovl_mr *) admit. (** TODO: Instr_reloc_offset is admitted, this cannot be proved *)
-  - (* Asm.Pmovl_fm *) admit. (** TODO: Instr_reloc_offset is admitted, this cannot be proved *)
-  - (* Asm.Pmovl_mf *) admit. (** TODO: Instr_reloc_offset is admitted, this cannot be proved *)
+  - (* Asm.Pmovsd_fm *) admit. (** TODO: Instr_reloc_offset is admitted, this cannot be proved *)
+  - (* Asm.Pmovsd_mf *) admit. (** TODO: Instr_reloc_offset is admitted, this cannot be proved *)
   - (* Asm.Pmovss_fm *) admit. (** TODO: Instr_reloc_offset is admitted, this cannot be proved *)
   - (* Asm.Pmovss_mf *) admit. (** TODO: Instr_reloc_offset is admitted, this cannot be proved *)
   - (* Asm.Pfldl_m *) admit. (** TODO: Instr_reloc_offset is admitted, this cannot be proved *)
@@ -1457,8 +1512,10 @@ Proof.
   - (* Asm.Pmovzw_rm *) admit. (** TODO: Instr_reloc_offset is admitted, this cannot be proved *)
   - (* Asm.Pmovsw_rm *) admit. (** TODO: Instr_reloc_offset is admitted, this cannot be proved *)
   - (* Asm.Pleal *) admit. (** TODO: Instr_reloc_offset is admitted, this cannot be proved *)
+  - rewrite builtin_eqb_refl. auto.
   - rewrite testcond_encode_consistency with (c := c); auto.
   - rewrite testcond_encode_consistency with (c := c); auto.
+  - rewrite builtin_eqb_refl. auto.
   - (* Asm.Pxorps_fm *) admit. (** TODO: Instr_reloc_offset is admitted, this cannot be proved *)
   - (* Asm.Pandps_fm *) admit. (** TODO: Instr_reloc_offset is admitted, this cannot be proved *)
   - (* Asm.Pjmp_r *) admit. (** TODO: signature needed *)
@@ -1479,7 +1536,7 @@ Lemma translate_Instr_consistency1 : forall ofs i I,
 Proof.
   intros.
   destruct I; try discriminate;   (**r remove Err cases *)
-  simpl in H; monadInv H;         (**r unfold `do` in H *)
+  simpl in H; try monadInv H;         (**r unfold `do` in H *)
   simpl; unfold bind;             (**r unfold translate_Instr in goal *)
 
   (**r try to solve reg to reg instructions, i.e. Pmovl_rr *)
@@ -1489,13 +1546,19 @@ Proof.
   try (apply freg_decode_consistency in EQ1; rewrite EQ1); try auto.
 
   - (* Psubl_ri *) rewrite decode_encode_ofs_u32 with (bs := uvar32_1); auto.
-  - (* Pbsqrtsd *) rewrite decode_encode_ofs_u8 with (bs := uvar8_1); auto.
+  - (* Padcl_ri *) rewrite decode_encode_ofs_u8 with (bs := uvar8_1); auto.
+    (* )- (* Pbsqrtsd *) rewrite decode_encode_ofs_u8 with (bs := uvar8_1); auto. *)
   - (* Pjcc_rel *) rewrite Z_decode_encode_ofs_u32 with (bs := uvar32_1); auto.
     apply testcond_decode_consistency with (c := x) in EQ. rewrite EQ.
     auto.
   - (* Pret_iw *) rewrite decode_encode_ofs_u16 with (bs := uvar16_0); auto.
   - (* Pjmp_l_rel *) rewrite Z_decode_encode_ofs_u32 with (bs := uvar32_0); auto.
-  - (* Pxorps_f *) admit. (* args are strange *)
+  - (* Pxorps_f *)
+    destruct (builtin_eqb 3 uvar3_0 uvar3_1) eqn:Eq_u3; monadInv H;
+      simpl; unfold bind.
+    apply freg_decode_consistency in EQ. rewrite EQ.
+    apply builtin_eqb_eq in Eq_u3; subst.
+    auto.
   - (* Psetcc *) apply testcond_decode_consistency with (c := x0) in EQ1. rewrite EQ1.
     auto.
   - (* Pcmov *) apply testcond_decode_consistency with (c := x1) in EQ0. rewrite EQ0.
@@ -1511,8 +1574,14 @@ Proof.
   - (* Pxorl_ri *) rewrite decode_encode_ofs_u32 with (bs := uvar32_1); auto.
   - (* Porl_ri *) rewrite decode_encode_ofs_u32 with (bs := uvar32_1); auto.
   - (* Pandl_ri *) rewrite decode_encode_ofs_u32 with (bs := uvar32_1); auto.
-  - (* Pimull_ri *) rewrite decode_encode_ofs_u32 with (bs := uvar32_2); auto. admit. (* args are repeated *)
+  - (* Pimull_ri *)
+    destruct (builtin_eqb 3 uvar3_0 uvar3_1) eqn:Eq_u3; monadInv H;
+      simpl; unfold bind.
+    apply ireg_decode_consistency in EQ. rewrite EQ.
+    rewrite decode_encode_ofs_u32 with (bs := uvar32_2); auto.
+    apply builtin_eqb_eq in Eq_u3; subst.
+    auto.
   - (* Paddl_ri *) rewrite decode_encode_ofs_u32 with (bs := uvar32_1); auto.
   - (* Pmovl_ri *) rewrite decode_encode_ofs_u32 with (bs := uvar32_1); auto.
-Admitted.
+Qed.
 
